@@ -37,9 +37,17 @@ private:
     u32 endAddress;
     u8* data;
   } ssBackupLoc;
+  struct preserve_hash_fn
+  {
+    std::size_t operator()(const PreserveBlock& node) const
+    {
+      return node.address ^ node.length;  // TODO: This is probably a bad hash
+    }
+  };
 
 
   std::vector<ssBackupLoc> backupLocs = {};
+  std::unordered_map<PreserveBlock, std::vector<u8>, preserve_hash_fn> preservationMap;
 
 
   void initBackupLocs();

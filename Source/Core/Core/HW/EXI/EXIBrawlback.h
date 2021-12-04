@@ -136,6 +136,7 @@ class CEXIBrawlback : public ExpansionInterface::IEXIDevice
     };
 
     void handleCaptureSavestate(u8* data);
+    void handleLoadSavestate(u8* data);
 
 
     std::vector<gfPadGamecube> pads = {};

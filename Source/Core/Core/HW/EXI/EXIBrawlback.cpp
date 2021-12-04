@@ -44,9 +44,24 @@ void CEXIBrawlback::handleCaptureSavestate(u8* data)
   savestates.push_back(std::move(ss));
 }
 
-void handleLoadSavestate(u8* data)
+void CEXIBrawlback::handleLoadSavestate(u8* data)
 {
 
+  if (!savestates.empty())
+  {
+    auto start = std::chrono::high_resolution_clock::now();
+    savestates.front()->Load({});
+    auto finish = std::chrono::high_resolution_clock::now();
+
+    std::chrono::duration<double> elapsed = finish - start;
+    INFO_LOG(BRAWLBACK, "Load Savestate took %f\n", elapsed.count());
+  }
+  else
+  {
+    INFO_LOG(BRAWLBACK, "Empty savestate queue when trying to load state!");
+  }
+
+ 
 }
 
 
@@ -90,6 +105,7 @@ void CEXIBrawlback::DMAWrite(u32 address, u32 size)
       break;
     case CMD_LOAD_SAVESTATE:
       INFO_LOG(BRAWLBACK, "DMAWrite: CMD_LOAD_SAVESTATE");
+      handleLoadSavestate(payload);
       break;
     default:
       INFO_LOG(BRAWLBACK, "Default DMAWrite");
