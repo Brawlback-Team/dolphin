@@ -146,8 +146,9 @@ LogManager::LogManager()
   m_log[LogType::SYMBOLS] = {"SYMBOLS", "Symbols"};
   m_log[LogType::VIDEO] = {"Video", "Video Backend"};
   m_log[LogType::VIDEOINTERFACE] = {"VI", "Video Interface"};
-  m_log[LogType::WIIMOTE] = {"Wiimote", "Wii Remote"};
   m_log[LogType::WII_IPC] = {"WII_IPC", "WII IPC"};
+  m_log[LogType::BRAWLBACK] = {"Brawlback", "Brawlback"};
+  m_log[LogType::WIIMOTE] = {"Wiimote", "Wii Remote"};
 
   RegisterListener(LogListener::FILE_LISTENER,
                    new FileLogListener(File::GetUserPath(F_MAINLOG_IDX)));
