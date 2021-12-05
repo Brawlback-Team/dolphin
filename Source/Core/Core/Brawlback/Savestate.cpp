@@ -4,12 +4,21 @@
 #include "common/Logging/Log.h"
 #include <Common/MemoryUtil.h>
 
+#define LOW_BOUND_MEM 0x80000000
+
 BrawlbackSavestate::BrawlbackSavestate()
 {
-  initBackupLocs();
+  // init member list with proper addresses
+  initBackupLocs(); 
+
+  // iterate through address ranges and allocate mem for our savestates
   for (auto it = backupLocs.begin(); it != backupLocs.end(); ++it)
   {
     auto size = it->endAddress - it->startAddress;
+    if (it->endAddress < LOW_BOUND_MEM)
+    {
+      size = it->endAddress;
+    }
     it->data = static_cast<u8*>(Common::AllocateAlignedMemory(size, 64));
   }
 }
@@ -67,8 +76,6 @@ void BrawlbackSavestate::initBackupLocs()
       // based off Fracture's SaveStates.cpp
       // https://github.com/Fracture17/PowerPC-Assembly-Functions/blob/master/PowerPC%20Assembly%20Functions/Save%20States.cpp
 
-      // inf loop b/c of address 0x80b95080
-
       /*
       {0x91c0ac84, 0x91c0ac98, nullptr},  // copy modules from 0x91c0ac84 to 0x91c0ac98
       //{0x91c0ac84, 0x14, nullptr},        // save animation object ptr things (is the same mem as line above)
@@ -99,7 +106,7 @@ void BrawlbackSavestate::Capture()
     auto size = it->endAddress - it->startAddress;
     // since no addresses will be lower than this, if this is the case, the backupLoc endAddress
     // represents a size rather than an end address
-    if (it->endAddress < 0x80000000) 
+    if (it->endAddress < LOW_BOUND_MEM) 
     {
       Memory::CopyFromEmu(it->data, it->startAddress, it->endAddress);
     }
@@ -131,7 +138,14 @@ void BrawlbackSavestate::Load(std::vector<PreserveBlock> blocks)
   for (auto it = backupLocs.begin(); it != backupLocs.end(); ++it)
   {
     auto size = it->endAddress - it->startAddress;
-    Memory::CopyToEmu(it->startAddress, it->data, size); // emu -> game
+    if (it->endAddress < LOW_BOUND_MEM)
+    {
+      Memory::CopyToEmu(it->startAddress, it->data, it->endAddress);  // emu -> game
+    }
+    else
+    {
+      Memory::CopyToEmu(it->startAddress, it->data, size);  // emu -> game
+    }
   }
 
   // Restore
