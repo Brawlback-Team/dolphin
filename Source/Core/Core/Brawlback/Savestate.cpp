@@ -27,8 +27,8 @@ void BrawlbackSavestate::initBackupLocs()
 
  
   static std::vector<ssBackupLoc> backupRegions = { 
-      //{0x805b5160, 0x817da5a0, nullptr}, // all of mem1
-      //{0x90000800, 0x935e0000, nullptr}, // all of mem2
+      {0x805b5160, 0x817da5a0, nullptr}, // all of mem1
+      {0x90000800, 0x935e0000, nullptr}, // all of mem2
 
       //mem1
       //{0x805b5160, 0x805ca260, nullptr}, // System FW
@@ -37,7 +37,7 @@ void BrawlbackSavestate::initBackupLocs()
       //{0x805d1e60, 0x80611f60, nullptr}, // RenderFifo
 
       //{0x8154e560, 0x81601960, nullptr}, // Physics
-      {0x8123ab60, 0x8128cb60, nullptr}, // Fighter1Instance
+      //{0x8123ab60, 0x8128cb60, nullptr}, // Fighter1Instance
       //{0x8128cb60, 0x812deb60, nullptr}, // Fighter2Instance
       //{0x80c23a60, 0x80da3a60, nullptr}, // InfoResource
       //{0x80da3a60, 0x80fd6260, nullptr}, // CommonResource
@@ -62,6 +62,31 @@ void BrawlbackSavestate::initBackupLocs()
       //{0x9134cc00, 0x91478e00, nullptr}, // CopyFB
       //{0x90167400, 0x90199800, nullptr}, // GameGlobal
       //{0x90fddc00, 0x91018b00, nullptr}, // GlobalMode // probably don't need to care about this one?
+
+
+      // based off Fracture's SaveStates.cpp
+      // https://github.com/Fracture17/PowerPC-Assembly-Functions/blob/master/PowerPC%20Assembly%20Functions/Save%20States.cpp
+
+      // inf loop b/c of address 0x80b95080
+
+      /*
+      {0x91c0ac84, 0x91c0ac98, nullptr},  // copy modules from 0x91c0ac84 to 0x91c0ac98
+      //{0x91c0ac84, 0x14, nullptr},        // save animation object ptr things (is the same mem as line above)
+      //{0x814ce460, 0x80100, nullptr},  //stage
+      {0x812d39f4 - 0x20, 4, nullptr}, // ??
+
+      {0x901AE000 + 0x870*0, 0x2C8, nullptr}, // save varaibles pt1
+      {0x901AE000 + 0x870*1, 0x2C8, nullptr}, // save varaibles pt2
+      {0x901AE000 + 0x870*2, 0x2C8, nullptr}, // save varaibles pt3
+      {0x901AE000 + 0x870*3, 0x2C8, nullptr}, // save varaibles pt4
+
+      {0x8062fb40, 0x806312ac, nullptr}, // save system thing
+      {0x80b879b4, 4, nullptr}, // save FAT index
+      {0x80b8516c, 0x80b8545c, nullptr}, // save other modules
+      {0x806312f0, 0x8063ce70, nullptr}, // save subaction table thing
+      {0x8128cb60, 0x94, nullptr}, // save instance (new)
+      */
+
   };
 
   backupLocs.insert(backupLocs.end(), backupRegions.begin(), backupRegions.end());
@@ -72,7 +97,16 @@ void BrawlbackSavestate::Capture()
   for (auto it = backupLocs.begin(); it != backupLocs.end(); ++it)
   {
     auto size = it->endAddress - it->startAddress;
-    Memory::CopyFromEmu(it->data, it->startAddress, size); // game -> emu
+    // since no addresses will be lower than this, if this is the case, the backupLoc endAddress
+    // represents a size rather than an end address
+    if (it->endAddress < 0x80000000) 
+    {
+      Memory::CopyFromEmu(it->data, it->startAddress, it->endAddress);
+    }
+    else
+    {
+      Memory::CopyFromEmu(it->data, it->startAddress, size);  // game -> emu
+    }
   }
 }
 
