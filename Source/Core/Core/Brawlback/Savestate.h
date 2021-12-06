@@ -1,7 +1,8 @@
 #pragma once
 
-#include "Common/CommonTypes.h"
-#include <unordered_map>
+#include "SlippiUtility.h"
+
+using namespace SlippiUtility::Savestate;
 
 // thank you Slippi :)
 
@@ -10,16 +11,6 @@ class BrawlbackSavestate
 
 public:
 
-  struct PreserveBlock
-  {
-    u32 address;
-    u32 length;
-
-    bool operator==(const PreserveBlock& p) const
-    {
-      return address == p.address && length == p.length;
-    }
-  };
 
   BrawlbackSavestate();
   ~BrawlbackSavestate();
@@ -28,26 +19,18 @@ public:
   void Capture();
   void Load(std::vector<PreserveBlock> blocks);
 
+  //static bool shouldForceInit;
+
 
 private:
 
-  typedef struct
-  {
-    u32 startAddress;
-    u32 endAddress;
-    u8* data;
-  } ssBackupLoc;
-  struct preserve_hash_fn
-  {
-    std::size_t operator()(const PreserveBlock& node) const
-    {
-      return node.address ^ node.length;  // TODO: This is probably a bad hash
-    }
-  };
-
+  
 
   std::vector<ssBackupLoc> backupLocs = {};
   std::unordered_map<PreserveBlock, std::vector<u8>, preserve_hash_fn> preservationMap;
+  std::vector<u8> dolphinSsBackup = {};
+
+  void getDolphinState(PointerWrap& p);
 
 
   void initBackupLocs();
