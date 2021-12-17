@@ -4,19 +4,20 @@
 #include <unordered_map>
 #include "Common/ChunkFile.h"
 
+#include "BrawlbackUtility.h"
+
 /*
 ============================================
 This, along with SlippiUtility.cpp is a place to hold code from the Slippi repo.
 
-There may be code/variable names that come from Slippi present in other places as well,
+There may be things that come from Slippi in other places as well,
 but this is meant to be a centralized place where large chunks of code taken from Slippi can live.
 
 If the Slippi team feels uncomfortable with their code being used in this project,
 having this code in this one file makes it easier to replace it with our own logic if the need should arise.
 
 
-
-https://github.com/project-slippi/Ishiiruka/blob/slippi/Source/Core/Core/Slippi/SlippiSavestate.cpp
+https://github.com/project-slippi/Ishiiruka/
 
 
 
@@ -27,65 +28,113 @@ A very heartfelt thank you to the Slippi team for all their hard work and dedica
 namespace SlippiUtility
 {
 
+    namespace GameStructures
+    {
 
+    // randomSeed is continually tracked each frame to make uber sure that it's synced up, also it might change between players
 
-  namespace Savestate
-  {
+    struct PlayerFrameData
+    {
+        gfPadGamecube pad;
+        u32 randomSeed;
+    };
+
+    struct FrameData
+    {
+        u32 frame;
+        u32 randomSeed;
+        // keys are the controller port
+        std::unordered_map<u8, PlayerFrameData> players;
+        std::unordered_map<u8, PlayerFrameData> followers;
+    };
+
+    // forward declare PlayerType since SlippiUtility.h and BrawlbackUtility.h both include each other
+    enum PlayerType : u8;
+
+    struct PlayerSettings
+    {
+        u8 charID;
+        u8 charColor;
+        PlayerType playerType;
+        u8 controllerPort;
+    };
+
+    struct GameSettings
+    {
+        u16 stageID;
+        u32 randomSeed;
+        std::unordered_map<u8, PlayerSettings> playerSettings;
+    };
+
+    struct Game
+    {
+        std::array<u8, 4> version;
+        std::unordered_map<int32_t, FrameData*> framesByIndex;
+        std::vector<std::unique_ptr<FrameData>> frames;
+        GameSettings gameSettings;
+
+        bool isSettingsLoaded = false;
+        u32 frameCount;
+    };
+
+    } // namespace GameStructures
+
+    namespace Savestate
+    {
 
     // Types
     struct PreserveBlock
     {
-      u32 address;
-      u32 length;
+        u32 address;
+        u32 length;
 
-      bool operator==(const PreserveBlock& p) const
-      {
+        bool operator==(const PreserveBlock& p) const
+        {
         return address == p.address && length == p.length;
-      }
+        }
     };
 
     typedef struct
     {
-      u32 startAddress;
-      u32 endAddress;
-      u8* data;
+        u32 startAddress;
+        u32 endAddress;
+        u8* data;
     } ssBackupLoc;
 
     struct preserve_hash_fn
     {
-      std::size_t operator()(const PreserveBlock& node) const
-      {
+        std::size_t operator()(const PreserveBlock& node) const
+        {
         return node.address ^ node.length;  // TODO: This is probably a bad hash
-      }
+        }
     };
 
     typedef struct
     {
-      u32 address;
-      u32 value;
+        u32 address;
+        u32 value;
     } ssBackupStaticToHeapPtr;
 
 
     // Funcs
     void SlippiInitBackupLocations(std::vector<ssBackupLoc>& backupLocs,
-                                   std::vector<ssBackupLoc>& fullBackupRegions,
-                                   std::vector<PreserveBlock>& excludeSections);
+                                    std::vector<ssBackupLoc>& fullBackupRegions,
+                                    std::vector<PreserveBlock>& excludeSections);
 
-  } // namespace Savestate
+    } // namespace Savestate
 
 
-  namespace Mem
-  {
-    std::vector<u8> uint16ToVector(u16 num);
-    std::vector<u8> uint32ToVector(u32 num);
-    std::vector<u8> int32ToVector(int32_t num);
-    void appendWordToBuffer(std::vector<u8>* buf, u32 word);
-    void appendHalfToBuffer(std::vector<u8>* buf, u16 word);
-    uint8_t readByte(uint8_t* a, int& idx, uint32_t maxSize, uint8_t defaultValue);
-    uint16_t readHalf(uint8_t* a, int& idx, uint32_t maxSize, uint16_t defaultValue);
-    uint32_t readWord(uint8_t* a, int& idx, uint32_t maxSize, uint32_t defaultValue);
-    float readFloat(uint8_t* a, int& idx, uint32_t maxSize, float defaultValue);
-    void print_byte(uint8_t byte);
-  }  // namespace Mem
+    namespace Mem
+    {
+        std::vector<u8> uint16ToVector(u16 num);
+        std::vector<u8> uint32ToVector(u32 num);
+        std::vector<u8> int32ToVector(int32_t num);
+        void appendWordToBuffer(std::vector<u8>* buf, u32 word);
+        void appendHalfToBuffer(std::vector<u8>* buf, u16 word);
+        uint8_t readByte(uint8_t* a, int& idx, uint32_t maxSize, uint8_t defaultValue);
+        uint16_t readHalf(uint8_t* a, int& idx, uint32_t maxSize, uint16_t defaultValue);
+        uint32_t readWord(uint8_t* a, int& idx, uint32_t maxSize, uint32_t defaultValue);
+        float readFloat(uint8_t* a, int& idx, uint32_t maxSize, float defaultValue);
+    }  // namespace Mem
 
 }

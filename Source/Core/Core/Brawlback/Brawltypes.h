@@ -18,7 +18,7 @@ enum PADButtonBits : u16
 };
 
 
-#pragma pack(2)
+#pragma pack(push, 2)
 union PADButtons
 {
   unsigned short bits;
@@ -40,8 +40,9 @@ union PADButtons
     unsigned LeftDPad : 1;
   };
 };
+#pragma pack(pop)
 
-#pragma pack(4)
+#pragma pack(push, 4)
 struct gfPadGamecube
 {
   char _spacer[6];
@@ -66,3 +67,4 @@ struct gfPadGamecube
   // 0x3C
   int type = 0;
 };
+#pragma pack(pop)

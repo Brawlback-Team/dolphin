@@ -605,6 +605,7 @@ PUBLIC
   videonull
   videoogl
   videosoftware
+  GGPO
 
 PRIVATE
   FatFs
