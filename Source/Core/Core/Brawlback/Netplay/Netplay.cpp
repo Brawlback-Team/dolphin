@@ -1,6 +1,5 @@
 #include "Netplay.h"
 
-#include "Core/Brawlback/SlippiNetplay/SlippiNetplay.h"
 #include <algorithm>
 #include <fstream>
 #include <memory>
@@ -11,10 +10,8 @@
 #include "Common/Timer.h"
 #include "Core/ConfigManager.h"
 #include "Core/Core.h"
-//#include "SlippiPremadeText.h"
 #include "VideoCommon/OnScreenDisplay.h"
 #include "VideoCommon/VideoConfig.h"
-#include <Core/Brawlback/SlippiNetplay/NetPlayProto.h>
 
 
 

@@ -5,7 +5,6 @@
 #include "Core/HW/Memmap.h"
 #include <chrono>
 
-#include "Core/Brawlback/Netplay/Netplay.h"
 
 
 
@@ -283,6 +282,10 @@ void CEXIBrawlback::handleFindOpponent(u8* payload) {
 
 void CEXIBrawlback::handleStartMatch(u8* payload) {
     //if (!payload) return;
+
+    std::unique_ptr<Match::GameSettings> gameSettings = std::make_unique<Match::GameSettings>();
+
+    
     
     // if this is only a 1v1
     u8 localPlayerIdx = this->isHost ? 0 : 1;

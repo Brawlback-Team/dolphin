@@ -70,8 +70,6 @@
   <ItemGroup>
     <ClCompile Include="Core\Brawlback\BrawlbackUtility.cpp" />
     <ClCompile Include="Core\Brawlback\Savestate.cpp" />
-    <ClCompile Include="Core\Brawlback\SlippiNetplay\SlippiNetplay.cpp" />
-    <ClCompile Include="Core\Brawlback\SlippiNetplay\SlippiPad.cpp" />
     <ClCompile Include="Core\Brawlback\SlippiUtility.cpp" />
     <ClCompile Include="Core\Brawlback\Netplay\Netplay.cpp" />
     <ClCompile Include="Core\HW\EXI\EXIBrawlback.cpp" />
@@ -81,10 +79,6 @@
     <ClInclude Include="Core\Brawlback\BrawlbackUtility.h" />
     <ClInclude Include="Core\Brawlback\Brawltypes.h" />
     <ClInclude Include="Core\Brawlback\Savestate.h" />
-    <ClInclude Include="Core\Brawlback\SlippiNetplay\FifoQueue.h" />
-    <ClInclude Include="Core\Brawlback\SlippiNetplay\NetPlayProto.h" />
-    <ClInclude Include="Core\Brawlback\SlippiNetplay\SlippiNetplay.h" />
-    <ClInclude Include="Core\Brawlback\SlippiNetplay\SlippiPad.h" />
     <ClInclude Include="Core\Brawlback\SlippiUtility.h" />
     <ClInclude Include="Core\Brawlback\Netplay\Netplay.h" />
     <ClInclude Include="Core\HW\EXI\EXIBrawlback.h" />

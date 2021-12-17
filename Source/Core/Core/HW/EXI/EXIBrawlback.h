@@ -8,7 +8,7 @@
 #include <deque>
 #include "Core/Brawlback/Savestate.h"
 #include "Core/Brawlback/BrawlbackUtility.h"
-#include "Core/Brawlback/SlippiNetplay/SlippiNetplay.h"
+#include "Core/Brawlback/Netplay/Netplay.h"
 
 using namespace Brawlback;
 

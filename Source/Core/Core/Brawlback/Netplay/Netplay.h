@@ -12,7 +12,6 @@
 #include <vector>
 #include "Common/CommonTypes.h"
 #include "Common/Event.h"
-#include "Core/Brawlback/SlippiNetplay/FifoQueue.h"
 #include "Common/Timer.h"
 #include "Common/TraversalClient.h"
 #include "Core/NetPlayProto.h"
