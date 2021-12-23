@@ -17,22 +17,31 @@
 
 namespace Netplay {
 
-
-/*BrawlbackNetplay* BBNetplay = nullptr;
-
-
-BrawlbackNetplay::BrawlbackNetplay() {
-
-    BBNetplay = this;
-}
-BrawlbackNetplay::~BrawlbackNetplay() {
-
-    enet_host_destroy(this->server);
-    BBNetplay = nullptr;
-}*/
+    std::deque<std::unique_ptr<BrawlbackNetPacket>> async_queue;
+    std::recursive_mutex async_send_packet_mutex;
 
 
+    void SendAsync(std::unique_ptr<BrawlbackNetPacket> packet, ENetHost* host) {
+        {
+            std::lock_guard<std::recursive_mutex> lock(async_send_packet_mutex);
+            async_queue.push_back(std::move(packet));
+        }
+        ENetUtil::WakeupThread(host);
+    }
 
+    void BroadcastPacket(sf::Packet& packet, int enet_flag, ENetHost* server) {
+        ENetPacket* p = enet_packet_create(packet.getData(), packet.getDataSize(), enet_flag);
+		enet_host_broadcast(server, 0, p);
+    }
+
+    void FlushAsyncQueue(ENetHost* server) {
+        while (!async_queue.empty())
+		{
+            BrawlbackNetPacket packet = *(async_queue.front().get());
+			BroadcastPacket(packet.first, packet.second, server);
+			async_queue.pop_front();
+		}
+    }
 
 
 

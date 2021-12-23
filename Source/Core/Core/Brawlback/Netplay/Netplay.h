@@ -8,6 +8,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <utility>
 #include <unordered_map>
 #include <vector>
 #include "Common/CommonTypes.h"
@@ -21,36 +22,11 @@
 
 namespace Netplay {
 
+    typedef std::pair<sf::Packet, int> BrawlbackNetPacket;
 
+    void SendAsync(std::unique_ptr<BrawlbackNetPacket> packet, ENetHost* host);
+    void BroadcastPacket(sf::Packet& packet, int enet_flag, ENetHost* server);
+    void FlushAsyncQueue(ENetHost* server);
 
-    void handleFindOpponent(u8* payload);
-    void handleStartMatch(u8* payload);
-    void receiveEvents();
-
-
-
-
-/* BrawlbackNetplay {
-
-public:
-
-    BrawlbackNetplay();
-    ~BrawlbackNetplay();
-
-    void handleFindOpponent(u8* payload);
-    void handleStartMatch(u8* payload);
-
-private:
-
-    void receiveEvents();
-
-    ENetHost* server;
-    std::vector<ENetHost*> clients;
-
-};
-
-
-extern BrawlbackNetplay* BBNetplay;
-*/
 }
 

@@ -123,7 +123,11 @@ void CEXIBrawlback::handlePadData(u8* data)
     }
     this->playersFrameData.push_back(std::move(pFD));
 
+    // broadcast most recent framedata
+    this->BroadcastFrameData(this->playersFrameData.back().get());
+}
 
+void CEXIBrawlback::BroadcastFrameData(Match::FrameData* framedata) {
     // send framedata to all peers
     if (this->server) {
         sf::Packet frame_data_packet = sf::Packet();
@@ -133,36 +137,67 @@ void CEXIBrawlback::handlePadData(u8* data)
         frame_data_packet.append(&frame_data_cmd, sizeof(u8));
 
         // append framedata
-        Match::FrameData* framedata = this->playersFrameData.back().get();
         frame_data_packet.append(framedata, sizeof(Match::FrameData));
 
         // send framedata to other oppponent(s)
-        ENetPacket* enetPckt = enet_packet_create(frame_data_packet.getData(), frame_data_packet.getDataSize(), ENET_PACKET_FLAG_RELIABLE);
-        enet_host_broadcast(this->server, 0, enetPckt); // "broadcast" here means send to all connected peers.
+        //ENetPacket* enetPckt = enet_packet_create(frame_data_packet.getData(), frame_data_packet.getDataSize(), ENET_PACKET_FLAG_UNSEQUENCED);
+        //enet_host_broadcast(this->server, 0, enetPckt); // "broadcast" here means send to all connected peers.
+
+        std::pair<sf::Packet, int> pckt_content = std::make_pair(frame_data_packet, ENET_PACKET_FLAG_UNSEQUENCED);
+        std::unique_ptr<Netplay::BrawlbackNetPacket> pckt = std::make_unique<Netplay::BrawlbackNetPacket>(pckt_content);
+        Netplay::SendAsync(std::move(pckt), this->server);
     }
-
-
 }
 
 void CEXIBrawlback::ProcessRemoteFrameData(Match::FrameData* framedata) {
-    // copy data, since the ptr passed in here will get freed at the end of the enet loop
 
-    // ehhhh idk if this is necessary, the bytes might get copied during the read_queue insertion anyway
-    Match::FrameData* tmp_fd = (Match::FrameData*)malloc(sizeof(Match::FrameData)); // not thread safe lol
-    memcpy(tmp_fd, framedata, sizeof(Match::FrameData));
-
-    std::vector<u8> frame_data_bytes = Mem::structToByteVector(tmp_fd);
+    std::vector<u8> frame_data_bytes = Mem::structToByteVector(framedata);
 
     this->read_queue_mutex.lock();
     this->read_queue.clear();
     this->read_queue.push_back(EXICommand::CMD_FRAMEDATA);
+    // copies each byte
     this->read_queue.insert(this->read_queue.end(), frame_data_bytes.begin(), frame_data_bytes.end());
     this->read_queue_mutex.unlock();
 }
 
+void CEXIBrawlback::ProcessGameSettings(Match::GameSettings* opponentGameSettings) {
+    // merge game settings for all remote/local players, then pass that back to the game 
+
+    // assumes 1v1
+    int localPlayerIdx = this->isHost ? 0 : 1;
+    int remotePlayerIdx = this->isHost ? 1 : 0;
+
+    Match::GameSettings* mergedGameSettings = this->gameSettings.get();
+    INFO_LOG(BRAWLBACK, "ProcessGameSettings thing: %u\n", mergedGameSettings->stageID);
+
+    if (!this->isHost) {
+        mergedGameSettings->randomSeed = opponentGameSettings->randomSeed;
+        mergedGameSettings->stageID = opponentGameSettings->stageID;
+    }
+    mergedGameSettings->playerSettings[localPlayerIdx].playerType = Match::PlayerType::PLAYERTYPE_LOCAL;
+    mergedGameSettings->playerSettings[remotePlayerIdx].playerType = Match::PlayerType::PLAYERTYPE_REMOTE;
+
+    // if we're not host, we just connected to host and received their game settings, 
+    // now we need to send our game settings back to them so they can start their game too
+    if (!this->isHost) {
+        this->BroadcastGameSettings(mergedGameSettings);
+    }
+
+    std::vector<u8> mergedGameSettingsByteVec = Mem::structToByteVector(mergedGameSettings);
+    this->read_queue_mutex.lock();
+    this->read_queue.push_back(EXICommand::CMD_SETUP_PLAYERS);
+    this->read_queue.insert(this->read_queue.end(), mergedGameSettingsByteVec.begin(), mergedGameSettingsByteVec.end());
+    this->read_queue_mutex.unlock();
+}
+
 // called from netplay thread
-void CEXIBrawlback::ProcessNetPacket(ENetPacket* pckt) {
+void CEXIBrawlback::ProcessNetReceive(ENetEvent* event) {
+    ENetPacket* pckt = event->packet;
     if (pckt && pckt->data && pckt->dataLength > 0) {
+        //sf::Packet netPckt = sf::Packet();
+        //netPckt.append(pckt->data, pckt->dataLength);
+
         u8* fullpckt_data = pckt->data;
 
         u8 cmd_byte = fullpckt_data[0];
@@ -176,6 +211,13 @@ void CEXIBrawlback::ProcessNetPacket(ENetPacket* pckt) {
                     this->ProcessRemoteFrameData(framedata);
                 }
                 break;
+            case NetPacketCommand::CMD_GAME_SETTINGS:
+                {
+                    INFO_LOG(BRAWLBACK, "Received game settings from opponent");
+                    Match::GameSettings* gameSettingsFromOpponent = (Match::GameSettings*)data;
+                    this->ProcessGameSettings(gameSettingsFromOpponent);
+                }
+                break;
             default:
                 WARN_LOG(BRAWLBACK, "Unknown packet cmd byte!");
                 INFO_LOG(BRAWLBACK, "Packet as string: %s\n", fullpckt_data);
@@ -185,13 +227,42 @@ void CEXIBrawlback::ProcessNetPacket(ENetPacket* pckt) {
 }
 
 void CEXIBrawlback::NetplayThreadFunc() {
+    ENetEvent event;
+    bool isConnected = false;
+
+    // loop until we connect to someone, then after we connected, 
+    // do another loop for passing data between the connected clients
+    
+    INFO_LOG(BRAWLBACK, "Waiting for connection to opponent...");
+    while (enet_host_service(this->server, &event, 0) >= 0 && !isConnected) {
+        switch (event.type) {
+            case ENET_EVENT_TYPE_CONNECT:
+                INFO_LOG(BRAWLBACK, "Connected!");
+                if (event.peer) {
+                    INFO_LOG(BRAWLBACK, "A new client connected from %x:%u. RTT %u\n", 
+                        event.peer -> address.host,
+                        event.peer -> address.port,
+                        event.peer -> roundTripTime);
+                    isConnected = true;
+                }
+                else {
+                    WARN_LOG(BRAWLBACK, "Connect event received, but peer was null!");
+                }
+                break;
+            case ENET_EVENT_TYPE_NONE:
+                //INFO_LOG(BRAWLBACK, "Enet event type none. Nothing to do");
+                break;
+        }
+    }
+
+    if (this->isHost) { // if we're host, send our gamesettings to clients right after connecting
+        this->BroadcastGameSettings(this->gameSettings.get());
+    }
 
     INFO_LOG(BRAWLBACK, "Starting main net data loop");
-
     // main enet loop
-    ENetEvent event;
-    bool isConnected = true;
     while (enet_host_service(this->server, &event, 0) >= 0 && isConnected) {
+        Netplay::FlushAsyncQueue(this->server);
         switch (event.type) {
             case ENET_EVENT_TYPE_DISCONNECT:
                 INFO_LOG(BRAWLBACK, "%s:%u disconnected.\n", event.peer -> address.host, event.peer -> address.port);
@@ -201,21 +272,18 @@ void CEXIBrawlback::NetplayThreadFunc() {
                 //INFO_LOG(BRAWLBACK, "Enet event type none. Nothing to do");
                 break;
             case ENET_EVENT_TYPE_RECEIVE:
-                this->ProcessNetPacket(event.packet);
+                this->ProcessNetReceive(&event);
                 enet_packet_destroy(event.packet);
                 break;
         }
     }
-
-
-
     INFO_LOG(BRAWLBACK, "End enet thread");
 }
 
 
 void CEXIBrawlback::handleFindOpponent(u8* payload) {
     //if (!payload) return;
-    //bool isHost = payload[0];
+    //this->isHost = payload[0];
 
     ENetAddress address;
     address.host = ENET_HOST_ANY;
@@ -249,55 +317,29 @@ void CEXIBrawlback::handleFindOpponent(u8* payload) {
     }
 
 
-    INFO_LOG(BRAWLBACK, "Net initialized, starting net main loop");
+    INFO_LOG(BRAWLBACK, "Net initialized, starting netplay thread");
 
-    // first do a loop to find opponent
-    ENetEvent event;
-    bool isConnected = false;
+    // loop to receive data over net
+    this->netplay_thread = std::thread(&CEXIBrawlback::NetplayThreadFunc, this);
+}
 
-    INFO_LOG(BRAWLBACK, "Waiting for connection to opponent...");
-    // loop until we connect to someone, then after we connected, do another loop for passing data between the connected clients
-    while (enet_host_service(this->server, &event, 0) >= 0 && !isConnected) {
-        switch (event.type) {
-            case ENET_EVENT_TYPE_CONNECT:
-                INFO_LOG(BRAWLBACK, "Connected!");
-                if (event.peer) {
-                    INFO_LOG(BRAWLBACK, "A new client connected from %x:%u.\n", 
-                        event.peer -> address.host,
-                        event.peer -> address.port);
-                    isConnected = true;
-                }
-                else {
-                    WARN_LOG(BRAWLBACK, "Connect event received, but peer was null!");
-                }
+void CEXIBrawlback::BroadcastGameSettings(Match::GameSettings* settings) {
+    sf::Packet settingsPckt = sf::Packet();
+    u8 cmd_byte = NetPacketCommand::CMD_GAME_SETTINGS;
+    settingsPckt.append(&cmd_byte, sizeof(cmd_byte));
+    settingsPckt.append(settings, sizeof(Match::GameSettings));
 
-                break;
-            case ENET_EVENT_TYPE_NONE:
-                //INFO_LOG(BRAWLBACK, "Enet event type none. Nothing to do");
-                break;
-        }
-    }
-
+    Netplay::BroadcastPacket(settingsPckt, ENET_PACKET_FLAG_RELIABLE, this->server);
+    INFO_LOG(BRAWLBACK, "Sent game settings data packet");
 }
 
 void CEXIBrawlback::handleStartMatch(u8* payload) {
     //if (!payload) return;
 
-    std::unique_ptr<Match::GameSettings> gameSettings = std::make_unique<Match::GameSettings>();
+    Match::GameSettings* settings = (Match::GameSettings*)payload;
 
-    
-    
-    // if this is only a 1v1
-    u8 localPlayerIdx = this->isHost ? 0 : 1;
+    this->gameSettings = std::unique_ptr<Match::GameSettings>(settings);
 
-    // let game know which player is the local player
-    this->read_queue_mutex.lock();
-    this->read_queue.push_back(EXICommand::CMD_SETUP_PLAYERS);
-    this->read_queue.push_back(localPlayerIdx);
-    this->read_queue_mutex.unlock();
-
-    // loop to receive data over net
-    netplay_thread = std::thread(&CEXIBrawlback::NetplayThreadFunc, this);
 }
 
 

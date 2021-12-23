@@ -31,13 +31,13 @@ namespace Brawlback {
         };
 
         // info stored about each player every frame
-        //#pragma pack(4)
+        //#pragma pack(push, 4)
         struct FrameData {
             u32 frame;
             u32 randomSeed;
             gfPadGamecube pads[4];
         };
-        //#pragma pack()
+        //#pragma pack(pop)
 
         struct PlayerSettings
         {
@@ -45,16 +45,16 @@ namespace Brawlback {
             u8 charColor;
             PlayerType playerType;
             u8 controllerPort;
-            std::array<uint16_t, NAMETAG_SIZE> nametag;
-            std::array<uint8_t, DISPLAY_NAME_SIZE> displayName;
-            std::array<uint8_t, CONNECT_CODE_SIZE> connectCode;
+            u16 nametag[NAMETAG_SIZE];
+            u8 displayName[DISPLAY_NAME_SIZE];
+            u8 connectCode[CONNECT_CODE_SIZE];
         };
 
         struct GameSettings
         {
             u16 stageID;
             u32 randomSeed;
-            std::vector<PlayerSettings> playerSettings;
+            PlayerSettings playerSettings[4];
         };
 
         struct Game {

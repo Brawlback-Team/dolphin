@@ -69,23 +69,7 @@ private:
     enum NetPacketCommand : u8 
     {
         CMD_FRAME_DATA = 1,
-    };
-
-
-    std::unordered_map<u8, u32> payloadSizes = {
-        // The following are used for Slippi online and also have fixed sizes
-        {CMD_ONLINE_INPUTS, 17},
-        {CMD_CAPTURE_SAVESTATE, 32},
-        {CMD_LOAD_SAVESTATE, 32},
-        {CMD_GET_MATCH_STATE, 0},
-        {CMD_FIND_OPPONENT, 19},
-        {CMD_SET_MATCH_SELECTIONS, 8},
-        {CMD_OPEN_LOGIN, 0},
-        {CMD_LOGOUT, 0},
-        {CMD_UPDATE, 0},
-        {CMD_GET_ONLINE_STATUS, 0},
-        {CMD_CLEANUP_CONNECTION, 0},
-        {CMD_GET_NEW_SEED, 0},
+        CMD_GAME_SETTINGS = 2,
     };
 
     void handleCaptureSavestate(u8* data);
@@ -98,8 +82,11 @@ private:
     void handleStartMatch(u8* payload);
     void NetplayThreadFunc();
 
-    void ProcessNetPacket(ENetPacket* pckt);
+    void ProcessNetReceive(ENetEvent* event);
+    void BroadcastFrameData(Match::FrameData* framedata);
     void ProcessRemoteFrameData(Match::FrameData* framedata);
+    void ProcessGameSettings(Match::GameSettings* opponentGameSettings);
+    void BroadcastGameSettings(Match::GameSettings* settings);
 
     ENetHost* server = nullptr;
     std::thread netplay_thread;
@@ -109,7 +96,7 @@ private:
     // ----------------------------------
 
 
-
+    std::unique_ptr<Match::GameSettings> gameSettings;
 
 
 
