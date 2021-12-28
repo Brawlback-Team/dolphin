@@ -11,14 +11,26 @@
 
 #include "SlippiUtility.h"
 
+#define MAX_ROLLBACK_FRAMES 7
+#define FRAME_DELAY 2
+
+// number of FrameData's to keep in the queue
+#define FRAMEDATA_QUEUE_SIZE 60 
+// update ping display every X frames
+#define PING_DISPLAY_INTERVAL 1
+
+#define MAX_REMOTE_PLAYERS 3
+#define MAX_NUM_PLAYERS 4
+#define BRAWLBACK_PORT 7779
+
+// 59.94 Hz   ( -- is this accurate? This is the case for melee, idk if it also applies here)
+#define MS_IN_FRAME 16683
 
 
 namespace Brawlback {
     const u8 NAMETAG_SIZE = 8;
     const u8 DISPLAY_NAME_SIZE = 31;
     const u8 CONNECT_CODE_SIZE = 10;
-
-    
 
 
     namespace Match
@@ -30,12 +42,17 @@ namespace Brawlback {
             PLAYERTYPE_REMOTE = 0x1,
         };
 
-        // info stored about each player every frame
+        
+        struct PlayerFrameData {
+            u32 frame;
+            u8 playerIdx;
+            gfPadGamecube pad;
+        };
+
         //#pragma pack(push, 4)
         struct FrameData {
-            u32 frame;
             u32 randomSeed;
-            gfPadGamecube pads[4];
+            PlayerFrameData playerFrameDatas[MAX_NUM_PLAYERS];
         };
         //#pragma pack(pop)
 
@@ -52,9 +69,11 @@ namespace Brawlback {
 
         struct GameSettings
         {
+            u8 localPlayerIdx;
+            u8 numPlayers;
             u16 stageID;
             u32 randomSeed;
-            PlayerSettings playerSettings[4];
+            PlayerSettings playerSettings[MAX_NUM_PLAYERS];
         };
 
         struct Game {

@@ -12,12 +12,9 @@
 
 using namespace Brawlback;
 
-#define MAX_ROLLBACK_FRAMES 7
-#define MAX_REMOTE_PLAYERS 3
-#define BRAWLBACK_PORT 7779
-
 
 typedef std::pair<void*, u32> Buffer;
+typedef std::deque<std::unique_ptr<Match::PlayerFrameData>> PlayerFrameDataQueue;
 
 
 class CEXIBrawlback : public ExpansionInterface::IEXIDevice
@@ -33,12 +30,6 @@ public:
 
     bool IsPresent() const;
 
-
-private:
-
-    // byte vector for sending into to the game
-    std::vector<u8> read_queue = {};
-
     enum EXICommand : u8
     {
       CMD_UNKNOWN = 0,
@@ -53,6 +44,7 @@ private:
       CMD_START_MATCH = 13,
       CMD_SETUP_PLAYERS = 14,
       CMD_FRAMEDATA = 15,
+      CMD_STALL_FRAME = 16,
 
       CMD_GET_MATCH_STATE = 4,
       CMD_SET_MATCH_SELECTIONS = 6,
@@ -70,11 +62,18 @@ private:
     {
         CMD_FRAME_DATA = 1,
         CMD_GAME_SETTINGS = 2,
+        CMD_FRAME_DATA_ACK = 3,
     };
+
+private:
+
+    // byte vector for sending into to the game
+    std::vector<u8> read_queue = {};
+
 
     void handleCaptureSavestate(u8* data);
     void handleLoadSavestate(u8* data);
-    void handlePadData(u8* data);
+    void handleLocalPadData(u8* data);
 
     // -------- online stuff -----------
 
@@ -83,29 +82,44 @@ private:
     void NetplayThreadFunc();
 
     void ProcessNetReceive(ENetEvent* event);
-    void BroadcastFrameData(Match::FrameData* framedata);
-    void ProcessRemoteFrameData(Match::FrameData* framedata);
+    void ProcessRemoteFrameData(Match::PlayerFrameData* framedata);
     void ProcessGameSettings(Match::GameSettings* opponentGameSettings);
-    void BroadcastGameSettings(Match::GameSettings* settings);
+    void SendFrameDataToGame(Match::FrameData* framedata);
+    void ProcessFrameAck(FrameAck* frameAck);
 
     ENetHost* server = nullptr;
     std::thread netplay_thread;
+    std::unique_ptr<BrawlbackNetplay> netplay;
 
     bool isHost = true;
+    int localPlayerIdx = -1;
+    u8 numPlayers = -1;
+    bool shouldStall = false;
 
     // ----------------------------------
 
 
     std::unique_ptr<Match::GameSettings> gameSettings;
 
+    int lastFrameAcked[MAX_NUM_PLAYERS] = {0,0,0,0};
+    FrameTiming lastFrameTimings[MAX_NUM_PLAYERS] = {};
+    std::array<std::deque<FrameTiming>, MAX_NUM_PLAYERS> ackTimers = {};
+    u64 pingUs[MAX_NUM_PLAYERS] = {};
 
-
-    std::deque<std::unique_ptr<BrawlbackSavestate>> savestates;
-    std::deque<std::unique_ptr<Match::FrameData>> playersFrameData;
+    std::deque<std::unique_ptr<BrawlbackSavestate>> savestates = {};
+    PlayerFrameDataQueue localPlayerFrameData = {};
+    // indexes are player indexes
+    std::array<PlayerFrameDataQueue, MAX_NUM_PLAYERS> remotePlayerFrameData = {};
+    //               frame, pointer to unique_ptr which holds PlayerFrameData
+    //std::unordered_map<u32, std::unique_ptr<Match::PlayerFrameData>*> remotePlayerFrameDataMap = {};
 
 
 
     std::mutex read_queue_mutex;
+    std::mutex remotePadQueueMutex;
+    std::mutex ackTimersMutex;
+
+    std::array<bool, MAX_NUM_PLAYERS> hasRemoteInputsThisFrame = {false, false, false, false};
 
 
     protected:

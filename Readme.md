@@ -15,7 +15,9 @@ and are not happy with this, *please* let me know! I would be happy to do some r
 
 
 
-
+Important locations:
+Core/Core/Source/HW/EXI/EXIBrawlback.h/.cpp
+Core/Core/Source/Brawlback
 
 
 

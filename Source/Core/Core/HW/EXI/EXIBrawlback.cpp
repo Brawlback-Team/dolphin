@@ -4,7 +4,7 @@
 
 #include "Core/HW/Memmap.h"
 #include <chrono>
-
+#include "VideoCommon/OnScreenDisplay.h"
 
 
 
@@ -18,7 +18,7 @@ CEXIBrawlback::CEXIBrawlback()
     else if (enet_init_res == 0) {
         INFO_LOG(BRAWLBACK, "Enet init success");
     }
-    
+    this->netplay = std::make_unique<BrawlbackNetplay>();
 }
 
 CEXIBrawlback::~CEXIBrawlback()
@@ -94,65 +94,164 @@ void CEXIBrawlback::handleLoadSavestate(u8* data)
  
 }
 
+Match::PlayerFrameData CreateDummyPlayerFrameData(u32 frame, u8 playerIdx) {
+    Match::PlayerFrameData dummy_framedata = Match::PlayerFrameData();
+    dummy_framedata.frame = frame;
+    dummy_framedata.playerIdx = playerIdx;
+    dummy_framedata.pad = gfPadGamecube(); // empty pad
+    return dummy_framedata;
+}
 
-// `data` is a ptr to a FrameData struct
-void CEXIBrawlback::handlePadData(u8* data)
+// `data` is a ptr to a PlayerFrameData struct
+void CEXIBrawlback::handleLocalPadData(u8* data)
 {
+    Match::PlayerFrameData* playerFramedata = (Match::PlayerFrameData*)data;
     int idx = 0;
     // first 4 bytes are current game frame
-    u32 frame = SlippiUtility::Mem::readWord(data, idx, 999, 0); // does this change the endianness?
-    u32 randomSeed = SlippiUtility::Mem::readWord(data, idx, 999, 0);
+    u32 frame = SlippiUtility::Mem::readWord(data, idx, 999, 0); // properly switch endianness
+    //u32 frame_thing = data[0] << 24 | data[1] << 16 | data[2] << 8 | data[3]; // properly switch endianness
+    //playerFramedata->frame = Common::swap32(playerFramedata->frame); // properly switch endianness
+    playerFramedata->frame = frame; // properly switch endianness
 
-    //INFO_LOG(BRAWLBACK, "\nFrom emu: Game frame: %u\nRandom seed: %u\n", frame, randomSeed);
-    gfPadGamecube* pads = (gfPadGamecube*)&data[idx];
 
-    // init FrameData
-    std::unique_ptr<Match::FrameData> pFD = std::make_unique<Match::FrameData>();
-    pFD->frame = frame;
-    pFD->randomSeed = randomSeed;
-    for (int i = 0; i < 4; i++) 
-    {
-        memcpy(&pFD->pads[i], &pads[i], sizeof(gfPadGamecube));
+    std::unique_ptr<Match::PlayerFrameData> pFD = std::make_unique<Match::PlayerFrameData>(*playerFramedata);
+    u32 frameWithDelay = frame >= FRAME_DELAY ? frame - FRAME_DELAY : 0; // clamp to 0
+    INFO_LOG(BRAWLBACK, "Frame %u (w/delay %u) PlayerIdx: %u numPlayers %u\n", frame, frameWithDelay, playerFramedata->playerIdx, this->numPlayers);
+    
+
+    {   // store the time that we sent framedata
+        std::lock_guard<std::mutex> lock(this->ackTimersMutex);
+        u64 currentTime = Common::Timer::GetTimeUs();
+        for (int i = 0; i < this->numPlayers; i++) {
+            FrameTiming timing;
+            timing.frame = frame;
+            timing.timeUs = currentTime;
+
+            this->lastFrameTimings[i] = timing;
+            this->ackTimers[i].push_back(timing);
+        }
     }
 
-
-    // store framedata
-    if (this->playersFrameData.size() + 1 > MAX_ROLLBACK_FRAMES) 
-    {
-        this->playersFrameData.pop_front();
+    // store local framedata
+    if (this->localPlayerFrameData.size() + 1 > FRAMEDATA_QUEUE_SIZE) {
+        Match::PlayerFrameData* front_pfd = this->localPlayerFrameData.front().release();
+        delete front_pfd;
+        this->localPlayerFrameData.pop_front();
     }
-    this->playersFrameData.push_back(std::move(pFD));
+    this->localPlayerFrameData.push_back(std::move(pFD));
 
-    // broadcast most recent framedata
-    this->BroadcastFrameData(this->playersFrameData.back().get());
+    // broadcast this local framedata
+    if (!this->localPlayerFrameData.empty()) {
+        this->netplay->BroadcastPlayerFrameData(this->server, this->localPlayerFrameData.back().get()); // copies player framedata
+    }
+
+    Match::FrameData framedataToSendToGame = Match::FrameData();
+    framedataToSendToGame.randomSeed = 0x496ffd00; // tmp
+
+    {
+        std::lock_guard<std::mutex> lock (this->remotePadQueueMutex);
+
+        // for each remote player
+        for (int remotePlayerIdx = 0; remotePlayerIdx < this->numPlayers; remotePlayerIdx++) {
+            bool foundData = false;
+            // search for local player's inputs
+            if (remotePlayerIdx == this->localPlayerIdx && !this->localPlayerFrameData.empty()) {
+                for (int i = 0; i < this->localPlayerFrameData.size(); i++) {
+                    // find framedata for FRAME_DELAY frames ago
+                    if (this->localPlayerFrameData[i]->frame == frameWithDelay) {
+                        INFO_LOG(BRAWLBACK, "found local inputs from %u frames ago (frame %u)\n", FRAME_DELAY, frameWithDelay);    
+                        framedataToSendToGame.playerFrameDatas[this->localPlayerIdx] = *(this->localPlayerFrameData[i].get());
+                        foundData = true;
+                    }
+                }
+                if (!foundData) {
+                    framedataToSendToGame.playerFrameDatas[this->localPlayerIdx] = CreateDummyPlayerFrameData(frameWithDelay, this->localPlayerIdx);
+                }
+                continue;
+            }
+            // search for remote player's inputs
+            if (!this->remotePlayerFrameData.empty() && !this->remotePlayerFrameData[remotePlayerIdx].empty()) {
+                PlayerFrameDataQueue& remotePlayerFrameDataQueue = this->remotePlayerFrameData[remotePlayerIdx];
+                // find framedata in queue that has the frame we want to inject into the game (current frame - frame delay)
+                INFO_LOG(BRAWLBACK, "Remote framedata q range: %u - %u\n", remotePlayerFrameDataQueue[0]->frame, remotePlayerFrameDataQueue[remotePlayerFrameDataQueue.size()-1]->frame);
+                for (int i = 0; i < remotePlayerFrameDataQueue.size(); i++) {
+                    if (remotePlayerFrameDataQueue[i]) {
+                        Match::PlayerFrameData* framedata = remotePlayerFrameDataQueue[i].get();
+                        // find framedata for this frame
+                        if (framedata->frame == frame) {
+                            INFO_LOG(BRAWLBACK, "found remote inputs: frame %u remotePlayerIdx: %u\n", framedata->frame, (unsigned int)remotePlayerIdx);
+                            hasRemoteInputsThisFrame[remotePlayerIdx] = true;
+                            framedataToSendToGame.playerFrameDatas[remotePlayerIdx] = *framedata;
+                            foundData = true;
+                            break;
+                        }
+                    }
+                }
+            }
+                
+            if (!foundData) { // didn't find framedata for this frame. Send most recent frame
+                INFO_LOG(BRAWLBACK, "no remote framedata - frame %u remotePIdx %i\n", frame, remotePlayerIdx);
+                //for (int b = 0; b < remotePlayerFrameDataQueue.size(); b++) {
+                //    INFO_LOG(BRAWLBACK, "%u  %u\n", remotePlayerFrameDataQueue[b]->frame, (unsigned int)remotePlayerFrameDataQueue[b]->playerIdx);
+                //}
+                hasRemoteInputsThisFrame[remotePlayerIdx] = false;
+                /*u32 searchEndFrame = frame >= MAX_ROLLBACK_FRAMES ? frame-MAX_ROLLBACK_FRAMES : 0;
+                for (u32 frameIter = frame; frameIter >= searchEndFrame; frameIter--) { // find latest frame
+                    if (this->remotePlayerFrameDataMap.count(frameIter)) {
+                        framedataToSendToGame.playerFrameDatas[remotePlayerIdx] = *(*this->remotePlayerFrameDataMap[frameIter]).get();
+                    }
+                }*/
+                framedataToSendToGame.playerFrameDatas[remotePlayerIdx] = CreateDummyPlayerFrameData(frame, remotePlayerIdx);
+            }
+            //else {
+            //    INFO_LOG(BRAWLBACK, "Remote player %u frame data queue empty!\n", remotePlayerIdx);
+            //}
+        }
+
+    }
+    
+    this->SendFrameDataToGame(&framedataToSendToGame);
 }
 
-void CEXIBrawlback::BroadcastFrameData(Match::FrameData* framedata) {
-    // send framedata to all peers
-    if (this->server) {
-        sf::Packet frame_data_packet = sf::Packet();
-
-        // append cmd byte
-        u8 frame_data_cmd = NetPacketCommand::CMD_FRAME_DATA;
-        frame_data_packet.append(&frame_data_cmd, sizeof(u8));
-
-        // append framedata
-        frame_data_packet.append(framedata, sizeof(Match::FrameData));
-
-        // send framedata to other oppponent(s)
-        //ENetPacket* enetPckt = enet_packet_create(frame_data_packet.getData(), frame_data_packet.getDataSize(), ENET_PACKET_FLAG_UNSEQUENCED);
-        //enet_host_broadcast(this->server, 0, enetPckt); // "broadcast" here means send to all connected peers.
-
-        std::pair<sf::Packet, int> pckt_content = std::make_pair(frame_data_packet, ENET_PACKET_FLAG_UNSEQUENCED);
-        std::unique_ptr<Netplay::BrawlbackNetPacket> pckt = std::make_unique<Netplay::BrawlbackNetPacket>(pckt_content);
-        Netplay::SendAsync(std::move(pckt), this->server);
-    }
+void BroadcastFramedataAck(Match::PlayerFrameData* framedata, BrawlbackNetplay* netplay, ENetHost* server) {
+    FrameAck ackData;
+    ackData.frame = (int)framedata->frame;
+    ackData.playerIdx = framedata->playerIdx;
+    sf::Packet ackDataPacket = sf::Packet();
+    u8 cmdbyte = CEXIBrawlback::NetPacketCommand::CMD_FRAME_DATA_ACK;
+    ackDataPacket.append(&cmdbyte, sizeof(cmdbyte));
+    ackDataPacket.append(&ackData, sizeof(FrameAck));
+    netplay->BroadcastPacket(ackDataPacket, ENET_PACKET_FLAG_UNSEQUENCED, server);
 }
 
-void CEXIBrawlback::ProcessRemoteFrameData(Match::FrameData* framedata) {
+void CEXIBrawlback::ProcessRemoteFrameData(Match::PlayerFrameData* framedata) {
+    // acknowledge that we received opponent's framedata
+    BroadcastFramedataAck(framedata, this->netplay.get(), this->server);
+    // ---------------------
+    std::unique_ptr<Match::PlayerFrameData> f = std::make_unique<Match::PlayerFrameData>(*framedata);
 
+    std::lock_guard<std::mutex> lock (this->remotePadQueueMutex);
+    u8 playerIdx = f->playerIdx;
+
+    INFO_LOG(BRAWLBACK, "Received opponent framedata. Opponent idx: %u frame: %u\n", (unsigned int)f->playerIdx, f->frame);
+    this->remotePlayerFrameData[playerIdx].push_back(std::move(f));
+    //this->remotePlayerFrameDataMap[f->frame] = &this->remotePlayerFrameData[playerIdx].back();
+
+    // get rid of old/non-relevant framedatas
+    while (this->remotePlayerFrameData[playerIdx].size() > FRAMEDATA_QUEUE_SIZE) {
+        Match::PlayerFrameData* front_data = this->remotePlayerFrameData[playerIdx].front().release();
+        //if (this->remotePlayerFrameDataMap.count(front_data->frame)) {
+            //this->remotePlayerFrameDataMap.erase(front_data->frame);
+        //}
+        delete front_data;
+        this->remotePlayerFrameData[playerIdx].pop_front();
+    }
+
+}
+
+void CEXIBrawlback::SendFrameDataToGame(Match::FrameData* framedata) {
+    // send framedata down to game for injection
     std::vector<u8> frame_data_bytes = Mem::structToByteVector(framedata);
-
     this->read_queue_mutex.lock();
     this->read_queue.clear();
     this->read_queue.push_back(EXICommand::CMD_FRAMEDATA);
@@ -164,12 +263,25 @@ void CEXIBrawlback::ProcessRemoteFrameData(Match::FrameData* framedata) {
 void CEXIBrawlback::ProcessGameSettings(Match::GameSettings* opponentGameSettings) {
     // merge game settings for all remote/local players, then pass that back to the game 
 
+    this->localPlayerIdx = this->isHost ? 0 : 1;
     // assumes 1v1
-    int localPlayerIdx = this->isHost ? 0 : 1;
     int remotePlayerIdx = this->isHost ? 1 : 0;
 
     Match::GameSettings* mergedGameSettings = this->gameSettings.get();
-    INFO_LOG(BRAWLBACK, "ProcessGameSettings thing: %u\n", mergedGameSettings->stageID);
+    INFO_LOG(BRAWLBACK, "ProcessGameSettings for player %u\n", this->localPlayerIdx);
+    INFO_LOG(BRAWLBACK, "Remote player idx: %i\n", remotePlayerIdx);
+
+    mergedGameSettings->localPlayerIdx = this->localPlayerIdx;
+
+    this->numPlayers = mergedGameSettings->numPlayers;
+    INFO_LOG(BRAWLBACK, "Num players from emu: %u\n", (unsigned int)this->numPlayers);
+
+    // this is kinda broken kinda unstable and weird.
+    // hardcoded "fix" for testing. Get rid of this when you're confident this is stable
+    if (this->numPlayers == 0) {
+        this->numPlayers = 2;
+        mergedGameSettings->numPlayers = 2;
+    }
 
     if (!this->isHost) {
         mergedGameSettings->randomSeed = opponentGameSettings->randomSeed;
@@ -181,7 +293,7 @@ void CEXIBrawlback::ProcessGameSettings(Match::GameSettings* opponentGameSetting
     // if we're not host, we just connected to host and received their game settings, 
     // now we need to send our game settings back to them so they can start their game too
     if (!this->isHost) {
-        this->BroadcastGameSettings(mergedGameSettings);
+        this->netplay->BroadcastGameSettings(this->server, mergedGameSettings);
     }
 
     std::vector<u8> mergedGameSettingsByteVec = Mem::structToByteVector(mergedGameSettings);
@@ -195,11 +307,7 @@ void CEXIBrawlback::ProcessGameSettings(Match::GameSettings* opponentGameSetting
 void CEXIBrawlback::ProcessNetReceive(ENetEvent* event) {
     ENetPacket* pckt = event->packet;
     if (pckt && pckt->data && pckt->dataLength > 0) {
-        //sf::Packet netPckt = sf::Packet();
-        //netPckt.append(pckt->data, pckt->dataLength);
-
         u8* fullpckt_data = pckt->data;
-
         u8 cmd_byte = fullpckt_data[0];
         u8* data = &fullpckt_data[1];
 
@@ -207,8 +315,59 @@ void CEXIBrawlback::ProcessNetReceive(ENetEvent* event) {
             case NetPacketCommand::CMD_FRAME_DATA:
                 {
                     //INFO_LOG(BRAWLBACK, "Received frame data from opponent!\n");
-                    Match::FrameData* framedata = (Match::FrameData*)data;
+                    Match::PlayerFrameData* framedata = (Match::PlayerFrameData*)data;
                     this->ProcessRemoteFrameData(framedata);
+                }
+                break;
+            case NetPacketCommand::CMD_FRAME_DATA_ACK:
+                {
+                    this->ackTimersMutex.lock();
+                    u64 currentTime = Common::Timer::GetTimeUs();
+                    FrameAck* frameAck = (FrameAck*)data;
+                    u8 playerIdx = frameAck->playerIdx;
+                    int frame = frameAck->frame;
+                    INFO_LOG(BRAWLBACK, "Remote Frame acked %u pIdx %u", frame, (unsigned int)playerIdx);
+
+                    int lastAcked = this->lastFrameAcked[playerIdx];
+                    // if this current acked frame is more recent than the last acked frame, set it
+                    this->lastFrameAcked[playerIdx] = lastAcked < frame ? frame : lastAcked;
+                    int ackTimerFrontFrame = this->ackTimers[playerIdx].front().frame;
+
+                    // remove old timings
+                    while (!this->ackTimers[playerIdx].empty() && ackTimerFrontFrame < frame) {
+                        this->ackTimers[playerIdx].pop_front();
+                    }
+
+                    if (this->ackTimers[playerIdx].empty()) {
+                        INFO_LOG(BRAWLBACK, "Empty acktimers\n");
+                        break;
+                    }
+                    if (ackTimerFrontFrame != frame) {
+                        INFO_LOG(BRAWLBACK, "frontframe and acked frame not equal\n");
+                        break;
+                    }
+
+                    auto sendTime = this->ackTimers[playerIdx].front().timeUs;
+
+                    this->ackTimers[playerIdx].pop_front();
+
+                    // our ping is the current gametime - the time that the inputs were originally sent at
+                    // inputs go from client 1 -> client 2 -> client 2 acks & sends ack to client 1 -> client 1 receives ack here
+                    // so this is full RTT (round trip time). To get ping just from client to client, divide this by 2
+                    this->pingUs[playerIdx] = currentTime - sendTime;
+
+                    if (frame % PING_DISPLAY_INTERVAL == 0) {
+                        std::stringstream pingStr;
+                        pingStr << "Has Inputs: ";
+                        for (int i = 0; i < this->numPlayers; i++)
+                            pingStr << this->hasRemoteInputsThisFrame[i] << " | ";
+                        pingStr << "Ping: ";
+                        double ping = (double)this->pingUs[playerIdx] / 1000.0;
+                        pingStr << ping << " ms";
+                        OSD::AddTypedMessage(OSD::MessageType::NetPlayPing, pingStr.str(), OSD::Duration::NORMAL, OSD::Color::GREEN);
+                    }
+
+                    this->ackTimersMutex.unlock();
                 }
                 break;
             case NetPacketCommand::CMD_GAME_SETTINGS:
@@ -239,10 +398,9 @@ void CEXIBrawlback::NetplayThreadFunc() {
             case ENET_EVENT_TYPE_CONNECT:
                 INFO_LOG(BRAWLBACK, "Connected!");
                 if (event.peer) {
-                    INFO_LOG(BRAWLBACK, "A new client connected from %x:%u. RTT %u\n", 
+                    INFO_LOG(BRAWLBACK, "A new client connected from %x:%u\n", 
                         event.peer -> address.host,
-                        event.peer -> address.port,
-                        event.peer -> roundTripTime);
+                        event.peer -> address.port);
                     isConnected = true;
                 }
                 else {
@@ -256,13 +414,13 @@ void CEXIBrawlback::NetplayThreadFunc() {
     }
 
     if (this->isHost) { // if we're host, send our gamesettings to clients right after connecting
-        this->BroadcastGameSettings(this->gameSettings.get());
+        this->netplay->BroadcastGameSettings(this->server, this->gameSettings.get());
     }
 
     INFO_LOG(BRAWLBACK, "Starting main net data loop");
     // main enet loop
     while (enet_host_service(this->server, &event, 0) >= 0 && isConnected) {
-        Netplay::FlushAsyncQueue(this->server);
+        this->netplay->FlushAsyncQueue(this->server);
         switch (event.type) {
             case ENET_EVENT_TYPE_DISCONNECT:
                 INFO_LOG(BRAWLBACK, "%s:%u disconnected.\n", event.peer -> address.host, event.peer -> address.port);
@@ -297,7 +455,7 @@ void CEXIBrawlback::handleFindOpponent(u8* payload) {
         WARN_LOG(BRAWLBACK, "Failed to init enet server!");
         WARN_LOG(BRAWLBACK, "Creating client instead...");
         this->server = enet_host_create(NULL, 3, 0, 0, 0);
-        for (int i = 0; i < 1; i++) {
+        //for (int i = 0; i < 1; i++) { // make peers for all connecting opponents
 
             ENetAddress addr;
             int set_host_res = enet_address_set_host(&addr, "127.0.0.1");
@@ -313,33 +471,19 @@ void CEXIBrawlback::handleFindOpponent(u8* payload) {
                 return;
             }
 
-        }
+        //}
     }
 
-
     INFO_LOG(BRAWLBACK, "Net initialized, starting netplay thread");
-
     // loop to receive data over net
     this->netplay_thread = std::thread(&CEXIBrawlback::NetplayThreadFunc, this);
 }
 
-void CEXIBrawlback::BroadcastGameSettings(Match::GameSettings* settings) {
-    sf::Packet settingsPckt = sf::Packet();
-    u8 cmd_byte = NetPacketCommand::CMD_GAME_SETTINGS;
-    settingsPckt.append(&cmd_byte, sizeof(cmd_byte));
-    settingsPckt.append(settings, sizeof(Match::GameSettings));
-
-    Netplay::BroadcastPacket(settingsPckt, ENET_PACKET_FLAG_RELIABLE, this->server);
-    INFO_LOG(BRAWLBACK, "Sent game settings data packet");
-}
 
 void CEXIBrawlback::handleStartMatch(u8* payload) {
     //if (!payload) return;
-
     Match::GameSettings* settings = (Match::GameSettings*)payload;
-
-    this->gameSettings = std::unique_ptr<Match::GameSettings>(settings);
-
+    this->gameSettings = std::make_unique<Match::GameSettings>(*settings);
 }
 
 
@@ -377,7 +521,7 @@ void CEXIBrawlback::DMAWrite(u32 address, u32 size)
         break;
     case CMD_ONLINE_INPUTS:
         //INFO_LOG(BRAWLBACK, "DMAWrite: CMD_ONLINE_INPUTS");
-        handlePadData(payload);
+        handleLocalPadData(payload);
         break;
     case CMD_CAPTURE_SAVESTATE:
         //INFO_LOG(BRAWLBACK, "DMAWrite: CMD_CAPTURE_SAVESTATE");
@@ -404,16 +548,16 @@ void CEXIBrawlback::DMAWrite(u32 address, u32 size)
 // send data from emulator to game
 void CEXIBrawlback::DMARead(u32 address, u32 size)
 {
-    if (this->read_queue_mutex.try_lock()) {
-        if (this->read_queue.empty()) {// we have nothing to send to the game
-            this->read_queue.push_back(EXICommand::CMD_UNKNOWN); // result code
-        }
-        this->read_queue.resize(size, 0);
-        auto qAddr = &this->read_queue[0];
-        Memory::CopyToEmu(address, qAddr, size);
-        this->read_queue.clear();
-        this->read_queue_mutex.unlock();
+    std::lock_guard<std::mutex> lock(this->read_queue_mutex);
+
+    if (this->read_queue.empty()) {// we have nothing to send to the game
+        this->read_queue.push_back(EXICommand::CMD_UNKNOWN); // result code
     }
+    this->read_queue.resize(size, 0);
+    auto qAddr = &this->read_queue[0];
+    Memory::CopyToEmu(address, qAddr, size);
+    this->read_queue.clear();
+
 }
 
 

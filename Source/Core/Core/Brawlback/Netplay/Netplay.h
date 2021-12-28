@@ -18,15 +18,38 @@
 #include "Core/NetPlayProto.h"
 #include "InputCommon/GCPadStatus.h"
 #include "Core/Brawlback/BrawlbackUtility.h"
+using namespace Brawlback;
 
+typedef std::pair<sf::Packet, int> BrawlbackNetPacket;
 
-namespace Netplay {
+struct FrameTiming {
+    int frame;
+    u64 timeUs;
+};
+struct FrameAck {
+    int frame;
+    u8 playerIdx;
+};
 
-    typedef std::pair<sf::Packet, int> BrawlbackNetPacket;
+class BrawlbackNetplay {
+
+public:
+    BrawlbackNetplay();
+    ~BrawlbackNetplay();
 
     void SendAsync(std::unique_ptr<BrawlbackNetPacket> packet, ENetHost* host);
     void BroadcastPacket(sf::Packet& packet, int enet_flag, ENetHost* server);
     void FlushAsyncQueue(ENetHost* server);
 
-}
+    // sends FrameData to all peers (async/udp)
+    void BroadcastPlayerFrameData(ENetHost* server, Match::PlayerFrameData* framedata);
+    // sends GameSettings to all peers (sync/tcp)
+    void BroadcastGameSettings(ENetHost* server, Match::GameSettings* settings);
+
+private:
+
+    std::deque<std::unique_ptr<BrawlbackNetPacket>> async_queue = {};
+    std::recursive_mutex async_send_packet_mutex;
+
+};
 

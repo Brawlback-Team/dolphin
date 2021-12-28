@@ -1,5 +1,6 @@
 #include "BrawlbackUtility.h"
 
+#include "VideoCommon/OnScreenDisplay.h"
 
 
 namespace Brawlback
