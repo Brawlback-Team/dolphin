@@ -44,7 +44,7 @@ public:
       CMD_START_MATCH = 13,
       CMD_SETUP_PLAYERS = 14,
       CMD_FRAMEDATA = 15,
-      CMD_STALL_FRAME = 16,
+      CMD_TIMESYNC = 16,
 
       CMD_GET_MATCH_STATE = 4,
       CMD_SET_MATCH_SELECTIONS = 6,
@@ -110,8 +110,8 @@ private:
     PlayerFrameDataQueue localPlayerFrameData = {};
     // indexes are player indexes
     std::array<PlayerFrameDataQueue, MAX_NUM_PLAYERS> remotePlayerFrameData = {};
-    //               frame, pointer to unique_ptr which holds PlayerFrameData
-    //std::unordered_map<u32, std::unique_ptr<Match::PlayerFrameData>*> remotePlayerFrameDataMap = {};
+    //               frame, index into PlayerFrameDataQueue
+    std::array<std::unordered_map<u32, u32>, MAX_NUM_PLAYERS> remotePlayerFrameDataMap = {};
 
 
 

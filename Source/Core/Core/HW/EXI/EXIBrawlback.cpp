@@ -103,6 +103,7 @@ Match::PlayerFrameData CreateDummyPlayerFrameData(u32 frame, u8 playerIdx) {
 }
 
 // `data` is a ptr to a PlayerFrameData struct
+// this is called every frame at the beginning of the frame
 void CEXIBrawlback::handleLocalPadData(u8* data)
 {
     Match::PlayerFrameData* playerFramedata = (Match::PlayerFrameData*)data;
@@ -191,9 +192,6 @@ void CEXIBrawlback::handleLocalPadData(u8* data)
                 
             if (!foundData) { // didn't find framedata for this frame. Send most recent frame
                 INFO_LOG(BRAWLBACK, "no remote framedata - frame %u remotePIdx %i\n", frame, remotePlayerIdx);
-                //for (int b = 0; b < remotePlayerFrameDataQueue.size(); b++) {
-                //    INFO_LOG(BRAWLBACK, "%u  %u\n", remotePlayerFrameDataQueue[b]->frame, (unsigned int)remotePlayerFrameDataQueue[b]->playerIdx);
-                //}
                 hasRemoteInputsThisFrame[remotePlayerIdx] = false;
                 /*u32 searchEndFrame = frame >= MAX_ROLLBACK_FRAMES ? frame-MAX_ROLLBACK_FRAMES : 0;
                 for (u32 frameIter = frame; frameIter >= searchEndFrame; frameIter--) { // find latest frame
@@ -228,21 +226,25 @@ void CEXIBrawlback::ProcessRemoteFrameData(Match::PlayerFrameData* framedata) {
     // acknowledge that we received opponent's framedata
     BroadcastFramedataAck(framedata, this->netplay.get(), this->server);
     // ---------------------
+
     std::unique_ptr<Match::PlayerFrameData> f = std::make_unique<Match::PlayerFrameData>(*framedata);
+    u8 playerIdx = f->playerIdx;
+    u32 frame = f->frame;
 
     std::lock_guard<std::mutex> lock (this->remotePadQueueMutex);
-    u8 playerIdx = f->playerIdx;
 
-    INFO_LOG(BRAWLBACK, "Received opponent framedata. Opponent idx: %u frame: %u\n", (unsigned int)f->playerIdx, f->frame);
+    INFO_LOG(BRAWLBACK, "Received opponent framedata. Opponent idx: %u frame: %u\n", (unsigned int)playerIdx, frame);
     this->remotePlayerFrameData[playerIdx].push_back(std::move(f));
-    //this->remotePlayerFrameDataMap[f->frame] = &this->remotePlayerFrameData[playerIdx].back();
+    if (!this->remotePlayerFrameData.empty()) {
+        this->remotePlayerFrameDataMap[playerIdx][frame] = (u32)this->remotePlayerFrameData.size()-1;
+    }
 
     // get rid of old/non-relevant framedatas
     while (this->remotePlayerFrameData[playerIdx].size() > FRAMEDATA_QUEUE_SIZE) {
         Match::PlayerFrameData* front_data = this->remotePlayerFrameData[playerIdx].front().release();
-        //if (this->remotePlayerFrameDataMap.count(front_data->frame)) {
-            //this->remotePlayerFrameDataMap.erase(front_data->frame);
-        //}
+        if (this->remotePlayerFrameDataMap[playerIdx].count(front_data->frame)) {
+            this->remotePlayerFrameDataMap[playerIdx].erase(front_data->frame);
+        }
         delete front_data;
         this->remotePlayerFrameData[playerIdx].pop_front();
     }
@@ -303,6 +305,57 @@ void CEXIBrawlback::ProcessGameSettings(Match::GameSettings* opponentGameSetting
     this->read_queue_mutex.unlock();
 }
 
+void CEXIBrawlback::ProcessFrameAck(FrameAck* frameAck) {
+    std::lock_guard<std::mutex> lock (this->ackTimersMutex);
+
+    u64 currentTime = Common::Timer::GetTimeUs();
+    u8 playerIdx = frameAck->playerIdx;
+    int frame = frameAck->frame;
+
+    int lastAcked = this->lastFrameAcked[playerIdx];
+    // if this current acked frame is more recent than the last acked frame, set it
+    this->lastFrameAcked[playerIdx] = lastAcked < frame ? frame : lastAcked;
+    int ackTimerFrontFrame = this->ackTimers[playerIdx].front().frame;
+
+    // remove old timings
+    while (!this->ackTimers[playerIdx].empty() && ackTimerFrontFrame < frame) {
+        this->ackTimers[playerIdx].pop_front();
+    }
+
+    if (this->ackTimers[playerIdx].empty()) {
+        INFO_LOG(BRAWLBACK, "Empty acktimers\n");
+        return;
+    }
+    if (ackTimerFrontFrame != frame) {
+        INFO_LOG(BRAWLBACK, "frontframe and acked frame not equal\n");
+        return;
+    }
+
+    auto sendTime = this->ackTimers[playerIdx].front().timeUs;
+
+    this->ackTimers[playerIdx].pop_front();
+
+    // our ping is the current gametime - the time that the inputs were originally sent at
+    // inputs go from client 1 -> client 2 -> client 2 acks & sends ack to client 1 -> client 1 receives ack here
+    // so this is full RTT (round trip time). To get ping just from client to client, divide this by 2
+    this->pingUs[playerIdx] = currentTime - sendTime;
+    u64 rtt = this->pingUs[playerIdx];
+
+    INFO_LOG(BRAWLBACK, "Remote Frame acked %u pIdx %u rtt %llu\n", frame, (unsigned int)playerIdx, rtt);
+
+    if (frame % PING_DISPLAY_INTERVAL == 0) {
+        std::stringstream dispStr;
+        dispStr << "Has Remote Inputs: ";
+        for (int i = 0; i < this->numPlayers; i++)
+            dispStr << this->hasRemoteInputsThisFrame[i] << " | ";
+        dispStr << "Rtt: ";
+        double ping = (double)rtt / 1000.0;
+        dispStr << ping << " ms";
+        OSD::AddTypedMessage(OSD::MessageType::NetPlayPing, dispStr.str(), OSD::Duration::NORMAL, OSD::Color::GREEN);
+    }
+
+}
+
 // called from netplay thread
 void CEXIBrawlback::ProcessNetReceive(ENetEvent* event) {
     ENetPacket* pckt = event->packet;
@@ -321,53 +374,8 @@ void CEXIBrawlback::ProcessNetReceive(ENetEvent* event) {
                 break;
             case NetPacketCommand::CMD_FRAME_DATA_ACK:
                 {
-                    this->ackTimersMutex.lock();
-                    u64 currentTime = Common::Timer::GetTimeUs();
                     FrameAck* frameAck = (FrameAck*)data;
-                    u8 playerIdx = frameAck->playerIdx;
-                    int frame = frameAck->frame;
-                    INFO_LOG(BRAWLBACK, "Remote Frame acked %u pIdx %u", frame, (unsigned int)playerIdx);
-
-                    int lastAcked = this->lastFrameAcked[playerIdx];
-                    // if this current acked frame is more recent than the last acked frame, set it
-                    this->lastFrameAcked[playerIdx] = lastAcked < frame ? frame : lastAcked;
-                    int ackTimerFrontFrame = this->ackTimers[playerIdx].front().frame;
-
-                    // remove old timings
-                    while (!this->ackTimers[playerIdx].empty() && ackTimerFrontFrame < frame) {
-                        this->ackTimers[playerIdx].pop_front();
-                    }
-
-                    if (this->ackTimers[playerIdx].empty()) {
-                        INFO_LOG(BRAWLBACK, "Empty acktimers\n");
-                        break;
-                    }
-                    if (ackTimerFrontFrame != frame) {
-                        INFO_LOG(BRAWLBACK, "frontframe and acked frame not equal\n");
-                        break;
-                    }
-
-                    auto sendTime = this->ackTimers[playerIdx].front().timeUs;
-
-                    this->ackTimers[playerIdx].pop_front();
-
-                    // our ping is the current gametime - the time that the inputs were originally sent at
-                    // inputs go from client 1 -> client 2 -> client 2 acks & sends ack to client 1 -> client 1 receives ack here
-                    // so this is full RTT (round trip time). To get ping just from client to client, divide this by 2
-                    this->pingUs[playerIdx] = currentTime - sendTime;
-
-                    if (frame % PING_DISPLAY_INTERVAL == 0) {
-                        std::stringstream pingStr;
-                        pingStr << "Has Inputs: ";
-                        for (int i = 0; i < this->numPlayers; i++)
-                            pingStr << this->hasRemoteInputsThisFrame[i] << " | ";
-                        pingStr << "Ping: ";
-                        double ping = (double)this->pingUs[playerIdx] / 1000.0;
-                        pingStr << ping << " ms";
-                        OSD::AddTypedMessage(OSD::MessageType::NetPlayPing, pingStr.str(), OSD::Duration::NORMAL, OSD::Color::GREEN);
-                    }
-
-                    this->ackTimersMutex.unlock();
+                    this->ProcessFrameAck(frameAck);
                 }
                 break;
             case NetPacketCommand::CMD_GAME_SETTINGS:
