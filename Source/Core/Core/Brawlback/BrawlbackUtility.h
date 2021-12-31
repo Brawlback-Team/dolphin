@@ -54,6 +54,12 @@ namespace Brawlback {
             u32 frame;
             u8 playerIdx;
             gfPadGamecube pad;
+
+            PlayerFrameData() {
+                frame = 0;
+                playerIdx = 0;
+                pad = gfPadGamecube();
+            }
         };
 
         //#pragma pack(push, 4)
@@ -90,6 +96,32 @@ namespace Brawlback {
             std::unordered_map<int32_t, FrameData*> framesByIndex;
             std::vector<std::unique_ptr<FrameData>> frames;
         };
+
+        struct RollbackInfo {
+            bool isUsingPredictedInputs;
+            u32 beginFrame; // frame we realized we have no remote inputs
+            u32 endFrame; // frame we received new remote inputs, and should now resim with those
+            PlayerFrameData predictedInputs;
+
+            bool pastFrameDataPopulated;
+            FrameData pastFrameDatas[MAX_ROLLBACK_FRAMES];
+
+            bool hasPreserveBlocks;
+            std::vector<SlippiUtility::Savestate::PreserveBlock> preserveBlocks;
+
+            RollbackInfo() {
+                isUsingPredictedInputs = false;
+                beginFrame = 0;
+                endFrame = 0;
+                predictedInputs = PlayerFrameData();
+                //pastFrameDatas
+                hasPreserveBlocks = false;
+                preserveBlocks = {};
+                pastFrameDataPopulated = false;
+            }
+
+        };
+        
     }
 
 

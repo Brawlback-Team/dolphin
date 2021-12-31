@@ -4,8 +4,6 @@
 #include <unordered_map>
 #include "Common/ChunkFile.h"
 
-#include "BrawlbackUtility.h"
-
 /*
 ============================================
 This, along with SlippiUtility.cpp is a place to hold code from the Slippi repo.
@@ -27,57 +25,6 @@ A very heartfelt thank you to the Slippi team for all their hard work and dedica
 
 namespace SlippiUtility
 {
-
-    namespace GameStructures
-    {
-
-    // randomSeed is continually tracked each frame to make uber sure that it's synced up, also it might change between players
-
-    struct PlayerFrameData
-    {
-        gfPadGamecube pad;
-        u32 randomSeed;
-    };
-
-    struct FrameData
-    {
-        u32 frame;
-        u32 randomSeed;
-        // keys are the controller port
-        std::unordered_map<u8, PlayerFrameData> players;
-        std::unordered_map<u8, PlayerFrameData> followers;
-    };
-
-    // forward declare PlayerType since SlippiUtility.h and BrawlbackUtility.h both include each other
-    enum PlayerType : u8;
-
-    struct PlayerSettings
-    {
-        u8 charID;
-        u8 charColor;
-        PlayerType playerType;
-        u8 controllerPort;
-    };
-
-    struct GameSettings
-    {
-        u16 stageID;
-        u32 randomSeed;
-        std::unordered_map<u8, PlayerSettings> playerSettings;
-    };
-
-    struct Game
-    {
-        std::array<u8, 4> version;
-        std::unordered_map<int32_t, FrameData*> framesByIndex;
-        std::vector<std::unique_ptr<FrameData>> frames;
-        GameSettings gameSettings;
-
-        bool isSettingsLoaded = false;
-        u32 frameCount;
-    };
-
-    } // namespace GameStructures
 
     namespace Savestate
     {

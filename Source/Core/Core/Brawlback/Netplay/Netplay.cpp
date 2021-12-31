@@ -69,3 +69,10 @@ void BrawlbackNetplay::BroadcastGameSettings(ENetHost* server, Match::GameSettin
     this->BroadcastPacket(settingsPckt, ENET_PACKET_FLAG_RELIABLE, server);
     INFO_LOG(BRAWLBACK, "Sent game settings data packet");
 }
+
+
+void BrawlbackNetplay::BroadcastPlayerFrameDataWithPastFrames(ENetHost* server, const std::vector<Match::PlayerFrameData*>& framedatas) {
+    for (Match::PlayerFrameData* framedata : framedatas) {
+        this->BroadcastPlayerFrameData(server, framedata);
+    }
+}

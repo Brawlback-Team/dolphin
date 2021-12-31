@@ -45,6 +45,7 @@ public:
       CMD_SETUP_PLAYERS = 14,
       CMD_FRAMEDATA = 15,
       CMD_TIMESYNC = 16,
+      CMD_ROLLBACK = 17,
 
       CMD_GET_MATCH_STATE = 4,
       CMD_SET_MATCH_SELECTIONS = 6,
@@ -75,7 +76,6 @@ private:
     void handleLoadSavestate(u8* data);
     void handleLocalPadData(u8* data);
 
-    // -------- online stuff -----------
 
     void handleFindOpponent(u8* payload);
     void handleStartMatch(u8* payload);
@@ -113,7 +113,10 @@ private:
 
     bool hasGameStarted = false;
 
-    // ----------------------------------
+    void SendRollbackCmdToGame(Match::RollbackInfo* rollbackInfo);
+    int numFramesWithoutRemoteInputs = 0;
+    Match::RollbackInfo rollbackInfo = Match::RollbackInfo();
+
 
 
     std::unique_ptr<Match::GameSettings> gameSettings;
@@ -124,11 +127,13 @@ private:
     u64 pingUs[MAX_NUM_PLAYERS] = {};
 
     std::deque<std::unique_ptr<BrawlbackSavestate>> savestates = {};
+    std::unordered_map<u32, u32> savestatesMap = {};
+    
     PlayerFrameDataQueue localPlayerFrameData = {};
     // indexes are player indexes
     std::array<PlayerFrameDataQueue, MAX_NUM_PLAYERS> remotePlayerFrameData = {};
     //               frame, index into PlayerFrameDataQueue
-    std::array<std::unordered_map<u32, u32>, MAX_NUM_PLAYERS> remotePlayerFrameDataMap = {};
+    std::array<std::unordered_map<u32, Match::PlayerFrameData*>, MAX_NUM_PLAYERS> remotePlayerFrameDataMap = {};
 
 
 

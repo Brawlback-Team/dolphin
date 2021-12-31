@@ -46,6 +46,8 @@ public:
     // sends GameSettings to all peers (sync/tcp)
     void BroadcastGameSettings(ENetHost* server, Match::GameSettings* settings);
 
+    void BroadcastPlayerFrameDataWithPastFrames(ENetHost* server, const std::vector<Match::PlayerFrameData*>& framedatas);
+
 private:
 
     std::deque<std::unique_ptr<BrawlbackNetPacket>> async_queue = {};
