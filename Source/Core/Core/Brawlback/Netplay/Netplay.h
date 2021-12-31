@@ -24,7 +24,7 @@ typedef std::pair<sf::Packet, int> BrawlbackNetPacket;
 
 struct FrameTiming {
     int frame;
-    u64 timeUs;
+    s64 timeUs;
 };
 struct FrameAck {
     int frame;
