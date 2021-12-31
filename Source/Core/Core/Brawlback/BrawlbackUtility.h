@@ -15,9 +15,12 @@
 #define FRAME_DELAY 2
 
 // number of FrameData's to keep in the queue
-#define FRAMEDATA_QUEUE_SIZE 60 
+#define FRAMEDATA_QUEUE_SIZE 30 
 // update ping display every X frames
 #define PING_DISPLAY_INTERVAL 1
+
+#define ONLINE_LOCKSTEP_INTERVAL 30
+#define GAME_START_FRAME 1
 
 #define MAX_REMOTE_PLAYERS 3
 #define MAX_NUM_PLAYERS 4
@@ -32,6 +35,10 @@ namespace Brawlback {
     const u8 DISPLAY_NAME_SIZE = 31;
     const u8 CONNECT_CODE_SIZE = 10;
 
+    struct FrameOffsetData {
+        int idx;
+        std::vector<s32> buf;
+    };
 
     namespace Match
     {

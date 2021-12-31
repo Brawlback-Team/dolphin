@@ -87,6 +87,9 @@ private:
     void SendFrameDataToGame(Match::FrameData* framedata);
     void ProcessFrameAck(FrameAck* frameAck);
 
+    u32 GetLatestRemoteFrame();
+
+
     ENetHost* server = nullptr;
     std::thread netplay_thread;
     std::unique_ptr<BrawlbackNetplay> netplay;
@@ -94,7 +97,21 @@ private:
     bool isHost = true;
     int localPlayerIdx = -1;
     u8 numPlayers = -1;
-    bool shouldStall = false;
+
+
+    bool shouldStallFrame(u32 frame);
+    void SendTimeSyncToGame();
+    s32 calcTimeOffsetUs();
+
+    FrameOffsetData frameOffsetData[MAX_NUM_PLAYERS];
+
+    int stallFrameCount = 0;
+    bool isConnectionStalled = false;
+
+    bool isSkipping = false;
+    int framesToSkip = 0;
+
+    bool hasGameStarted = false;
 
     // ----------------------------------
 
