@@ -180,20 +180,20 @@ void CEXIBrawlback::handleLocalPadData(u8* data)
         // so that when the remote client doesn't receive inputs, and needs to rollback
         // the next packet will have all the inputs that that client didn't receive.
         this->DropAckedInputs(frame);
+        int localPadQueueSize = (int)this->localPlayerFrameData.size();
 
         std::vector<Match::PlayerFrameData*> framedatas = {};
         {
             std::lock_guard<std::mutex> local_lock (this->localPadQueueMutex);
-            for (int i = 0; i < this->localPlayerFrameData.size(); i++) {
-                if (i >= MAX_ROLLBACK_FRAMES) break;
+            for (int i = localPadQueueSize-1; i >= 0; i--) {
+                if (i <= localPadQueueSize-1 - MAX_ROLLBACK_FRAMES) break; // don't send more than MAX_ROLLBACK_FRAMES of pad data
                 const auto& localFramedata = this->localPlayerFrameData[i];
                 framedatas.push_back(localFramedata.get());
             }
         }
-        INFO_LOG(BRAWLBACK, "Broadcasting %i framedatas\n", framedatas.size());
-        //this->netplay->BroadcastPlayerFrameDataWithPastFrames(this->server, framedatas);
-
-        this->netplay->BroadcastPlayerFrameData(this->server, this->localPlayerFrameData.back().get()); // copies player framedata
+        //INFO_LOG(BRAWLBACK, "Broadcasting %i framedatas\n", framedatas.size());
+        this->netplay->BroadcastPlayerFrameDataWithPastFrames(this->server, framedatas);
+        //this->netplay->BroadcastPlayerFrameData(this->server, this->localPlayerFrameData.back().get()); // copies player framedata
         
         this->timeSync->TimeSyncUpdate(frameWithDelay, this->numPlayers);
 
@@ -274,8 +274,8 @@ void CEXIBrawlback::handleLocalPadData(u8* data)
 void CEXIBrawlback::DropAckedInputs(u32 currFrame) {
     // Remove pad reports that have been received and acked
     int minAckFrame = this->timeSync->getMinAckFrame(this->numPlayers);
-    //INFO_LOG(BRAWLBACK, "Checking to drop local inputs, oldest frame: %d | minAckFrame: %d | %d, %d",
-    //            this->localPlayerFrameData.front()->frame, minAckFrame, lastFrameAcked[0], lastFrameAcked[1]);
+    //INFO_LOG(BRAWLBACK, "Checking to drop local inputs, oldest frame: %d | minAckFrame: %d",
+    //            this->localPlayerFrameData.front()->frame, minAckFrame);
     //INFO_LOG(BRAWLBACK, "Local input queue frame range: %u - %u\n", this->localPlayerFrameData.front()->frame, this->localPlayerFrameData.back()->frame);
     while (!this->localPlayerFrameData.empty() && this->localPlayerFrameData.front()->frame < (u32)minAckFrame && this->localPlayerFrameData.front()->frame < currFrame)
     {
@@ -323,6 +323,9 @@ void BroadcastFramedataAck(Match::PlayerFrameData* framedata, BrawlbackNetplay* 
 }
 
 void CEXIBrawlback::ProcessRemoteFrameData(Match::PlayerFrameData* framedatas) {
+    // framedatas will point to one or more PlayerFrameData's.
+    // This array is the reverse of the local pad queue, in that
+    // the 0th element here is the most recent framedata.
     Match::PlayerFrameData* framedata = &framedatas[0];
 
     // acknowledge that we received opponent's framedata
