@@ -15,7 +15,7 @@
 #define FRAME_DELAY 2
 
 // number of FrameData's to keep in the queue
-#define FRAMEDATA_QUEUE_SIZE 30 
+#define FRAMEDATA_MAX_QUEUE_SIZE 30 
 // update ping display every X frames
 #define PING_DISPLAY_INTERVAL 1
 

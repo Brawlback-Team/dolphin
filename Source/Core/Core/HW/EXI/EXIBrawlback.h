@@ -99,6 +99,7 @@ private:
     u8 numPlayers = -1;
 
 
+    // time sync stuff
     bool shouldStallFrame(u32 frame);
     void SendTimeSyncToGame();
     s32 calcTimeOffsetUs();
@@ -111,8 +112,16 @@ private:
     bool isSkipping = false;
     int framesToSkip = 0;
 
+    int lastFrameAcked[MAX_NUM_PLAYERS] = {0,0,0,0};
+    FrameTiming lastFrameTimings[MAX_NUM_PLAYERS] = {};
+    std::array<std::deque<FrameTiming>, MAX_NUM_PLAYERS> ackTimers = {};
+    u64 pingUs[MAX_NUM_PLAYERS] = {};
+    
+    // -- end time sync stuff
+
     bool hasGameStarted = false;
 
+    void DropAckedInputs(u32 currFrame);
     void SendRollbackCmdToGame(Match::RollbackInfo* rollbackInfo);
     int numFramesWithoutRemoteInputs = 0;
     Match::RollbackInfo rollbackInfo = Match::RollbackInfo();
@@ -121,10 +130,6 @@ private:
 
     std::unique_ptr<Match::GameSettings> gameSettings;
 
-    int lastFrameAcked[MAX_NUM_PLAYERS] = {0,0,0,0};
-    FrameTiming lastFrameTimings[MAX_NUM_PLAYERS] = {};
-    std::array<std::deque<FrameTiming>, MAX_NUM_PLAYERS> ackTimers = {};
-    u64 pingUs[MAX_NUM_PLAYERS] = {};
 
     std::deque<std::unique_ptr<BrawlbackSavestate>> savestates = {};
     std::unordered_map<u32, u32> savestatesMap = {};
@@ -139,6 +144,7 @@ private:
 
     std::mutex read_queue_mutex;
     std::mutex remotePadQueueMutex;
+    std::mutex localPadQueueMutex;
     std::mutex ackTimersMutex;
 
     std::array<bool, MAX_NUM_PLAYERS> hasRemoteInputsThisFrame = {false, false, false, false};
