@@ -49,7 +49,7 @@ void BrawlbackNetplay::BroadcastPlayerFrameData(ENetHost* server, Match::PlayerF
     sf::Packet frame_data_packet = sf::Packet();
 
     // append cmd byte
-    u8 frame_data_cmd = CEXIBrawlback::NetPacketCommand::CMD_FRAME_DATA;
+    u8 frame_data_cmd = NetPacketCommand::CMD_FRAME_DATA;
     frame_data_packet.append(&frame_data_cmd, sizeof(u8));
 
     // append framedata
@@ -62,7 +62,7 @@ void BrawlbackNetplay::BroadcastPlayerFrameData(ENetHost* server, Match::PlayerF
 
 void BrawlbackNetplay::BroadcastGameSettings(ENetHost* server, Match::GameSettings* settings) {
     sf::Packet settingsPckt = sf::Packet();
-    u8 cmd_byte = CEXIBrawlback::NetPacketCommand::CMD_GAME_SETTINGS;
+    u8 cmd_byte = NetPacketCommand::CMD_GAME_SETTINGS;
     settingsPckt.append(&cmd_byte, sizeof(cmd_byte));
     settingsPckt.append(settings, sizeof(Match::GameSettings));
 
@@ -79,7 +79,7 @@ void BrawlbackNetplay::BroadcastPlayerFrameDataWithPastFrames(ENetHost* server, 
     sf::Packet frame_data_packet = sf::Packet();
 
     // append cmd byte
-    u8 frame_data_cmd = CEXIBrawlback::NetPacketCommand::CMD_FRAME_DATA;
+    u8 frame_data_cmd = NetPacketCommand::CMD_FRAME_DATA;
     frame_data_packet.append(&frame_data_cmd, sizeof(u8));
 
     // append framedata

@@ -35,6 +35,41 @@ namespace Brawlback {
     const u8 DISPLAY_NAME_SIZE = 31;
     const u8 CONNECT_CODE_SIZE = 10;
 
+    enum EXICommand : u8
+    {
+      CMD_UNKNOWN = 0,
+
+
+      CMD_ONLINE_INPUTS = 1,
+      CMD_CAPTURE_SAVESTATE = 2,
+      CMD_LOAD_SAVESTATE = 3,
+
+      CMD_FIND_OPPONENT = 5,
+      CMD_START_MATCH = 13,
+      CMD_SETUP_PLAYERS = 14,
+      CMD_FRAMEDATA = 15,
+      CMD_TIMESYNC = 16,
+      CMD_ROLLBACK = 17,
+
+      CMD_GET_MATCH_STATE = 4,
+      CMD_SET_MATCH_SELECTIONS = 6,
+
+      CMD_OPEN_LOGIN = 7,
+      CMD_LOGOUT = 8,
+      CMD_UPDATE = 9,
+      
+      CMD_GET_ONLINE_STATUS = 10,
+      CMD_CLEANUP_CONNECTION = 11,
+      CMD_GET_NEW_SEED = 12,
+    };
+
+    enum NetPacketCommand : u8 
+    {
+        CMD_FRAME_DATA = 1,
+        CMD_GAME_SETTINGS = 2,
+        CMD_FRAME_DATA_ACK = 3,
+    };
+
     struct FrameOffsetData {
         int idx;
         std::vector<s32> buf;
