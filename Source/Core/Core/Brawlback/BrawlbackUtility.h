@@ -14,17 +14,20 @@
 #define MAX_ROLLBACK_FRAMES 7
 #define FRAME_DELAY 2
 
-// number of FrameData's to keep in the queue
-#define FRAMEDATA_MAX_QUEUE_SIZE 30 
+// number of max FrameData's to keep in the queue
+// this accounts for well above ~150 ping, which should be more than enough
+#define FRAMEDATA_MAX_QUEUE_SIZE 60 
 // update ping display every X frames
 #define PING_DISPLAY_INTERVAL 1
 
 #define ONLINE_LOCKSTEP_INTERVAL 30
-#define GAME_START_FRAME 1
+#define GAME_START_FRAME 0
 
 #define MAX_REMOTE_PLAYERS 3
 #define MAX_NUM_PLAYERS 4
 #define BRAWLBACK_PORT 7779
+
+#define ROLLBACK_IMPL false
 
 // 59.94 Hz   ( -- is this accurate? This is the case for melee, idk if it also applies here)
 #define MS_IN_FRAME 16683
@@ -177,6 +180,11 @@ namespace Brawlback {
         }
 
         void fillByteVectorWithBuffer(std::vector<u8>& vec, u8* buf, size_t size);
+    }
+
+    template <typename T>
+    T Clamp(T input, T Max, T Min) {
+        return input > Max ? Max : ( input < Min ? Min : input );
     }
 
 }

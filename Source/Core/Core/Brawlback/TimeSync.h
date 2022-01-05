@@ -19,10 +19,10 @@ public:
     // ---- Funcs that are called by game events
 
     // called right after sending local inputs over net
-    void TimeSyncUpdate(u32 frameWithDelay, u8 numPlayers);
+    void TimeSyncUpdate(u32 frame, u8 numPlayers);
 
     // called when we receive remote inputs
-    void ReceivedRemoteFramedata(u32 frame, u8 playerIdx, bool hasGameStarted);
+    void ReceivedRemoteFramedata(s32 frame, u8 playerIdx, bool hasGameStarted);
 
     // called when we receive an acknowledgement from opponent of our inputs
     void ProcessFrameAck(FrameAck* frameAck, u8 numPlayers, const std::array<bool, MAX_NUM_PLAYERS>& hasRemoteInputsThisFrame);
@@ -46,7 +46,7 @@ private:
     bool isSkipping = false;
     int framesToSkip = 0;
 
-    int lastFrameAcked[MAX_NUM_PLAYERS] = {0,0,0,0};
+    int lastFrameAcked[MAX_NUM_PLAYERS] = {};
     FrameTiming lastFrameTimings[MAX_NUM_PLAYERS] = {};
     std::array<std::deque<FrameTiming>, MAX_NUM_PLAYERS> ackTimers = {};
     u64 pingUs[MAX_NUM_PLAYERS] = {};

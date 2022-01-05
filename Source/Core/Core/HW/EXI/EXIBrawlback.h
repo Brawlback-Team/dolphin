@@ -35,19 +35,25 @@ private:
     std::vector<u8> read_queue = {};
 
 
-    // DMAWrite handlers
+    // DMA handlers
     void handleCaptureSavestate(u8* data);
     void handleLoadSavestate(u8* data);
     void handleLocalPadData(u8* data);
     void handleFindOpponent(u8* payload);
     void handleStartMatch(u8* payload);
+
+    template <typename T>
+    void SendCmdToGame(EXICommand cmd, T* payload);
+
+    void SendCmdToGame(EXICommand cmd);
     // -------------------------------
 
 
     // --- Net
     void NetplayThreadFunc();
     void ProcessNetReceive(ENetEvent* event);
-    void ProcessRemoteFrameData(Match::PlayerFrameData* framedata);
+    void ProcessRemoteFrameData(Match::PlayerFrameData* framedata, u8 numFramedatas);
+    void ProcessIndividualRemoteFrameData(Match::PlayerFrameData* framedata);
     void ProcessGameSettings(Match::GameSettings* opponentGameSettings);
     void ProcessFrameAck(FrameAck* frameAck);
     u32 GetLatestRemoteFrame();
@@ -69,14 +75,12 @@ private:
 
 
     // --- Time sync
-    void SendTimeSyncToGame();
     void DropAckedInputs(u32 currFrame);
     std::unique_ptr<TimeSync> timeSync;
     // -------------------------------
 
     
     // --- Rollback
-    void SendRollbackCmdToGame(Match::RollbackInfo* rollbackInfo);
     int numFramesWithoutRemoteInputs = 0;
     Match::RollbackInfo rollbackInfo = Match::RollbackInfo();
     // -------------------------------
@@ -86,12 +90,14 @@ private:
 
     // --- Savestates
     std::deque<std::unique_ptr<BrawlbackSavestate>> savestates = {};
-    std::unordered_map<u32, u32> savestatesMap = {};
+    std::unordered_map<u32, BrawlbackSavestate*> savestatesMap = {};
     // -------------------------------
     
 
     // --- Framedata (player inputs)
-    void SendFrameDataToGame(Match::FrameData* framedata);
+    void handleSendInputs(u32 frame);
+    std::pair<bool, bool> getInputsForGame(Match::FrameData& framedataToSendToGame, u32 frame);
+    void storeLocalInputs(Match::PlayerFrameData* localPlayerFramedata, u32 frame);
     PlayerFrameDataQueue localPlayerFrameData = {};
     // indexes are player indexes
     std::array<PlayerFrameDataQueue, MAX_NUM_PLAYERS> remotePlayerFrameData = {};

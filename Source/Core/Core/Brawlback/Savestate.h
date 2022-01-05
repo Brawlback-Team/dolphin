@@ -12,7 +12,7 @@ class BrawlbackSavestate
 public:
 
 
-    BrawlbackSavestate();
+    BrawlbackSavestate(u32 frame);
     ~BrawlbackSavestate();
 
 
@@ -21,10 +21,10 @@ public:
 
     //static bool shouldForceInit;
 
+    u32 frame = 0;
 
 private:
 
-  
 
     std::vector<ssBackupLoc> backupLocs = {};
     std::unordered_map<PreserveBlock, std::vector<u8>, preserve_hash_fn> preservationMap;

@@ -72,15 +72,15 @@ void BrawlbackNetplay::BroadcastGameSettings(ENetHost* server, Match::GameSettin
 
 
 void BrawlbackNetplay::BroadcastPlayerFrameDataWithPastFrames(ENetHost* server, const std::vector<Match::PlayerFrameData*>& framedatas) {
-    /*for (Match::PlayerFrameData* framedata : framedatas) {
-        this->BroadcastPlayerFrameData(server, framedata);
-    }*/
-
     sf::Packet frame_data_packet = sf::Packet();
 
     // append cmd byte
     u8 frame_data_cmd = NetPacketCommand::CMD_FRAME_DATA;
     frame_data_packet.append(&frame_data_cmd, sizeof(u8));
+
+    // append number of framedatas that are in this packet
+    u8 sizeofFramedatas = (u8)framedatas.size();
+    frame_data_packet.append(&sizeofFramedatas, sizeof(sizeofFramedatas));
 
     // append framedata
     for (Match::PlayerFrameData* framedata : framedatas) {
