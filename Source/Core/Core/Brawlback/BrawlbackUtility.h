@@ -15,8 +15,7 @@
 #define FRAME_DELAY 2
 
 // number of max FrameData's to keep in the queue
-// this accounts for well above ~150 ping, which should be more than enough
-#define FRAMEDATA_MAX_QUEUE_SIZE 60 
+#define FRAMEDATA_MAX_QUEUE_SIZE 120 
 // update ping display every X frames
 #define PING_DISPLAY_INTERVAL 1
 

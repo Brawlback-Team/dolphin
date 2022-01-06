@@ -159,7 +159,7 @@ void TimeSync::ProcessFrameAck(FrameAck* frameAck, u8 numPlayers, const std::arr
         return;
     }
     if (this->ackTimers[playerIdx].front().frame != frame) {
-        INFO_LOG(BRAWLBACK, "frontframe and acked frame not equal\n");
+        //INFO_LOG(BRAWLBACK, "frontframe and acked frame not equal\n");
         return;
     }
 
@@ -190,9 +190,10 @@ void TimeSync::ProcessFrameAck(FrameAck* frameAck, u8 numPlayers, const std::arr
 
 
 int TimeSync::getMinAckFrame(u8 numPlayers) {
-    int minAckFrame = this->lastFrameAcked[0];
-    for (int i = 1; i < numPlayers; i++) {
-        if ( (this->lastFrameAcked[i] < minAckFrame && this->lastFrameAcked[i] != 0) || minAckFrame == 0)
+    int minAckFrame = 0;
+    for (int i = 0; i < numPlayers; i++) {
+        //INFO_LOG(BRAWLBACK, "lastFrameAcked[%i]: %i", i, this->lastFrameAcked[i]);
+        if (minAckFrame == 0 || (this->lastFrameAcked[i] < minAckFrame && this->lastFrameAcked[i] != 0))
             minAckFrame = this->lastFrameAcked[i];
     }
     return minAckFrame;

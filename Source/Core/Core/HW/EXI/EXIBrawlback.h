@@ -9,6 +9,20 @@
 #include "Core/Brawlback/Netplay/Netplay.h"
 #include "Core/Brawlback/TimeSync.h"
 
+/* NOTES:
+
+Possible todo:
+Adapt what slippi does and don't limit the size of input queues by some fixed amount.
+Slippi's input queues grow and shrink depending on how much ping there is, and hence, how
+many inputs need to be stored.
+
+
+
+
+
+*/
+
+
 using namespace Brawlback;
 
 
