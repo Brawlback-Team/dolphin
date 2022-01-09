@@ -72,52 +72,74 @@ void BrawlbackSavestate::getDolphinState(PointerWrap& p)
 void BrawlbackSavestate::initBackupLocs()
 {
     static std::vector<ssBackupLoc> allMem = {
-        {0x805b5160, 0x817da5a0, nullptr},  // all of mem1
-        {0x90000800, 0x935e0000, nullptr},  // all of mem2
+        //{0x805b5160, 0x817da5a0, nullptr},  // all of mem1
+        //{0x90000800, 0x935e0000, nullptr},  // all of mem2
+        {0x805b5160, 0x935e0000, nullptr},
     };
 
     static std::vector<ssBackupLoc> fullBackupRegions = {
+        //{0x800064E0, 0x805A5154, nullptr}, // Data 0-7 && bss
 
         
         // mem1
-        //{0x805b5160, 0x805ca260, nullptr}, // System FW
-        //{0x80611f60, 0x80673460, nullptr}, // System
-        //{0x80b8db60, 0x80c23a60, nullptr}, // Effect
-        //{0x805d1e60, 0x80611f60, nullptr}, // RenderFifo
-
-        //{0x8154e560, 0x81601960, nullptr}, // Physics
-        //{0x8123ab60, 0x8128cb60, nullptr}, // Fighter1Instance
-        //{0x8128cb60, 0x812deb60, nullptr}, // Fighter2Instance
-        //{0x80c23a60, 0x80da3a60, nullptr}, // InfoResource
-        //{0x80da3a60, 0x80fd6260, nullptr}, // CommonResource
-        //{0x815edf60, 0x817bad60, nullptr}, // InfoExtraResource
-        //{0x81601960, 0x81734d60, nullptr}, // InfoInstance
-        //{0x80673460, 0x80b8db60, nullptr}, // OverlayCommon
-        //{0x810f1a60, 0x81162560, nullptr}, // OverlayStage
-        //{0x81061060, 0x810a9560, nullptr}, // OverlayFighter1
-        //{0x810a9560, 0x810f1a60, nullptr}, // OverlayFighter2
-        //{0x811aa160, 0x811f2660, nullptr}, // OverlayFighter3
-        //{0x811f2660, 0x8123ab60, nullptr}, // OverlayFighter4
-        //{0x805ca260, 0x805d1e60, nullptr}, // Thread
+        //{0x805b5160, 0x805ca260, nullptr }, // System FW
+        {0x80611f60, 0x80673460, nullptr }, // System
+        {0x80b8db60, 0x80c23a60, nullptr }, // Effect
+        {0x805d1e60, 0x80611f60, nullptr }, // RenderFifo
+        {0x80c23a60, 0x80da3a60, nullptr }, // InfoResource
+        {0x80da3a60, 0x80fd6260, nullptr }, // CommonResource
+        {0x81049e60, 0x81061060, nullptr }, // Tmp
+        //{0x8154e560, 0x81601960, nullptr }, // Physics
+        //{0x81382b60, 0x814ce460, nullptr }, // ItemInstance
+        {0x814ce460, 0x8154e560, nullptr }, // StageInstance
+        {0x8123ab60, 0x8128cb60, nullptr }, // Fighter1Instance
+        {0x8128cb60, 0x812deb60, nullptr }, // Fighter2Instance
+        {0x812deb60, 0x81330b60, nullptr }, // Fighter3Instance
+        {0x81330b60, 0x81382b60, nullptr }, // Fighter4Instance
+        {0x81601960, 0x81734d60, nullptr }, // InfoInstance
+        {0x81734d60, 0x817ce860, nullptr }, // MenuInstance
+        //{0x80fd6260, 0x81049e60, nullptr }, // MeleeFont
+        //{0x80673460, 0x80b8db60, nullptr }, // OverlayCommon
+        //{0x810f1a60, 0x81162560, nullptr }, // OverlayStage
+        //{0x81162560, 0x811aa160, nullptr }, // OverlayMenu
+        //{0x81061060, 0x810a9560, nullptr }, // OverlayFighter1
+        //{0x810a9560, 0x810f1a60, nullptr }, // OverlayFighter2
+        //{0x811aa160, 0x811f2660, nullptr }, // OverlayFighter3
+        //{0x811f2660, 0x8123ab60, nullptr }, // OverlayFighter4
+        //{0x805ca260, 0x805d1e60, nullptr }, // Thread
 
         // mem2
-        //{0x90199800, 0x90e61400, nullptr}, // Sound
-        //{0x90e61400, 0x90e77500, nullptr}, // WiiPad
-        //{0x91018b00, 0x91301b00, nullptr}, // IteamResource (is this for items, or for teams?)
-        //{0x91301b00, 0x9134cc00, nullptr}, // Replay
-        //{0x92f34700, 0x9359ae00, nullptr}, // StageResource
-        //{0x9151fa00, 0x91a72e00, nullptr}, // Fighter1Resource
-        //{0x91b04c80, 0x92058080, nullptr}, // Fighter2Resource
-        //{0x920e9f00, 0x9263d300, nullptr}, // Fighter3Resource
-        //{0x926cf180, 0x92c22580, nullptr}, // Fighter4Resource
-        //{0x91a72e00, 0x91b04c80, nullptr}, // Fighter1Resource2
-        //{0x91478e00, 0x914d2900, nullptr}, // Fighter2Resource2
-        //{0x9263d300, 0x926cf180, nullptr}, // Fighter3Resource2
-        //{0x92c22580, 0x92cb4400, nullptr}, // Fighter4Resource2
-        //{0x92cb4400, 0x92dcdf00, nullptr}, // FighterTechqniq
-        //{0x9134cc00, 0x91478e00, nullptr}, // CopyFB
-        //{0x90167400, 0x90199800, nullptr}, // GameGlobal
-        //{0x90fddc00, 0x91018b00, nullptr}, // GlobalMode
+        //{0x90199800, 0x90e61400, nullptr }, // Sound
+        //{0x90e77500, 0x90fddc00, nullptr }, // Network
+        {0x90e61400, 0x90e77500, nullptr }, // WiiPad
+        //{0x91018b00, 0x91301b00, nullptr }, // IteamResource
+        //{0x91301b00, 0x9134cc00, nullptr }, // Replay
+        {0x92f34700, 0x9359ae00, nullptr }, // StageResoruce
+        {0x9151fa00, 0x91a72e00, nullptr }, // Fighter1Resoruce
+        {0x91b04c80, 0x92058080, nullptr }, // Fighter2Resoruce
+        {0x920e9f00, 0x9263d300, nullptr }, // Fighter3Resoruce
+        {0x926cf180, 0x92c22580, nullptr }, // Fighter4Resoruce
+        {0x91a72e00, 0x91b04c80, nullptr }, // Fighter1Resoruce2
+        {0x92058080, 0x920e9f00, nullptr }, // Fighter2Resoruce2
+        {0x9263d300, 0x926cf180, nullptr }, // Fighter3Resoruce2
+        {0x92c22580, 0x92cb4400, nullptr }, // Fighter4Resoruce2
+        {0x91478e00, 0x914d2900, nullptr }, // FighterEffect
+        {0x92cb4400, 0x92dcdf00, nullptr }, // FighterTechqniq
+        //{0x914d2900, 0x914ec400, nullptr }, // FighterKirbyResource1
+        //{0x914ec400, 0x91505f00, nullptr }, // FighterKirbyResource2
+        //{0x91505f00, 0x9151fa00, nullptr }, // FighterKirbyResource3
+        //{0x92dcdf00, 0x92e34600, nullptr }, // AssistFigureResource
+        //{0x9359ae00, 0x935ce200, nullptr }, // ItemExtraResource
+        //{0x92e34600, 0x92f34700, nullptr }, // PokemonResource
+        {0x9134cc00, 0x91478e00, nullptr }, // CopyFB
+        {0x90167400, 0x90199800, nullptr }, // GameGlobal
+        //{0x90fddc00, 0x91018b00, nullptr }, // GlobalMode
+
+        // data sections
+        {0x800064E0, 0x805A1320+0x3E00, nullptr}, // Data 0-7
+        {0x80494880, 0x80494880+0x1108D4, nullptr}, // bss
+
+
         
 
         // based off Fracture's SaveStates.cpp
@@ -144,29 +166,41 @@ void BrawlbackSavestate::initBackupLocs()
     };
 
     static std::vector<ssBackupLoc> test = {
+        // data sections
+        //{0x800064E0, 0x805A5154, nullptr}, // Data 0-7 && bss
+
         // mem1
-        //{0x80611f60, 0x80673460, nullptr}, // System
-        //{0x80b8db60, 0x80c23a60, nullptr}, // Effect
+        //{0x805b5160, 0x805ca260, nullptr}, // System FW
+        {0x80611f60, 0x80673460, nullptr}, // System
+        {0x80b8db60, 0x80c23a60, nullptr}, // Effect
+        //{0x805d1e60, 0x80611f60, nullptr}, // RenderFifo
+        //{0x8154e560, 0x81601960, nullptr}, // Physics
+        //{0x805ca260, 0x805d1e60, nullptr}, // Thread
 
         {0x8123ab60, 0x8128cb60, nullptr}, // Fighter1Instance
         {0x8128cb60, 0x812deb60, nullptr}, // Fighter2Instance
-        /*{0x80c23a60, 0x80da3a60, nullptr}, // InfoResource
+        {0x80c23a60, 0x80da3a60, nullptr}, // InfoResource
         {0x80da3a60, 0x80fd6260, nullptr}, // CommonResource
         {0x815edf60, 0x817bad60, nullptr}, // InfoExtraResource
         {0x81601960, 0x81734d60, nullptr}, // InfoInstance
         {0x80673460, 0x80b8db60, nullptr}, // OverlayCommon
-        {0x81061060, 0x810a9560, nullptr}, // OverlayFighter1
-        {0x810a9560, 0x810f1a60, nullptr}, // OverlayFighter2*/
+        //{0x81061060, 0x810a9560, nullptr}, // OverlayFighter1
+        //{0x810a9560, 0x810f1a60, nullptr}, // OverlayFighter2
+        //{0x81049e60, 0x81061060, nullptr}, // Tmp
 
         // mem2
-        /*{0x90e61400, 0x90e77500, nullptr}, // WiiPad
+        //{0x90199800, 0x90e61400, nullptr}, // Sound
+        {0x90e61400, 0x90e77500, nullptr}, // WiiPad
+        //{0x91018b00, 0x91301b00, nullptr}, // IteamResource (is this for items, or for teams?)
+        //{0x91301b00, 0x9134cc00, nullptr}, // Replay
         {0x9151fa00, 0x91a72e00, nullptr}, // Fighter1Resource
         {0x91b04c80, 0x92058080, nullptr}, // Fighter2Resource
         {0x91a72e00, 0x91b04c80, nullptr}, // Fighter1Resource2
         {0x91478e00, 0x914d2900, nullptr}, // Fighter2Resource2
         {0x92cb4400, 0x92dcdf00, nullptr}, // FighterTechqniq
-        {0x9134cc00, 0x91478e00, nullptr}, // CopyFB*/
+        {0x9134cc00, 0x91478e00, nullptr}, // CopyFB
         {0x90167400, 0x90199800, nullptr}, // GameGlobal
+        //{0x90fddc00, 0x91018b00, nullptr}, // GlobalMode
     };
 
     static std::vector<ssBackupLoc> positionTesting = { // only overwrites p1/p2 x&y pos
@@ -182,8 +216,8 @@ void BrawlbackSavestate::initBackupLocs()
         //{0x90e61400, 0x90e77500-0x90e61400}, // WiiPad
 
         // one of these two fixed it (not being able to do inputs after rollback)
-        {0x805b5160, 0x805ca260-0x805b5160}, // System FW
-        //{0x805d1e60, 0x80611f60-0x805d1e60}, // Render
+        //{0x805b5160, 0x805ca260-0x805b5160}, // System FW
+        //{0x805ca260, 0x805d1e60 - 0x805ca260},  // Thread
 
         // infinite loop fixes
         //{0x8062fb40, 0x4ea},  // clearGeneralTerm (probably not correct)
