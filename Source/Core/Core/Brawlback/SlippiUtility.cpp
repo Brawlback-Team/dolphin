@@ -51,23 +51,23 @@ namespace SlippiUtility
                 // Move up the backupLocs index until we reach a section relevant to us
                 while (idx < backupLocs.size() && ipb.address >= backupLocs[idx].endAddress)
                 {
-                idx += 1;
+                    idx += 1;
                 }
 
                 // Once idx is beyond backup locs, we are already not backup up this exclusion section
                 if (idx >= backupLocs.size())
                 {
-                break;
+                    break;
                 }
 
                 // Handle case where our exclusion starts before the actual backup section
                 if (ipb.address < backupLocs[idx].startAddress)
                 {
-                int newSize = (s32)ipb.length - ((s32)backupLocs[idx].startAddress - (s32)ipb.address);
+                    int newSize = (s32)ipb.length - ((s32)backupLocs[idx].startAddress - (s32)ipb.address);
 
-                ipb.length = newSize > 0 ? newSize : 0;
-                ipb.address = backupLocs[idx].startAddress;
-                continue;
+                    ipb.length = newSize > 0 ? newSize : 0;
+                    ipb.address = backupLocs[idx].startAddress;
+                    continue;
                 }
 
                 // Determine new size (how much we removed from backup)
@@ -76,15 +76,15 @@ namespace SlippiUtility
                 // Add split section after exclusion
                 if (backupLocs[idx].endAddress > ipb.address + ipb.length)
                 {
-                ssBackupLoc newLoc = {ipb.address + ipb.length, backupLocs[idx].endAddress, nullptr};
-                backupLocs.insert(backupLocs.begin() + idx + 1, newLoc);
+                    ssBackupLoc newLoc = {ipb.address + ipb.length, backupLocs[idx].endAddress, nullptr};
+                    backupLocs.insert(backupLocs.begin() + idx + 1, newLoc);
                 }
 
                 // Modify section to end at the exclusion start
                 backupLocs[idx].endAddress = ipb.address;
                 if (backupLocs[idx].endAddress <= backupLocs[idx].startAddress)
                 {
-                backupLocs.erase(backupLocs.begin() + idx);
+                    backupLocs.erase(backupLocs.begin() + idx);
                 }
 
                 // Set new size to see if there's still more to process
@@ -181,6 +181,11 @@ namespace SlippiUtility
 
             uint32_t value = a[idx] << 24 | a[idx + 1] << 16 | a[idx + 2] << 8 | a[idx + 3];
             idx += 4;
+            return value;
+        }
+        uint32_t readWord(uint8_t* a)
+        {
+            uint32_t value = a[0] << 24 | a[1] << 16 | a[2] << 8 | a[3];
             return value;
         }
 

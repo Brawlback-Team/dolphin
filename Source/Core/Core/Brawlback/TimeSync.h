@@ -25,15 +25,16 @@ public:
     void ReceivedRemoteFramedata(s32 frame, u8 playerIdx, bool hasGameStarted);
 
     // called when we receive an acknowledgement from opponent of our inputs
-    void ProcessFrameAck(FrameAck* frameAck, u8 numPlayers, const std::array<bool, MAX_NUM_PLAYERS>& hasRemoteInputsThisFrame);
+    void ProcessFrameAck(FrameAck* frameAck, bool hasRemoteInputsThisFrame);
 
     // --------------------------------------------
 
     // this is the backbone of the time sync logic. Returns whether or not we should stall on *this* current frame.
-    bool shouldStallFrame(u32 currentFrame, u32 latestRemoteFrame, u8 numPlayers);
+    bool shouldStallFrame(s32 currentFrame, s32 latestRemoteFrame, u8 numPlayers);
 
     int getMinAckFrame(u8 numPlayers);
 
+    bool getIsConnectionStalled() { return isConnectionStalled; }
 private:
 
     s32 calcTimeOffsetUs(u8 numPlayers);

@@ -20,6 +20,7 @@
 #include "Core/Brawlback/BrawlbackUtility.h"
 using namespace Brawlback;
 
+//                packet      enet flag
 typedef std::pair<sf::Packet, int> BrawlbackNetPacket;
 
 struct FrameTiming {

@@ -19,17 +19,19 @@
 // update ping display every X frames
 #define PING_DISPLAY_INTERVAL 1
 
-#define ONLINE_LOCKSTEP_INTERVAL 30
+#define ONLINE_LOCKSTEP_INTERVAL 10
 #define GAME_START_FRAME 0
+#define GAME_FULL_START_FRAME 250
 
 #define MAX_REMOTE_PLAYERS 3
 #define MAX_NUM_PLAYERS 4
 #define BRAWLBACK_PORT 7779
 
-#define ROLLBACK_IMPL false
+#define ROLLBACK_IMPL true
 
 // 59.94 Hz   ( -- is this accurate? This is the case for melee, idk if it also applies here)
-#define MS_IN_FRAME 16683
+//#define USEC_IN_FRAME 16683
+#define USEC_IN_FRAME 16666
 
 
 namespace Brawlback {
@@ -92,9 +94,17 @@ namespace Brawlback {
             u8 playerIdx;
             gfPadGamecube pad;
 
+            // do these impact the size of the struct?
+            // wouldn't the vtable ptr screw with it being interpreted on gameside???
+            // (since the gameside structs don't have these ctors)
             PlayerFrameData() {
                 frame = 0;
                 playerIdx = 0;
+                pad = gfPadGamecube();
+            }
+            PlayerFrameData(u32 _frame, u8 _playerIdx) {
+                frame = _frame;
+                playerIdx = _playerIdx;
                 pad = gfPadGamecube();
             }
         };
@@ -103,6 +113,19 @@ namespace Brawlback {
         struct FrameData {
             u32 randomSeed;
             PlayerFrameData playerFrameDatas[MAX_NUM_PLAYERS];
+
+            FrameData() {
+                randomSeed = 0;
+                for (int i = 0; i < MAX_NUM_PLAYERS; i++) {
+                    playerFrameDatas[i] = PlayerFrameData();
+                }
+            }
+            FrameData(u32 frame) {
+                randomSeed = 0;
+                for (u8 i = 0; i < MAX_NUM_PLAYERS; i++) {
+                    playerFrameDatas[i] = PlayerFrameData(frame, i);
+                }
+            }
         };
         //#pragma pack(pop)
 
@@ -138,7 +161,7 @@ namespace Brawlback {
             bool isUsingPredictedInputs;
             u32 beginFrame; // frame we realized we have no remote inputs
             u32 endFrame; // frame we received new remote inputs, and should now resim with those
-            PlayerFrameData predictedInputs;
+            FrameData predictedInputs;
 
             bool pastFrameDataPopulated;
             FrameData pastFrameDatas[MAX_ROLLBACK_FRAMES];
@@ -147,14 +170,17 @@ namespace Brawlback {
             std::vector<SlippiUtility::Savestate::PreserveBlock> preserveBlocks;
 
             RollbackInfo() {
+                Reset();
+            }
+            void Reset() {
                 isUsingPredictedInputs = false;
                 beginFrame = 0;
                 endFrame = 0;
-                predictedInputs = PlayerFrameData();
-                //pastFrameDatas
+                predictedInputs = FrameData();
+                pastFrameDataPopulated = false;
+                memset(pastFrameDatas, 0, sizeof(FrameData) * MAX_ROLLBACK_FRAMES);
                 hasPreserveBlocks = false;
                 preserveBlocks = {};
-                pastFrameDataPopulated = false;
             }
 
         };

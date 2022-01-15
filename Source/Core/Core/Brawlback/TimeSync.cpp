@@ -14,12 +14,12 @@ TimeSync::TimeSync() {
 
 }
 
-bool TimeSync::shouldStallFrame(u32 currentFrame, u32 latestRemoteFrame, u8 numPlayers) {
+bool TimeSync::shouldStallFrame(s32 currentFrame, s32 latestRemoteFrame, u8 numPlayers) {
     if (this->isConnectionStalled) return false;
 
-    s32 frameDiff = (s32)currentFrame - (s32)latestRemoteFrame;
+    s32 frameDiff = currentFrame - latestRemoteFrame;
 
-    INFO_LOG(BRAWLBACK, "local/remote frame difference - local: %u  remote (wo delay) %u  diff %d\n", currentFrame, latestRemoteFrame - FRAME_DELAY, frameDiff);
+    INFO_LOG(BRAWLBACK, "local/remote frame difference - local: %u  remote %u  diff %d\n", currentFrame, latestRemoteFrame, frameDiff);
 
     std::stringstream dispStr;
     dispStr << "| Frame diff: " << frameDiff << " |";
@@ -27,13 +27,17 @@ bool TimeSync::shouldStallFrame(u32 currentFrame, u32 latestRemoteFrame, u8 numP
 
     // SLIPPI LOGIC
     #if ROLLBACK_IMPL
-    if (frameDiff >= MAX_ROLLBACK_FRAMES) { // if we're MAX_ROLLBACK_FRAMES (or more) ahead opponent, timesync (stall)
+    // for the startup sequence, make sure to sync clients within FRAME_DELAY frames (since we aren't doing rollbacks during that time).
+    // Afterwards, sync only after we exceed max rollback frames as usual
+    s32 frameDiffBound = currentFrame > GAME_FULL_START_FRAME ? MAX_ROLLBACK_FRAMES : FRAME_DELAY;
+    if (frameDiff >= frameDiffBound) {
     #else
     if (frameDiff >= FRAME_DELAY) { 
     #endif
         this->stallFrameCount += 1;
         if (this->stallFrameCount > 60 * 7) {
-            isConnectionStalled = true;
+            ERROR_LOG(BRAWLBACK, "CONNECTION STALLED\n");
+            this->isConnectionStalled = true;
         }
         INFO_LOG(BRAWLBACK, "Exceeded rollback lim, halting for one frame. Frame: %u  Latest (wo delay) %u diff %u\n", currentFrame, latestRemoteFrame - FRAME_DELAY, frameDiff);
         return true;
@@ -45,8 +49,8 @@ bool TimeSync::shouldStallFrame(u32 currentFrame, u32 latestRemoteFrame, u8 numP
 	// Only skip once for a given frame because our time detection method doesn't take into consideration
 	// waiting for a frame. Also it's less jarring and it happens often enough that it will smoothly
 	// get to the right place
-	auto isTimeSyncFrame = currentFrame % ONLINE_LOCKSTEP_INTERVAL; // Only time sync every few frames
-	if (isTimeSyncFrame == 0 && !this->isSkipping)
+	auto isTimeSyncFrame = currentFrame % ONLINE_LOCKSTEP_INTERVAL == 0; // Only time sync every few frames
+	if (isTimeSyncFrame && !this->isSkipping)
 	{
 		s32 offsetUs = this->calcTimeOffsetUs(numPlayers);
 		INFO_LOG(BRAWLBACK, "[Frame %u] Offset is: %d us", currentFrame, offsetUs);
@@ -57,7 +61,8 @@ bool TimeSync::shouldStallFrame(u32 currentFrame, u32 latestRemoteFrame, u8 numP
 			this->isSkipping = true;
 
 			int maxSkipFrames = currentFrame <= 120 ? 5 : 1; // On early frames, support skipping more frames
-			this->framesToSkip = ((offsetUs - 10000) / MS_IN_FRAME) + 1;
+			this->framesToSkip = ((offsetUs - 10000) / USEC_IN_FRAME) + 1;
+            INFO_LOG(BRAWLBACK, "Unclamped framesToSkip %d", this->framesToSkip);
 			this->framesToSkip = this->framesToSkip > maxSkipFrames ? maxSkipFrames : this->framesToSkip; // Only skip 5 frames max
 
 			WARN_LOG(BRAWLBACK, "Halting on frame %d due to time sync. Offset: %d us. framesToSkip: %d", currentFrame,
@@ -117,11 +122,11 @@ void TimeSync::ReceivedRemoteFramedata(s32 frame, u8 playerIdx, bool hasGameStar
     }
 
     s64 opponentSendTimeUs = curTime - ((s64)this->pingUs[playerIdx] / 2);
-    s64 frameDiffOffsetUs = MS_IN_FRAME * (timing.frame - frame);
+    s64 frameDiffOffsetUs = USEC_IN_FRAME * (timing.frame - frame);
     s64 timeOffsetUs = opponentSendTimeUs - timing.timeUs + frameDiffOffsetUs;
 
-    INFO_LOG(BRAWLBACK, "[Offset] Opp Frame: %d, My Frame: %d. Time offset: %lld\n", 
-                                              frame-FRAME_DELAY, timing.frame-FRAME_DELAY, timeOffsetUs);
+    INFO_LOG(BRAWLBACK, "[Offset] Opp Frame: %d, My Frame: %d. Time offset: %f ms\n", 
+                                              frame-FRAME_DELAY, timing.frame-FRAME_DELAY, (double)timeOffsetUs / 1000.0);
 
     // Add this offset to circular buffer for use later
 
@@ -138,8 +143,8 @@ void TimeSync::ReceivedRemoteFramedata(s32 frame, u8 playerIdx, bool hasGameStar
 
 
 // with delay
-void TimeSync::ProcessFrameAck(FrameAck* frameAck, u8 numPlayers, const std::array<bool, MAX_NUM_PLAYERS>& hasRemoteInputsThisFrame) {
-    u64 currentTime = Common::Timer::GetTimeUs();
+void TimeSync::ProcessFrameAck(FrameAck* frameAck, bool hasRemoteInputsThisFrame) {
+    std::lock_guard<std::mutex> lock(this->ackTimersMutex);
     u8 playerIdx = frameAck->playerIdx;
     int frame = frameAck->frame; // this is with frame delay
 
@@ -147,15 +152,16 @@ void TimeSync::ProcessFrameAck(FrameAck* frameAck, u8 numPlayers, const std::arr
 
     int lastAcked = this->lastFrameAcked[playerIdx];
     // if this current acked frame is more recent than the last acked frame, set it
-    this->lastFrameAcked[playerIdx] = lastAcked < frame ? frame : lastAcked;
+    this->lastFrameAcked[playerIdx] = frame > lastAcked ? frame : lastAcked;
 
     // remove old timings
     while (!this->ackTimers[playerIdx].empty() && this->ackTimers[playerIdx].front().frame < frame) {
         this->ackTimers[playerIdx].pop_front();
     }
 
+    // don't get a ping if we don't have correct ack frame
     if (this->ackTimers[playerIdx].empty()) {
-        INFO_LOG(BRAWLBACK, "Empty acktimers\n");
+        //INFO_LOG(BRAWLBACK, "Empty acktimers\n");
         return;
     }
     if (this->ackTimers[playerIdx].front().frame != frame) {
@@ -164,13 +170,12 @@ void TimeSync::ProcessFrameAck(FrameAck* frameAck, u8 numPlayers, const std::arr
     }
 
     auto sendTime = this->ackTimers[playerIdx].front().timeUs;
-
     this->ackTimers[playerIdx].pop_front();
 
     // our ping is the current gametime - the time that the inputs were originally sent at
     // inputs go from client 1 -> client 2 -> client 2 acks & sends ack to client 1 -> client 1 receives ack here
     // so this is full RTT (round trip time). To get ping just from client to client, divide this by 2
-    this->pingUs[playerIdx] = currentTime - sendTime;
+    this->pingUs[playerIdx] = Common::Timer::GetTimeUs() - sendTime;
     u64 rtt = this->pingUs[playerIdx];
     double rtt_ms = (double)rtt / 1000.0;
 
@@ -178,9 +183,7 @@ void TimeSync::ProcessFrameAck(FrameAck* frameAck, u8 numPlayers, const std::arr
 
     if (frame % PING_DISPLAY_INTERVAL == 0) {
         std::stringstream dispStr;
-        dispStr << "Has Remote Inputs: ";
-        for (int i = 0; i < numPlayers; i++)
-            dispStr << hasRemoteInputsThisFrame[i] << " | ";
+        dispStr << "Has Remote Inputs: " << hasRemoteInputsThisFrame << "\n";
         dispStr << "Ping: ";
         double ping = rtt_ms / 2.0;
         dispStr << ping << " ms";
@@ -192,7 +195,7 @@ void TimeSync::ProcessFrameAck(FrameAck* frameAck, u8 numPlayers, const std::arr
 int TimeSync::getMinAckFrame(u8 numPlayers) {
     int minAckFrame = 0;
     for (int i = 0; i < numPlayers; i++) {
-        //INFO_LOG(BRAWLBACK, "lastFrameAcked[%i]: %i", i, this->lastFrameAcked[i]);
+        INFO_LOG(BRAWLBACK, "lastFrameAcked[%i]: %i", i, this->lastFrameAcked[i]);
         if (minAckFrame == 0 || (this->lastFrameAcked[i] < minAckFrame && this->lastFrameAcked[i] != 0))
             minAckFrame = this->lastFrameAcked[i];
     }

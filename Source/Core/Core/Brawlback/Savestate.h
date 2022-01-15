@@ -13,6 +13,7 @@ public:
 
 
     BrawlbackSavestate(u32 frame);
+    BrawlbackSavestate();
     ~BrawlbackSavestate();
 
 

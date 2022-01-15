@@ -22,7 +22,7 @@ enum PADButtonBits : u16
 union PADButtons
 {
   unsigned short bits;
-  struct
+  /*struct
   {
     unsigned _none : 3;
     unsigned Start : 1;
@@ -38,7 +38,7 @@ union PADButtons
     unsigned DownDPad : 1;
     unsigned RightDPad : 1;
     unsigned LeftDPad : 1;
-  };
+  };*/
 };
 #pragma pack(pop)
 
@@ -82,3 +82,14 @@ struct gfPadGamecube
   }
 };
 #pragma pack(pop)
+
+
+struct BrawlbackPad {
+    PADButtons buttons;
+    char stickX;
+    char stickY;
+    char cStickX;
+    char cStickY;
+    char LTrigger;
+    char RTrigger;
+};

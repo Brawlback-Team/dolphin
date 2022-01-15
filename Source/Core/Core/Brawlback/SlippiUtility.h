@@ -81,6 +81,7 @@ namespace SlippiUtility
         uint8_t readByte(uint8_t* a, int& idx, uint32_t maxSize, uint8_t defaultValue);
         uint16_t readHalf(uint8_t* a, int& idx, uint32_t maxSize, uint16_t defaultValue);
         uint32_t readWord(uint8_t* a, int& idx, uint32_t maxSize, uint32_t defaultValue);
+        uint32_t readWord(uint8_t* a);
         float readFloat(uint8_t* a, int& idx, uint32_t maxSize, float defaultValue);
     }  // namespace Mem
 

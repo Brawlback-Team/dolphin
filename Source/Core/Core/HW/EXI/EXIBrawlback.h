@@ -74,6 +74,7 @@ private:
     ENetHost* server = nullptr;
     std::thread netplay_thread;
     std::unique_ptr<BrawlbackNetplay> netplay;
+    bool isConnected = false;
     // -------------------------------
 
 
@@ -84,6 +85,7 @@ private:
     int localPlayerIdx = -1;
     u8 numPlayers = -1;
     bool hasGameStarted = false;
+    s32 gameFrame = -1;
     std::unique_ptr<Match::GameSettings> gameSettings;
     // -------------------------------
 
@@ -97,21 +99,25 @@ private:
     // --- Rollback
     int numFramesWithoutRemoteInputs = 0;
     Match::RollbackInfo rollbackInfo = Match::RollbackInfo();
+    void SetupRollback(u32 frame);
     // -------------------------------
 
 
 
 
     // --- Savestates
-    std::deque<std::unique_ptr<BrawlbackSavestate>> savestates = {};
-    std::unordered_map<u32, BrawlbackSavestate*> savestatesMap = {};
+    //std::deque<std::unique_ptr<BrawlbackSavestate>> savestates = {};
+    //std::unordered_map<u32, BrawlbackSavestate*> savestatesMap = {};
+
+    std::map<s32, std::unique_ptr<BrawlbackSavestate>> activeSavestates;
+	std::deque<std::unique_ptr<BrawlbackSavestate>> availableSavestates;
     // -------------------------------
     
 
     // --- Framedata (player inputs)
     void handleSendInputs(u32 frame);
     std::pair<bool, bool> getInputsForGame(Match::FrameData& framedataToSendToGame, u32 frame);
-    void storeLocalInputs(Match::PlayerFrameData* localPlayerFramedata, u32 frame);
+    void storeLocalInputs(Match::PlayerFrameData* localPlayerFramedata);
     PlayerFrameDataQueue localPlayerFrameData = {};
     // indexes are player indexes
     std::array<PlayerFrameDataQueue, MAX_NUM_PLAYERS> remotePlayerFrameData = {};
@@ -120,16 +126,6 @@ private:
 
     std::array<bool, MAX_NUM_PLAYERS> hasRemoteInputsThisFrame = {false, false, false, false}; // tmp - for debugging
     // -------------------------------
-
-
-    // --- Mutexes
-    std::mutex read_queue_mutex;
-    std::mutex remotePadQueueMutex;
-    std::mutex localPadQueueMutex;
-    std::mutex ackTimersMutex;
-    // -------------------------------
-
-
 
 
 
