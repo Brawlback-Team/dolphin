@@ -10,33 +10,6 @@
 
 // lots of code here is heavily derived from Slippi's Savestates.cpp
 
-
-
-BrawlbackSavestate::BrawlbackSavestate(u32 frame)
-{
-    this->frame = frame;
-    
-    // init member list with proper addresses
-    initBackupLocs();
-
-    //u8 *ptr = nullptr;
-    //PointerWrap p(&ptr, PointerWrap::MODE_MEASURE);
-
-    //getDolphinState(p);
-    //const size_t buffer_size = reinterpret_cast<size_t>(ptr);
-    //dolphinSsBackup.resize(buffer_size);
-
-    // iterate through address ranges and allocate mem for our savestates
-    for (auto it = backupLocs.begin(); it != backupLocs.end(); ++it)
-    {
-        auto size = it->endAddress - it->startAddress;
-        //if (it->endAddress < LOW_BOUND_MEM)
-        //{
-        //    size = it->endAddress;
-        //}
-        it->data = static_cast<u8*>(Common::AllocateAlignedMemory(size, 64));
-    }
-}
 BrawlbackSavestate::BrawlbackSavestate()
 {
     // init member list with proper addresses
@@ -87,22 +60,30 @@ void BrawlbackSavestate::initBackupLocs()
     };
 
     static std::vector<ssBackupLoc> fullBackupRegions = {
-        //{0x800064E0, 0x805A5154, nullptr}, // Data 0-7 && bss
+        // data/bss sections
+        {0x800064E0, 0x800064E0 + 0x3280}, // 0
+        {0x80009760, 0x80009760 + 0x3100}, // 1
+        {0x804064E0, 0x804064E0 + 0x300}, // 2
+        {0x804067E0, 0x804067E0 + 0x20}, // 3
+        {0x80406800, 0x80406800 + 0x19E80}, // 4
+        {0x80420680, 0x80420680 + 0x741C0}, // 5
+        {0x8059C420, 0x8059C420 + 0x3B60}, // 6
+        {0x805A1320, 0x805A1320 + 0x3E00}, // 7
+        // data sections 8-10 are size 0
+        //{0x80494880, 0x80494880 + 0x1108D4}, // bss
+
 
         //{0x80001800, 0x80003000, nullptr}, // default gecko code region
         
         // mem1
-        //{0x805b4e80, 0x805b5160, nullptr}, // testing
-        //{0x805b4fd8, 0x805b4fd8 + 0x120, nullptr}, // gfApplication struct
-        //{0x805b4fd8, 0x805b5160, nullptr}, // gfApplication struct
 
         //{0x805b5160, 0x805ca260, nullptr }, // System FW
         {0x80611f60, 0x80673460, nullptr }, // System
         {0x80b8db60, 0x80c23a60, nullptr }, // Effect
         //{0x805d1e60, 0x80611f60, nullptr }, // RenderFifo
-        {0x80c23a60, 0x80da3a60, nullptr }, // InfoResource
-        {0x815edf60, 0x817bad60, nullptr}, // InfoExtraResource
-        {0x80da3a60, 0x80fd6260, nullptr }, // CommonResource
+        //{0x80c23a60, 0x80da3a60, nullptr }, // InfoResource
+        //{0x815edf60, 0x817bad60, nullptr}, // InfoExtraResource
+        //{0x80da3a60, 0x80fd6260, nullptr }, // CommonResource
         {0x81049e60, 0x81061060, nullptr }, // Tmp
         //{0x8154e560, 0x81601960, nullptr }, // Physics
         //{0x81382b60, 0x814ce460, nullptr }, // ItemInstance
@@ -124,18 +105,19 @@ void BrawlbackSavestate::initBackupLocs()
         //{0x805ca260, 0x805d1e60, nullptr }, // Thread
 
         // mem2
+
         //{0x90199800, 0x90e61400, nullptr }, // Sound
         //{0x90e77500, 0x90fddc00, nullptr }, // Network
         {0x90e61400, 0x90e77500, nullptr }, // WiiPad
         //{0x91018b00, 0x91301b00, nullptr }, // IteamResource
         //{0x91301b00, 0x9134cc00, nullptr }, // Replay
-        {0x92f34700, 0x9359ae00, nullptr }, // StageResoruce
+        //{0x92f34700, 0x9359ae00, nullptr }, // StageResoruce
         {0x9151fa00, 0x91a72e00, nullptr }, // Fighter1Resoruce
         {0x91b04c80, 0x92058080, nullptr }, // Fighter2Resoruce
         //{0x920e9f00, 0x9263d300, nullptr }, // Fighter3Resoruce
         //{0x926cf180, 0x92c22580, nullptr }, // Fighter4Resoruce
-        {0x91a72e00, 0x91b04c80, nullptr }, // Fighter1Resoruce2
-        {0x92058080, 0x920e9f00, nullptr }, // Fighter2Resoruce2
+        //{0x91a72e00, 0x91b04c80, nullptr }, // Fighter1Resoruce2
+        //{0x92058080, 0x920e9f00, nullptr }, // Fighter2Resoruce2
         //{0x9263d300, 0x926cf180, nullptr }, // Fighter3Resoruce2
         //{0x92c22580, 0x92cb4400, nullptr }, // Fighter4Resoruce2
         {0x91478e00, 0x914d2900, nullptr }, // FighterEffect
@@ -149,30 +131,15 @@ void BrawlbackSavestate::initBackupLocs()
         {0x9134cc00, 0x91478e00, nullptr }, // CopyFB
         {0x90167400, 0x90199800, nullptr }, // GameGlobal
         //{0x90fddc00, 0x91018b00, nullptr }, // GlobalMode
-
-        // data sections
-        //{0x800064E0, 0x805A1320+0x3E00, nullptr}, // Data 0-7
-        //{0x80494880, 0x80494880+0x1108D4, nullptr}, // bss
     };
 
 
 
     // wip
     static std::vector<PreserveBlock> excludeSections = {
-        //{0x90e61400, 0x90e77500-0x90e61400}, // WiiPad
-
-        // one of these two fixed it (not being able to do inputs after rollback)
-        //{0x805b5160, 0x805ca260-0x805b5160}, // System FW
-        //{0x805ca260, 0x805d1e60 - 0x805ca260},  // Thread
-
-        // infinite loop fixes
-        //{0x8062fb40, 0x4ea},  // clearGeneralTerm (probably not correct)
-        //{0x805b62a0+0x8c, 4},  // HSD_PadRumbleActiveAll
-        //{0x805A0068, 0x17c},   // gfTaskScheduler (in gfTaskScheduler::process)
-
         {0x935d7660, 0x000089a0}, // CPP Framework heap (subject to change...??)
 
-        //{0x81284654, 0x4}, // gfTaskScheduler thing
+        //{0x805bacc0+0x40, 0x40*4} // gfPadSystem
     };
 
     //SlippiInitBackupLocations(this->backupLocs, allMem, excludeSections);

@@ -87,6 +87,8 @@ void BrawlbackNetplay::BroadcastPlayerFrameDataWithPastFrames(ENetHost* server, 
         frame_data_packet.append(framedata, sizeof(Match::PlayerFrameData));
     }
 
+    INFO_LOG(BRAWLBACK, "Sending input packet of size: %u\n", frame_data_packet.getDataSize());
+
     std::pair<sf::Packet, int> pckt_content = std::make_pair(frame_data_packet, ENET_PACKET_FLAG_UNSEQUENCED);
     std::unique_ptr<BrawlbackNetPacket> pckt = std::make_unique<BrawlbackNetPacket>(pckt_content);
     this->SendAsync(std::move(pckt), server);

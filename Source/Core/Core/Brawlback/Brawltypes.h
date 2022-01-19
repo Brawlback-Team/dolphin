@@ -42,8 +42,7 @@ union PADButtons
 };
 #pragma pack(pop)
 
-// todo - replace this with my own struct that doesn't have spacers, 
-// and just fill in those values on game side so i'm not transferring more data than i necessary
+
 #pragma pack(push, 4)
 struct gfPadGamecube
 {
@@ -85,11 +84,21 @@ struct gfPadGamecube
 
 
 struct BrawlbackPad {
-    PADButtons buttons;
+    unsigned short buttons;
     char stickX;
     char stickY;
     char cStickX;
     char cStickY;
     char LTrigger;
     char RTrigger;
+
+    BrawlbackPad() {
+        buttons = 0;
+        stickX = 0;
+        stickY = 0;
+        cStickX = 0;
+        cStickY = 0;
+        LTrigger = 0;
+        RTrigger = 0;
+    }
 };

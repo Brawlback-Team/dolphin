@@ -12,26 +12,27 @@
 #include "SlippiUtility.h"
 
 #define MAX_ROLLBACK_FRAMES 7
-#define FRAME_DELAY 2
+#define FRAME_DELAY 3
+#define ROLLBACK_IMPL true
 
 // number of max FrameData's to keep in the queue
 #define FRAMEDATA_MAX_QUEUE_SIZE 120 
 // update ping display every X frames
 #define PING_DISPLAY_INTERVAL 1
 
-#define ONLINE_LOCKSTEP_INTERVAL 10
+#define ONLINE_LOCKSTEP_INTERVAL 30
 #define GAME_START_FRAME 0
-#define GAME_FULL_START_FRAME 250
+#define GAME_FULL_START_FRAME 1
+//#define GAME_FULL_START_FRAME 250
 
 #define MAX_REMOTE_PLAYERS 3
 #define MAX_NUM_PLAYERS 4
 #define BRAWLBACK_PORT 7779
 
-#define ROLLBACK_IMPL true
 
 // 59.94 Hz   ( -- is this accurate? This is the case for melee, idk if it also applies here)
-//#define USEC_IN_FRAME 16683
-#define USEC_IN_FRAME 16666
+#define USEC_IN_FRAME 16683
+//#define USEC_IN_FRAME 16666
 
 
 namespace Brawlback {
@@ -92,7 +93,7 @@ namespace Brawlback {
         struct PlayerFrameData {
             u32 frame;
             u8 playerIdx;
-            gfPadGamecube pad;
+            BrawlbackPad pad;
 
             // do these impact the size of the struct?
             // wouldn't the vtable ptr screw with it being interpreted on gameside???
@@ -100,12 +101,12 @@ namespace Brawlback {
             PlayerFrameData() {
                 frame = 0;
                 playerIdx = 0;
-                pad = gfPadGamecube();
+                pad = BrawlbackPad();
             }
             PlayerFrameData(u32 _frame, u8 _playerIdx) {
                 frame = _frame;
                 playerIdx = _playerIdx;
-                pad = gfPadGamecube();
+                pad = BrawlbackPad();
             }
         };
 

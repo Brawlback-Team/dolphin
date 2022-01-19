@@ -32,7 +32,7 @@ bool TimeSync::shouldStallFrame(s32 currentFrame, s32 latestRemoteFrame, u8 numP
     s32 frameDiffBound = currentFrame > GAME_FULL_START_FRAME ? MAX_ROLLBACK_FRAMES : FRAME_DELAY;
     if (frameDiff >= frameDiffBound) {
     #else
-    if (frameDiff >= FRAME_DELAY) { 
+    if (frameDiff > FRAME_DELAY) { 
     #endif
         this->stallFrameCount += 1;
         if (this->stallFrameCount > 60 * 7) {
@@ -179,14 +179,14 @@ void TimeSync::ProcessFrameAck(FrameAck* frameAck, bool hasRemoteInputsThisFrame
     u64 rtt = this->pingUs[playerIdx];
     double rtt_ms = (double)rtt / 1000.0;
 
-    INFO_LOG(BRAWLBACK, "Remote Frame acked %u (w/o delay: %u)  [pIdx %u rtt %f ms]\n", frame, frame-FRAME_DELAY, (unsigned int)playerIdx, rtt_ms);
+    INFO_LOG(BRAWLBACK, "Received ack for frame %u (w/o delay: %u)  [pIdx %u rtt %f ms]\n", frame, frame-FRAME_DELAY, (unsigned int)playerIdx, rtt_ms);
 
     if (frame % PING_DISPLAY_INTERVAL == 0) {
         std::stringstream dispStr;
-        dispStr << "Has Remote Inputs: " << hasRemoteInputsThisFrame << "\n";
         dispStr << "Ping: ";
         double ping = rtt_ms / 2.0;
-        dispStr << ping << " ms";
+        dispStr << ping << " ms\n";
+        dispStr << "Has Remote Inputs: " << hasRemoteInputsThisFrame << "\n";
         OSD::AddTypedMessage(OSD::MessageType::NetPlayPing, dispStr.str(), OSD::Duration::NORMAL, OSD::Color::GREEN);
     }
 }

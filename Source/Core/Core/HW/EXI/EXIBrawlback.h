@@ -85,7 +85,6 @@ private:
     int localPlayerIdx = -1;
     u8 numPlayers = -1;
     bool hasGameStarted = false;
-    s32 gameFrame = -1;
     std::unique_ptr<Match::GameSettings> gameSettings;
     // -------------------------------
 
@@ -97,7 +96,6 @@ private:
 
     
     // --- Rollback
-    int numFramesWithoutRemoteInputs = 0;
     Match::RollbackInfo rollbackInfo = Match::RollbackInfo();
     void SetupRollback(u32 frame);
     // -------------------------------
@@ -106,11 +104,11 @@ private:
 
 
     // --- Savestates
-    //std::deque<std::unique_ptr<BrawlbackSavestate>> savestates = {};
-    //std::unordered_map<u32, BrawlbackSavestate*> savestatesMap = {};
+    std::deque<std::unique_ptr<BrawlbackSavestate>> savestates = {};
+    std::unordered_map<u32, BrawlbackSavestate*> savestatesMap = {};
 
-    std::map<s32, std::unique_ptr<BrawlbackSavestate>> activeSavestates;
-	std::deque<std::unique_ptr<BrawlbackSavestate>> availableSavestates;
+    std::map<s32, std::unique_ptr<BrawlbackSavestate>> activeSavestates = {};
+	std::deque<std::unique_ptr<BrawlbackSavestate>> availableSavestates = {};
     // -------------------------------
     
 
