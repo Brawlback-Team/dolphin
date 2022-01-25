@@ -4,6 +4,7 @@
 #include "common/Logging/Log.h"
 #include <Common/MemoryUtil.h>
 #include <Core/HW/EXI/EXI.h>
+#include <thread>
 
 #define LOW_BOUND_MEM 0x80000000
 
@@ -60,20 +61,33 @@ void BrawlbackSavestate::initBackupLocs()
     };
 
     static std::vector<ssBackupLoc> fullBackupRegions = {
+        // {start address, end address, nullptr},
+
         // data/bss sections
-        {0x800064E0, 0x800064E0 + 0x3280}, // 0
-        {0x80009760, 0x80009760 + 0x3100}, // 1
-        {0x804064E0, 0x804064E0 + 0x300}, // 2
-        {0x804067E0, 0x804067E0 + 0x20}, // 3
-        {0x80406800, 0x80406800 + 0x19E80}, // 4
-        {0x80420680, 0x80420680 + 0x741C0}, // 5
-        {0x8059C420, 0x8059C420 + 0x3B60}, // 6
-        {0x805A1320, 0x805A1320 + 0x3E00}, // 7
+        
+        // 805b8a00
+
+        {0x800064E0, 0x800064E0 + 0x3280, nullptr}, // 0
+        {0x80009760, 0x80009760 + 0x3100, nullptr}, // 1
+        {0x804064E0, 0x804064E0 + 0x300, nullptr}, // 2
+        {0x804067E0, 0x804067E0 + 0x20, nullptr}, // 3
+        {0x80406800, 0x80406800 + 0x19E80, nullptr}, // 4
+        {0x80420680, 0x80420680 + 0x741C0, nullptr}, // 5
+        {0x8059C420, 0x8059C420 + 0x3B60, nullptr}, // 6
+        {0x805A1320, 0x805A1320 + 0x3E00, nullptr}, // 7 
         // data sections 8-10 are size 0
-        //{0x80494880, 0x80494880 + 0x1108D4}, // bss
+
+        // bss
+
+        //{0x80494880, 0x8059c41f, nullptr}, // MAIN_uninitialized0
+        //{0x8059ff80, 0x805a131f, nullptr}, // MAIN_uninitialized1
+        //{0x805a5120, 0x805a5153, nullptr}, // MAIN_uninitialized2
+
+        //{0x80494880, 0x80494880 + 0x1108D4}, // bss  0x80494880 - 0x805A5154  (according to brawlcrate)
+        
 
 
-        //{0x80001800, 0x80003000, nullptr}, // default gecko code region
+        {0x80001800, 0x80003000, nullptr}, // default gecko code region
         
         // mem1
 
@@ -84,14 +98,14 @@ void BrawlbackSavestate::initBackupLocs()
         //{0x80c23a60, 0x80da3a60, nullptr }, // InfoResource
         //{0x815edf60, 0x817bad60, nullptr}, // InfoExtraResource
         //{0x80da3a60, 0x80fd6260, nullptr }, // CommonResource
-        {0x81049e60, 0x81061060, nullptr }, // Tmp
+        //{0x81049e60, 0x81061060, nullptr }, // Tmp // ?
         //{0x8154e560, 0x81601960, nullptr }, // Physics
         //{0x81382b60, 0x814ce460, nullptr }, // ItemInstance
-        {0x814ce460, 0x8154e560, nullptr }, // StageInstance
+        //{0x814ce460, 0x8154e560, nullptr }, // StageInstance // ?
         {0x8123ab60, 0x8128cb60, nullptr }, // Fighter1Instance
         {0x8128cb60, 0x812deb60, nullptr }, // Fighter2Instance
-        {0x812deb60, 0x81330b60, nullptr }, // Fighter3Instance
-        {0x81330b60, 0x81382b60, nullptr }, // Fighter4Instance
+        //{0x812deb60, 0x81330b60, nullptr }, // Fighter3Instance
+        //{0x81330b60, 0x81382b60, nullptr }, // Fighter4Instance
         {0x81601960, 0x81734d60, nullptr }, // InfoInstance
         {0x81734d60, 0x817ce860, nullptr }, // MenuInstance
         //{0x80fd6260, 0x81049e60, nullptr }, // MeleeFont
@@ -137,22 +151,44 @@ void BrawlbackSavestate::initBackupLocs()
 
     // wip
     static std::vector<PreserveBlock> excludeSections = {
+        // {start address, size}
+
         {0x935d7660, 0x000089a0}, // CPP Framework heap (subject to change...??)
 
-        //{0x805bacc0+0x40, 0x40*4} // gfPadSystem
+        // {0x805bacc0+0x40, 0x40*4} // gfPadSystem
     };
 
     //SlippiInitBackupLocations(this->backupLocs, allMem, excludeSections);
     SlippiInitBackupLocations(this->backupLocs, fullBackupRegions, excludeSections);
   
-    /*for (auto& loc : this->backupLocs) {
-        INFO_LOG(BRAWLBACK, "Savestate region: %p - %p : size %u\n", loc.startAddress, loc.endAddress, loc.endAddress-loc.startAddress);
-    }*/
+    static bool once = true;
+    if (once) {
+        u64 totalsize = 0;
+        for (auto& loc : this->backupLocs) {
+            u32 size = loc.endAddress-loc.startAddress;
+            INFO_LOG(BRAWLBACK, "Savestate region: %p - %p : size 0x%x\n", loc.startAddress, loc.endAddress, size);
+            totalsize += size;
+        }
+        INFO_LOG(BRAWLBACK, "Savestates total size: 0x%llx\n", totalsize);
+    }
+    once = false;
+}
+
+typedef std::vector<SlippiUtility::Savestate::ssBackupLoc>::iterator backupLocIterator;
+
+void captureMemRegions(const std::vector<SlippiUtility::Savestate::ssBackupLoc>& backupLocs, backupLocIterator start, backupLocIterator end) {
+    for (auto it = start; it != end; ++it) {
+        auto size = it->endAddress - it->startAddress;
+        Memory::CopyFromEmu(it->data, it->startAddress, size);  // game -> emu
+    }
 }
 
 void BrawlbackSavestate::Capture()
 {
 
+    captureMemRegions(backupLocs, backupLocs.begin(), backupLocs.end());
+
+    /*
     // copy game mem
     for (auto it = backupLocs.begin(); it != backupLocs.end(); ++it)
     {
@@ -168,6 +204,7 @@ void BrawlbackSavestate::Capture()
             Memory::CopyFromEmu(it->data, it->startAddress, size);  // game -> emu
         //}
     }
+    */
 
     // copy dolphin states
     //u8 *ptr = &dolphinSsBackup[0];

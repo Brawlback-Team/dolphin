@@ -33,5 +33,8 @@ private:
 
     void initBackupLocs();
 
+    //std::thread firstHalf;
+    //std::thread secondHalf;
+
 
 };

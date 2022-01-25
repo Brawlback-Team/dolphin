@@ -27,10 +27,7 @@ bool TimeSync::shouldStallFrame(s32 currentFrame, s32 latestRemoteFrame, u8 numP
 
     // SLIPPI LOGIC
     #if ROLLBACK_IMPL
-    // for the startup sequence, make sure to sync clients within FRAME_DELAY frames (since we aren't doing rollbacks during that time).
-    // Afterwards, sync only after we exceed max rollback frames as usual
-    s32 frameDiffBound = currentFrame > GAME_FULL_START_FRAME ? MAX_ROLLBACK_FRAMES : FRAME_DELAY;
-    if (frameDiff >= frameDiffBound) {
+    if (frameDiff >= MAX_ROLLBACK_FRAMES) {
     #else
     if (frameDiff > FRAME_DELAY) { 
     #endif
@@ -143,7 +140,7 @@ void TimeSync::ReceivedRemoteFramedata(s32 frame, u8 playerIdx, bool hasGameStar
 
 
 // with delay
-void TimeSync::ProcessFrameAck(FrameAck* frameAck, bool hasRemoteInputsThisFrame) {
+void TimeSync::ProcessFrameAck(FrameAck* frameAck, std::array<bool, 4>& hasInputsThisFrame) {
     std::lock_guard<std::mutex> lock(this->ackTimersMutex);
     u8 playerIdx = frameAck->playerIdx;
     int frame = frameAck->frame; // this is with frame delay
@@ -183,10 +180,11 @@ void TimeSync::ProcessFrameAck(FrameAck* frameAck, bool hasRemoteInputsThisFrame
 
     if (frame % PING_DISPLAY_INTERVAL == 0) {
         std::stringstream dispStr;
-        dispStr << "Ping: ";
-        double ping = rtt_ms / 2.0;
-        dispStr << ping << " ms\n";
-        dispStr << "Has Remote Inputs: " << hasRemoteInputsThisFrame << "\n";
+        dispStr << "Ping (rtt): ";
+        dispStr << rtt_ms << " ms\n";
+        dispStr << "Has Inputs: ";
+        for (int i = 0; i < 4; i++) // 
+            dispStr << hasInputsThisFrame[i] << " |";
         OSD::AddTypedMessage(OSD::MessageType::NetPlayPing, dispStr.str(), OSD::Duration::NORMAL, OSD::Color::GREEN);
     }
 }
