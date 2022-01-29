@@ -19,10 +19,10 @@ bool TimeSync::shouldStallFrame(s32 currentFrame, s32 latestRemoteFrame, u8 numP
 
     s32 frameDiff = currentFrame - latestRemoteFrame;
 
-    INFO_LOG(BRAWLBACK, "local/remote frame difference - local: %u  remote %u  diff %d\n", currentFrame, latestRemoteFrame, frameDiff);
+    //INFO_LOG(BRAWLBACK, "local frame: %u  remote frame %u  diff %d\n", currentFrame, latestRemoteFrame, frameDiff);
 
     std::stringstream dispStr;
-    dispStr << "| Frame diff: " << frameDiff << " |";
+    dispStr << "| Frame diff: " << frameDiff << " |\n";
     OSD::AddTypedMessage(OSD::MessageType::NetPlayBuffer, dispStr.str(), OSD::Duration::NORMAL, OSD::Color::CYAN);
 
     // SLIPPI LOGIC
@@ -50,7 +50,7 @@ bool TimeSync::shouldStallFrame(s32 currentFrame, s32 latestRemoteFrame, u8 numP
 	if (isTimeSyncFrame && !this->isSkipping)
 	{
 		s32 offsetUs = this->calcTimeOffsetUs(numPlayers);
-		INFO_LOG(BRAWLBACK, "[Frame %u] Offset is: %d us", currentFrame, offsetUs);
+		//INFO_LOG(BRAWLBACK, "[Frame %u] Offset is: %d us", currentFrame, offsetUs);
 
 		// TODO: figure out a better solution here for doubles?
 		if (offsetUs > 10000)
@@ -122,8 +122,8 @@ void TimeSync::ReceivedRemoteFramedata(s32 frame, u8 playerIdx, bool hasGameStar
     s64 frameDiffOffsetUs = USEC_IN_FRAME * (timing.frame - frame);
     s64 timeOffsetUs = opponentSendTimeUs - timing.timeUs + frameDiffOffsetUs;
 
-    INFO_LOG(BRAWLBACK, "[Offset] Opp Frame: %d, My Frame: %d. Time offset: %f ms\n", 
-                                              frame-FRAME_DELAY, timing.frame-FRAME_DELAY, (double)timeOffsetUs / 1000.0);
+    //INFO_LOG(BRAWLBACK, "[Offset] Opp Frame: %d, My Frame: %d. Time offset: %f ms\n", 
+    //                                          frame-FRAME_DELAY, timing.frame-FRAME_DELAY, (double)timeOffsetUs / 1000.0);
 
     // Add this offset to circular buffer for use later
 
@@ -176,7 +176,7 @@ void TimeSync::ProcessFrameAck(FrameAck* frameAck, std::array<bool, 4>& hasInput
     u64 rtt = this->pingUs[playerIdx];
     double rtt_ms = (double)rtt / 1000.0;
 
-    INFO_LOG(BRAWLBACK, "Received ack for frame %u (w/o delay: %u)  [pIdx %u rtt %f ms]\n", frame, frame-FRAME_DELAY, (unsigned int)playerIdx, rtt_ms);
+    //INFO_LOG(BRAWLBACK, "Received ack for frame %u (w/o delay: %u)  [pIdx %u rtt %f ms]\n", frame, frame-FRAME_DELAY, (unsigned int)playerIdx, rtt_ms);
 
     if (frame % PING_DISPLAY_INTERVAL == 0) {
         std::stringstream dispStr;
@@ -193,7 +193,7 @@ void TimeSync::ProcessFrameAck(FrameAck* frameAck, std::array<bool, 4>& hasInput
 int TimeSync::getMinAckFrame(u8 numPlayers) {
     int minAckFrame = 0;
     for (int i = 0; i < numPlayers; i++) {
-        INFO_LOG(BRAWLBACK, "lastFrameAcked[%i]: %i", i, this->lastFrameAcked[i]);
+        //INFO_LOG(BRAWLBACK, "lastFrameAcked[%i]: %i", i, this->lastFrameAcked[i]);
         if (minAckFrame == 0 || (this->lastFrameAcked[i] < minAckFrame && this->lastFrameAcked[i] != 0))
             minAckFrame = this->lastFrameAcked[i];
     }

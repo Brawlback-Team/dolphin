@@ -11,7 +11,15 @@ namespace Brawlback
         return (buttonBits & (PADButtonBits::Z << 8)) != 0;
     }
 
-    
+    Match::PlayerFrameData* findInPlayerFrameDataQueue(const PlayerFrameDataQueue& queue, u32 frame) {
+        for (const auto& x : queue) {
+            if (x->frame == frame) {
+                return x.get();
+            }
+        }
+        return nullptr;
+    }
+
 
     namespace Mem {
         

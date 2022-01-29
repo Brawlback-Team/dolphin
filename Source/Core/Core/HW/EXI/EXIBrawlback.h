@@ -9,26 +9,7 @@
 #include "Core/Brawlback/Netplay/Netplay.h"
 #include "Core/Brawlback/TimeSync.h"
 
-/* NOTES:
-
-Possible todo:
-Adapt what slippi does and don't limit the size of input queues by some fixed amount.
-Slippi's input queues grow and shrink depending on how much ping there is, and hence, how
-many inputs need to be stored.
-
-
-
-
-
-*/
-
-
 using namespace Brawlback;
-
-
-typedef std::pair<void*, u32> Buffer;
-typedef std::deque<std::unique_ptr<Match::PlayerFrameData>> PlayerFrameDataQueue;
-
 
 class CEXIBrawlback : public ExpansionInterface::IEXIDevice
 {
@@ -98,6 +79,7 @@ private:
     // --- Rollback
     Match::RollbackInfo rollbackInfo = Match::RollbackInfo();
     void SetupRollback(u32 frame);
+    void HandleLocalInputsDuringPrediction(u32 frame, u8 playerIdx);
     // -------------------------------
 
 
@@ -117,6 +99,8 @@ private:
     std::pair<bool, bool> getInputsForGame(Match::FrameData& framedataToSendToGame, u32 frame);
     void storeLocalInputs(Match::PlayerFrameData* localPlayerFramedata);
     PlayerFrameDataQueue localPlayerFrameData = {};
+    //std::unordered_map<u32, Match::PlayerFrameData*> localPlayerFrameDataMap = {};
+
     // indexes are player indexes
     std::array<PlayerFrameDataQueue, MAX_NUM_PLAYERS> remotePlayerFrameData = {};
     // array of players - key is current frame, val is ptr to that frame's (player) framedata

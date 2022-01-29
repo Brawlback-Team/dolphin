@@ -207,6 +207,10 @@ namespace Brawlback {
 
         void fillByteVectorWithBuffer(std::vector<u8>& vec, u8* buf, size_t size);
     }
+    
+    typedef std::deque<std::unique_ptr<Match::PlayerFrameData>> PlayerFrameDataQueue;
+
+    Match::PlayerFrameData* findInPlayerFrameDataQueue(const PlayerFrameDataQueue& queue, u32 frame);
 
     template <typename T>
     T Clamp(T input, T Max, T Min) {
