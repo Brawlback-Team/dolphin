@@ -25,7 +25,7 @@ public:
     void ReceivedRemoteFramedata(s32 frame, u8 playerIdx, bool hasGameStarted);
 
     // called when we receive an acknowledgement from opponent of our inputs
-    void ProcessFrameAck(FrameAck* frameAck, std::array<bool, 4>& hasInputsThisFrame);
+    void ProcessFrameAck(FrameAck* frameAck);
 
     // --------------------------------------------
 

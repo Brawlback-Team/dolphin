@@ -4,6 +4,9 @@
 
 #include "Core/HW/Memmap.h"
 #include <chrono>
+#include "Common/FileUtil.h"
+#include <iostream>
+#include <fstream>
 
 // --- Mutexes
 std::mutex read_queue_mutex = std::mutex();
@@ -177,9 +180,6 @@ Match::PlayerFrameData CreateDummyPlayerFrameData(u32 frame, u8 playerIdx) {
 // this is called every frame at the beginning of the frame
 void CEXIBrawlback::handleLocalPadData(u8* data)
 {
-    for (auto& x : this->hasInputsThisFrame) // reset
-        x = false;
-
     Match::PlayerFrameData* playerFramedata = (Match::PlayerFrameData*)data;
     int idx = 0;
     // first 4 bytes are current game frame
@@ -335,7 +335,6 @@ std::pair<bool, bool> CEXIBrawlback::getInputsForGame(Match::FrameData& framedat
                 WARN_LOG(BRAWLBACK, "Local pad input range: [%u - %u]\n", this->localPlayerFrameData.back()->frame, this->localPlayerFrameData.front()->frame);
                 framedataToSendToGame.playerFrameDatas[this->localPlayerIdx] = CreateDummyPlayerFrameData(frame, this->localPlayerIdx);
             }
-            hasInputsThisFrame[playerIdx] = foundData.first;
             continue;
         }
         // search for remote player's inputs
@@ -460,11 +459,9 @@ std::pair<bool, bool> CEXIBrawlback::getInputsForGame(Match::FrameData& framedat
         #else
         if (!foundData.second) { // didn't find framedata for this frame.
             INFO_LOG(BRAWLBACK, "no remote framedata - frame %u remotePIdx %i\n", frame, playerIdx);
-            hasInputsThisFrame[playerIdx] = false;
             framedataToSendToGame.playerFrameDatas[playerIdx] = CreateDummyPlayerFrameData(frame, playerIdx);
         }
         #endif
-        this->hasInputsThisFrame[playerIdx] = foundData.second;
     }
 
     return foundData;
@@ -634,7 +631,7 @@ void CEXIBrawlback::ProcessRemoteFrameData(Match::PlayerFrameData* framedatas, u
 }
 
 void CEXIBrawlback::ProcessFrameAck(FrameAck* frameAck) {
-    this->timeSync->ProcessFrameAck(frameAck, this->hasInputsThisFrame);
+    this->timeSync->ProcessFrameAck(frameAck);
 }
 
 void CEXIBrawlback::ProcessGameSettings(Match::GameSettings* opponentGameSettings) {
@@ -781,6 +778,25 @@ void CEXIBrawlback::handleFindOpponent(u8* payload) {
 
     this->server = enet_host_create(&address, 3, 0, 0, 0);
 
+    #define IP_FILENAME "connect.txt"
+    std::string connectIP = "127.0.0.1";
+
+    if (File::Exists(File::GetExeDirectory() + IP_FILENAME)) {
+        std::fstream file;
+        File::OpenFStream(file, File::GetExeDirectory() + IP_FILENAME, std::ios_base::in);
+        connectIP.clear();
+        std::getline(file, connectIP); // read in only one line
+        file.close();
+        INFO_LOG(BRAWLBACK, "IP: %s\n", connectIP.c_str());
+    }
+    else {
+        INFO_LOG(BRAWLBACK, "Creating connect file\n");
+        std::fstream file;
+        file.open(File::GetExeDirectory() + IP_FILENAME, std::ios_base::out);
+        file << connectIP;
+        file.close();
+    }
+
     // just for testing. This should be replaced with a check to see if we are the "host" of the match or not
     if (this->server == NULL) {
         this->isHost = false;
@@ -790,7 +806,7 @@ void CEXIBrawlback::handleFindOpponent(u8* payload) {
         //for (int i = 0; i < 1; i++) { // make peers for all connecting opponents
 
             ENetAddress addr;
-            int set_host_res = enet_address_set_host(&addr, "127.0.0.1");
+            int set_host_res = enet_address_set_host(&addr, connectIP.c_str());
             if (set_host_res < 0) {
                 WARN_LOG(BRAWLBACK, "Failed to enet_address_set_host");
                 return;
@@ -845,6 +861,7 @@ void CEXIBrawlback::DMAWrite(u32 address, u32 size)
         payload = nullptr;
 
 
+    static u64 frameTime = Common::Timer::GetTimeUs();
     switch (command_byte)
     {
 
@@ -870,6 +887,21 @@ void CEXIBrawlback::DMAWrite(u32 address, u32 size)
     case CMD_START_MATCH:
         //INFO_LOG(BRAWLBACK, "DMAWrite: CMD_START_MATCH");
         handleStartMatch(payload);
+
+    /*
+    case CMD_OPEN_LOGIN:
+        {
+            frameTime = Common::Timer::GetTimeUs();
+        }
+        break;
+    case CMD_LOGOUT:
+        {
+            u32 timeDiff = Common::Timer::GetTimeUs() - frameTime;
+            INFO_LOG(BRAWLBACK, "Game logic took %f ms\n", (double)(timeDiff / 1000.0));
+        }
+        break;
+    */
+   
     default:
         //INFO_LOG(BRAWLBACK, "Default DMAWrite %u\n", (unsigned int)command_byte);
         break;

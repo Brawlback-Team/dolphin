@@ -140,7 +140,7 @@ void TimeSync::ReceivedRemoteFramedata(s32 frame, u8 playerIdx, bool hasGameStar
 
 
 // with delay
-void TimeSync::ProcessFrameAck(FrameAck* frameAck, std::array<bool, 4>& hasInputsThisFrame) {
+void TimeSync::ProcessFrameAck(FrameAck* frameAck) {
     std::lock_guard<std::mutex> lock(this->ackTimersMutex);
     u8 playerIdx = frameAck->playerIdx;
     int frame = frameAck->frame; // this is with frame delay
@@ -182,9 +182,6 @@ void TimeSync::ProcessFrameAck(FrameAck* frameAck, std::array<bool, 4>& hasInput
         std::stringstream dispStr;
         dispStr << "Ping (rtt): ";
         dispStr << rtt_ms << " ms\n";
-        dispStr << "Has Inputs: ";
-        for (int i = 0; i < 4; i++) // 
-            dispStr << hasInputsThisFrame[i] << " |";
         OSD::AddTypedMessage(OSD::MessageType::NetPlayPing, dispStr.str(), OSD::Duration::NORMAL, OSD::Color::GREEN);
     }
 }

@@ -66,7 +66,7 @@ void BrawlbackSavestate::initBackupLocs()
         // data/bss sections
         
         // 805b8a00
-
+        
         {0x800064E0, 0x800064E0 + 0x3280, nullptr}, // 0
         {0x80009760, 0x80009760 + 0x3100, nullptr}, // 1
         {0x804064E0, 0x804064E0 + 0x300, nullptr}, // 2
@@ -75,6 +75,7 @@ void BrawlbackSavestate::initBackupLocs()
         {0x80420680, 0x80420680 + 0x741C0, nullptr}, // 5
         {0x8059C420, 0x8059C420 + 0x3B60, nullptr}, // 6
         {0x805A1320, 0x805A1320 + 0x3E00, nullptr}, // 7 
+        
         // data sections 8-10 are size 0
 
         // bss
@@ -120,13 +121,23 @@ void BrawlbackSavestate::initBackupLocs()
 
         // mem2
 
+        // not 100% sure these are right, and these classes might also use other sections of mem
+        // taskScheduler 805b5160 size: 0x178
+        // efManager:
+        // @ 80611f60 size: 0x13c
+        // @ 80b8db60 size: 0x456e0
+        // @ 80611f60 size: 0x4c
+        // @ 80b8db60 size: 0x6000
+
+
+
         //{0x90199800, 0x90e61400, nullptr }, // Sound
         //{0x90e77500, 0x90fddc00, nullptr }, // Network
         {0x90e61400, 0x90e77500, nullptr }, // WiiPad
         //{0x91018b00, 0x91301b00, nullptr }, // IteamResource
         //{0x91301b00, 0x9134cc00, nullptr }, // Replay
         //{0x92f34700, 0x9359ae00, nullptr }, // StageResoruce
-        {0x9151fa00, 0x91a72e00, nullptr }, // Fighter1Resoruce
+        {0x9151fa00, 0x91a72e00, nullptr }, // Fighter1Resoruce  (crashes without this, but it's so big... need to cut this down)
         {0x91b04c80, 0x92058080, nullptr }, // Fighter2Resoruce
         //{0x920e9f00, 0x9263d300, nullptr }, // Fighter3Resoruce
         //{0x926cf180, 0x92c22580, nullptr }, // Fighter4Resoruce
@@ -156,6 +167,10 @@ void BrawlbackSavestate::initBackupLocs()
         {0x935d7660, 0x000089a0}, // CPP Framework heap (subject to change...??)
 
         // {0x805bacc0+0x40, 0x40*4} // gfPadSystem
+
+        {0x80663e00, 0x1a4}, // CameraController
+        {0x80663b40, 0x198}, // cmAiController
+        {0x805b6d20, 0x740}, // gfCameraManager
     };
 
     //SlippiInitBackupLocations(this->backupLocs, allMem, excludeSections);
@@ -176,7 +191,7 @@ void BrawlbackSavestate::initBackupLocs()
 
 typedef std::vector<SlippiUtility::Savestate::ssBackupLoc>::iterator backupLocIterator;
 
-void captureMemRegions(const std::vector<SlippiUtility::Savestate::ssBackupLoc>& backupLocs, backupLocIterator start, backupLocIterator end) {
+void captureMemRegions(backupLocIterator start, backupLocIterator end) {
     for (auto it = start; it != end; ++it) {
         auto size = it->endAddress - it->startAddress;
         Memory::CopyFromEmu(it->data, it->startAddress, size);  // game -> emu
@@ -185,8 +200,7 @@ void captureMemRegions(const std::vector<SlippiUtility::Savestate::ssBackupLoc>&
 
 void BrawlbackSavestate::Capture()
 {
-
-    captureMemRegions(backupLocs, backupLocs.begin(), backupLocs.end());
+    captureMemRegions(backupLocs.begin(), backupLocs.end());
 
     /*
     // copy game mem

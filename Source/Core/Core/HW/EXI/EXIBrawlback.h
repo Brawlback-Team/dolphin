@@ -105,8 +105,6 @@ private:
     std::array<PlayerFrameDataQueue, MAX_NUM_PLAYERS> remotePlayerFrameData = {};
     // array of players - key is current frame, val is ptr to that frame's (player) framedata
     std::array<std::unordered_map<u32, Match::PlayerFrameData*>, MAX_NUM_PLAYERS> remotePlayerFrameDataMap = {};
-
-    std::array<bool, MAX_NUM_PLAYERS> hasInputsThisFrame = {false, false, false, false}; // tmp - for debugging
     // -------------------------------
 
 

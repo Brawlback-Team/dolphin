@@ -18,7 +18,7 @@
 // number of max FrameData's to keep in the queue
 #define FRAMEDATA_MAX_QUEUE_SIZE 120 
 // update ping display every X frames
-#define PING_DISPLAY_INTERVAL 1
+#define PING_DISPLAY_INTERVAL 60
 
 #define ONLINE_LOCKSTEP_INTERVAL 30
 #define GAME_START_FRAME 0
@@ -30,7 +30,7 @@
 #define BRAWLBACK_PORT 7779
 
 
-// 59.94 Hz   ( -- is this accurate? This is the case for melee, idk if it also applies here)
+// 59.94 Hz (16.66 ms in a frame for 60fps)  ( -- is this accurate? This is the case for melee, idk if it also applies here)
 #define USEC_IN_FRAME 16683
 //#define USEC_IN_FRAME 16666
 
