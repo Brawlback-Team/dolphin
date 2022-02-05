@@ -20,7 +20,7 @@ Core/Core/Source/HW/EXI/EXIBrawlback.h/.cpp
 Core/Core/Source/Brawlback  
 
 
-
+This dolphin fork is to be used in conjunction with [Brawlback](https://github.com/FaultyPine/Brawlback).  
 
 
 
