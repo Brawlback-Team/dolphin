@@ -41,6 +41,26 @@ struct SConfig
   bool bJITNoBlockCache = false;
   bool bJITNoBlockLinking = false;
 
+    // Slippi
+	bool m_slippiSaveReplays = true;
+	int m_slippiEnableQuickChat = 2; // Off
+	bool m_slippiReplayMonthFolders = false;
+	std::string m_strSlippiReplayDir;
+	bool m_slippiForceNetplayPort = false;
+	int m_slippiNetplayPort;
+	bool m_slippiForceLanIp = false;
+	bool m_slippiCustomMMEnabled = true;
+	std::string m_slippiCustomMMServerURL = "165.227.213.180";
+	std::string m_slippiCustomMMReportingURL = "https://lylat.gg/reports";
+	std::string m_slippiLanIp = "";
+	bool m_meleeUserIniBootstrapped = false;
+	bool m_blockingPipes = false;
+	bool m_coutEnabled = false;
+
+  int iTimingVariance = 40;  // in milli secounds
+  bool bCPUThread = true;
+  bool bSyncGPUOnSkipIdleHack = true;
+  bool bHLE_BS2 = true;
   bool bCopyWiiSaveNetplay = true;
 
   bool bWii = false;

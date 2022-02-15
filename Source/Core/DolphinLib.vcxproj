@@ -23,6 +23,16 @@
   <ImportGroup Condition="'$(Platform)'=='ARM64'">
     <Import Project="DolphinLib.ARM64.props" />
   </ImportGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <TreatWarningAsError>false</TreatWarningAsError>
+    </ClCompile>
+  </ItemDefinitionGroup>
   <ItemGroup>
     <ProjectReference Include="$(CoreDir)Common\SCMRevGen.vcxproj">
       <Project>{41279555-f94f-4ebc-99de-af863c10c5c4}</Project>
@@ -69,15 +79,16 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Core\Brawlback\BrawlbackUtility.cpp" />
+    <!-- <ClCompile Include="Core\Brawlback\SlippiMatchmaking.cpp" /> -->
     <ClCompile Include="Core\Brawlback\Savestate.cpp" />
     <ClCompile Include="Core\Brawlback\TimeSync.cpp" />
     <ClCompile Include="Core\Brawlback\SlippiUtility.cpp" />
     <ClCompile Include="Core\Brawlback\Netplay\Netplay.cpp" />
     <ClCompile Include="Core\HW\EXI\EXIBrawlback.cpp" />
-
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Core\Brawlback\BrawlbackUtility.h" />
+    <!-- <ClInclude Include="Core\Brawlback\SlippiMatchmaking.h" /> -->
     <ClInclude Include="Core\Brawlback\Brawltypes.h" />
     <ClInclude Include="Core\Brawlback\Savestate.h" />
     <ClInclude Include="Core\Brawlback\TimeSync.h" />
