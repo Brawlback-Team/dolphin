@@ -13,6 +13,20 @@ add_library(core
   Boot/ElfReader.cpp
   Boot/ElfReader.h
   Boot/ElfTypes.h
+  Brawlback/include/json.hpp
+  Brawlback/Netplay/Matchmaking.cpp
+  Brawlback/Netplay/Matchmaking.h
+  Brawlback/Netplay/Netplay.cpp
+  Brawlback/Netplay/Netplay.h
+  Brawlback/BrawlbackUtility.cpp
+  Brawlback/BrawlbackUtility.h
+  Brawlback/Brawltypes.h
+  Brawlback/Savestate.cpp
+  Brawlback/Savestate.h
+  Brawlback/SlippiUtility.cpp
+  Brawlback/SlippiUtility.h
+  Brawlback/TimeSync.cpp
+  Brawlback/TimeSync.h
   BootManager.cpp
   BootManager.h
   CheatCodes.h
@@ -198,6 +212,8 @@ add_library(core
   HW/EXI/EXI_DeviceMemoryCard.h
   HW/EXI/EXI_DeviceMic.cpp
   HW/EXI/EXI_DeviceMic.h
+  HW/EXI/EXIBrawlback.cpp
+  HW/EXI/EXIBrawlback.h
   HW/EXI/EXI.cpp
   HW/EXI/EXI.h
   HW/GBAPad.cpp
@@ -605,7 +621,6 @@ PUBLIC
   videonull
   videoogl
   videosoftware
-  GGPO
 
 PRIVATE
   FatFs

@@ -7,6 +7,7 @@
 #include "Core/Brawlback/Savestate.h"
 #include "Core/Brawlback/BrawlbackUtility.h"
 #include "Core/Brawlback/Netplay/Netplay.h"
+#include "Core/Brawlback/Netplay/Matchmaking.h"
 #include "Core/Brawlback/TimeSync.h"
 
 using namespace Brawlback;
@@ -34,7 +35,7 @@ private:
     void handleCaptureSavestate(u8* data);
     void handleLoadSavestate(u8* data);
     void handleLocalPadData(u8* data);
-    void handleFindOpponent(u8* payload);
+    void handleFindMatch(u8* payload);
     void handleStartMatch(u8* payload);
 
     template <typename T>
@@ -45,6 +46,7 @@ private:
 
 
     // --- Net
+    void MatchmakingThreadFunc();
     void NetplayThreadFunc();
     void ProcessNetReceive(ENetEvent* event);
     void ProcessRemoteFrameData(Match::PlayerFrameData* framedata, u8 numFramedatas);
@@ -53,8 +55,12 @@ private:
     void ProcessFrameAck(FrameAck* frameAck);
     u32 GetLatestRemoteFrame();
     ENetHost* server = nullptr;
+    Matchmaking::MatchSearchSettings lastSearch;
     std::thread netplay_thread;
+    std::thread matchmaking_thread;
     std::unique_ptr<BrawlbackNetplay> netplay;
+    std::unique_ptr<Matchmaking> matchmaking;
+
     bool isConnected = false;
     // -------------------------------
 
@@ -69,6 +75,7 @@ private:
     std::unique_ptr<Match::GameSettings> gameSettings;
     // -------------------------------
 
+    Brawlback::UserInfo getUserInfo();
 
     // --- Time sync
     void DropAckedInputs(u32 currFrame);
@@ -82,7 +89,7 @@ private:
     void HandleLocalInputsDuringPrediction(u32 frame, u8 playerIdx);
     // -------------------------------
 
-
+    void connectToOpponent();
 
 
     // --- Savestates

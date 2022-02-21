@@ -1,4 +1,4 @@
-#include "Netplay.h"
+#include "Core/Brawlback/Netplay/Netplay.h"
 
 #include <algorithm>
 #include <fstream>

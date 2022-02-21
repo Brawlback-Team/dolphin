@@ -40,6 +40,18 @@ namespace Brawlback {
     const u8 DISPLAY_NAME_SIZE = 31;
     const u8 CONNECT_CODE_SIZE = 10;
 
+    struct UserInfo
+    {
+      std::string uid = "";
+      std::string playKey = "";
+      std::string displayName = "";
+      std::string connectCode = "";
+      std::string latestVersion = "";
+      std::string fileContents = "";
+
+      int port;
+    };
+
     enum EXICommand : u8
     {
       CMD_UNKNOWN = 0,
