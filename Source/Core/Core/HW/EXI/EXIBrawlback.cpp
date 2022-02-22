@@ -813,24 +813,19 @@ void CEXIBrawlback::MatchmakingThreadFunc()
 }
 
 void CEXIBrawlback::connectToOpponent() {
-  ENetAddress address;
-  address.host = ENET_HOST_ANY;
-  address.port = this->matchmaking->GetLocalPort();
-
-
   this->isHost = this->matchmaking->IsHost();
 
   if(this->isHost) {
+    INFO_LOG(BRAWLBACK, "Matchmaking: Creating server...");
+    ENetAddress address;
+    address.host = ENET_HOST_ANY;
+    address.port = this->matchmaking->GetLocalPort();
 
-    //this->server = enet_host_create(&address, 1, 3, 0, 0);
-    this->server = enet_host_create(&address, 3, 0, 0, 0);
+    this->server = enet_host_create(&address, 10, 3, 0, 0);
 
   } else {
-
-    WARN_LOG(BRAWLBACK, "Failed to init enet server!");
-    WARN_LOG(BRAWLBACK, "Creating client instead...");
-    this->server = enet_host_create(NULL, 3, 0, 0, 0);
-    //this->server = enet_host_create(NULL, 1, 3, 0, 0);
+    INFO_LOG(BRAWLBACK, "Matchmaking: Creating client...");
+    this->server = enet_host_create(NULL, 10, 3, 0, 0);
     //for (int i = 0; i < 1; i++) { // make peers for all connecting opponents
 
     bool connectedToAtLeastOne = false;
