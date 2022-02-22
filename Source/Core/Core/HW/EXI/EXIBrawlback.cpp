@@ -35,11 +35,21 @@ CEXIBrawlback::CEXIBrawlback()
 Brawlback::UserInfo CEXIBrawlback::getUserInfo() {
   Brawlback::UserInfo info;
 
-  // TODO: Load lylat.json
-  info.uid = "test";
-  info.playKey = "test";
+  std::fstream lylat;
+  std::string lylat_json_path = File::GetExeDirectory() + "/lylat.json";
+  INFO_LOG(BRAWLBACK, "Reading lylat json from %s\n", lylat_json_path.c_str());
+  File::OpenFStream(lylat, lylat_json_path, std::ios_base::in);
+  json lylat_json;
+  lylat_json << lylat;
+  lylat.close();
+  INFO_LOG(BRAWLBACK, lylat_json.dump(4).c_str());
+
+  lylat_json = lylat_json[0];
+
+  info.uid = lylat_json["uid"].get<std::string>();
+  info.playKey = lylat_json["playKey"].get<std::string>();
   info.displayName = "Dev Test";
-  info.connectCode = "test#123";
+  info.connectCode = lylat_json["connect_code"].get<std::string>();
   info.latestVersion = "test";
   info.fileContents = "test";
 
@@ -50,13 +60,14 @@ CEXIBrawlback::~CEXIBrawlback()
 {
     enet_deinitialize();
     enet_host_destroy(this->server);
-    if (this->netplay_thread.joinable()) {
+    //if (this->netplay_thread.joinable()) {
         this->netplay_thread.join();
-    }
+    //}
 
-  if (this->matchmaking_thread.joinable()) {
-    this->matchmaking_thread.join();
-  }
+    //if (this->matchmaking_thread.joinable()) {
+      this->matchmaking_thread.join();
+    //}
+    this->matchmaking.release();
 }
 
 
@@ -805,11 +816,13 @@ void CEXIBrawlback::MatchmakingThreadFunc()
       break;
     case Matchmaking::ProcessState::ERROR_ENCOUNTERED:
       ERROR_LOG(BRAWLBACK, "MATCHMAKING: ERROR TRYING TO CONNECT!");
+      return;
       break;
     default:
       break;
     }
   }
+  INFO_LOG(BRAWLBACK, "~~~~~~~~~~~~~~ END MATCHMAKING THREAD ~~~~~~~~~~~~~~\n");
 }
 
 void CEXIBrawlback::connectToOpponent() {
@@ -866,7 +879,7 @@ void CEXIBrawlback::handleFindMatch(u8* payload) {
 
     this->server = enet_host_create(&address, 3, 0, 0, 0);
 
-#define IP_FILENAME "connect.txt"
+#define IP_FILENAME "/connect.txt"
     std::string connectIP = "127.0.0.1";
 
     if (File::Exists(File::GetExeDirectory() + IP_FILENAME))

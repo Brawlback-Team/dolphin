@@ -298,10 +298,12 @@ void Matchmaking::startMatchmaking()
 	auto userInfo = m_user;
 	while (m_client == nullptr && retryCount < 15)
 	{
-		bool customPort = BRAWLBACK_PORT; // TODO: allow custom port SConfig::GetInstance().m_slippiForceNetplayPort;
+		bool customPort = SConfig::GetInstance().m_slippiForceNetplayPort;
 
-		if (customPort)
-			m_hostPort = BRAWLBACK_PORT; // TODO: use config port SConfig::GetInstance().m_slippiNetplayPort;
+		if (customPort) {
+			m_hostPort = SConfig::GetInstance().m_slippiNetplayPort;
+            INFO_LOG(BRAWLBACK, "Using custom port: %i\n", m_hostPort);
+        }
 		else
 			m_hostPort = 41000 + (generator() % 10000);
 		ERROR_LOG(BRAWLBACK, "[Matchmaking] Port to use: %d...", m_hostPort);
@@ -448,8 +450,10 @@ void Matchmaking::startMatchmaking()
 	        {"mode", m_searchSettings.mode},
 	        {"connectCode", connectCodeBuf},
 	        {"game", {
-                {"id", SConfig::GetInstance().GetGameID()},
-                {"ex_id", SConfig::GetInstance().GetGameID()},
+                //{"id", SConfig::GetInstance().GetGameID()},
+                {"id", "RSBE01"},
+                //{"ex_id", SConfig::GetInstance().GetGameID()},
+                {"ex_id", "RSBE01"},
 	              {"revision", SConfig::GetInstance().GetRevision()},
                 {"type", 1},// GameType::VANILLA
                 {"name", SConfig::GetInstance().GetTitleName()},
@@ -679,27 +683,19 @@ u8 Matchmaking::RemotePlayerCount()
 }
 
 std::vector<std::string> Matchmaking::GetRemoteIPAddresses() {
-  return *((std::vector<std::string>*) this->GetRemoteParts(true));
+    std::vector<std::string> addrs;
+    for (int i = 0; i < m_remoteIps.size(); i++)
+    {
+        addrs.push_back(SplitString(m_remoteIps[i], ':')[0]);
+    }
+    return addrs;
 }
 
 std::vector<u16> Matchmaking::GetRemotePorts() {
-  return *((std::vector<u16>*) this->GetRemoteParts(false));
+    std::vector<u16> ports;
+    for (int i = 0; i < m_remoteIps.size(); i++)
+    {
+        ports.push_back(std::stoi(SplitString(m_remoteIps[i], ':')[1]));
+    }
+    return ports;
 }
-
-void* Matchmaking::GetRemoteParts(bool getIpAddress) {
-  auto userInfo = m_user;
-
-  std::vector<std::string> remoteParts;
-  std::vector<std::string> addrs;
-  std::vector<u16> ports;
-  for (int i = 0; i < m_remoteIps.size(); i++)
-  {
-    remoteParts.clear();
-    remoteParts = SplitString(m_remoteIps[i], ':');
-    addrs.push_back(remoteParts[0]);
-    ports.push_back(std::stoi(remoteParts[1]));
-  }
-
-  return getIpAddress ? (void*)&addrs : (void*)&ports;
-}
-

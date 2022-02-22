@@ -66,7 +66,6 @@ public:
 
   std::vector<std::string> GetRemoteIPAddresses();
   std::vector<u16> GetRemotePorts();
-  void* GetRemoteParts(bool getIpAddress);
 
   // std::unique_ptr<NetplayClient> GetNetplayClient();
   std::string GetErrorMessage();

@@ -79,7 +79,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Core\Brawlback\BrawlbackUtility.cpp" />
-    <!-- <ClCompile Include="Core\Brawlback\SlippiMatchmaking.cpp" /> -->
+    <ClCompile Include="Core\Brawlback\Netplay\Matchmaking.cpp" />
     <ClCompile Include="Core\Brawlback\Savestate.cpp" />
     <ClCompile Include="Core\Brawlback\TimeSync.cpp" />
     <ClCompile Include="Core\Brawlback\SlippiUtility.cpp" />
@@ -88,7 +88,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Core\Brawlback\BrawlbackUtility.h" />
-    <!-- <ClInclude Include="Core\Brawlback\SlippiMatchmaking.h" /> -->
+    <ClInclude Include="Core\Brawlback\Netplay\Matchmaking.h" />
     <ClInclude Include="Core\Brawlback\Brawltypes.h" />
     <ClInclude Include="Core\Brawlback\Savestate.h" />
     <ClInclude Include="Core\Brawlback\TimeSync.h" />
