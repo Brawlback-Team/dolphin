@@ -2,7 +2,9 @@
 
 #include <unordered_map>
 #include <array>
+#include <fstream>
 
+#include "Common/FileUtil.h"
 #include "Common/CommonTypes.h"
 #include "Core/Brawlback/Brawltypes.h"
 
@@ -218,6 +220,13 @@ namespace Brawlback {
         }
 
         void fillByteVectorWithBuffer(std::vector<u8>& vec, u8* buf, size_t size);
+    }
+    namespace Sync {
+        std::string getSyncLogFilePath();
+        std::string str_byte(uint8_t byte);
+        std::string str_half(u16 half);
+        void SyncLog(const std::string& msg);
+        std::string stringifyFramedata(const Match::PlayerFrameData& pfd);
     }
     
     typedef std::deque<std::unique_ptr<Match::PlayerFrameData>> PlayerFrameDataQueue;

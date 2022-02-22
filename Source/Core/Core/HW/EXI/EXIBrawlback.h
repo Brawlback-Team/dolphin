@@ -105,12 +105,15 @@ private:
     void handleSendInputs(u32 frame);
     std::pair<bool, bool> getInputsForGame(Match::FrameData& framedataToSendToGame, u32 frame);
     void storeLocalInputs(Match::PlayerFrameData* localPlayerFramedata);
+
+    // local player input history
     PlayerFrameDataQueue localPlayerFrameData = {};
+
     //std::unordered_map<u32, Match::PlayerFrameData*> localPlayerFrameDataMap = {};
 
-    // indexes are player indexes
+    // remote player input history (indexes are player indexes)
     std::array<PlayerFrameDataQueue, MAX_NUM_PLAYERS> remotePlayerFrameData = {};
-    // array of players - key is current frame, val is ptr to that frame's (player) framedata
+    // array of players - key is current frame, val is ptr to that frame's (player)framedata
     std::array<std::unordered_map<u32, Match::PlayerFrameData*>, MAX_NUM_PLAYERS> remotePlayerFrameDataMap = {};
     // -------------------------------
 

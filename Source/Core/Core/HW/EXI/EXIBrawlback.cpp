@@ -1,12 +1,11 @@
 
 
 #include "EXIBrawlback.h"
+#include "Core/ConfigManager.h"
 
 #include "Core/HW/Memmap.h"
 #include <chrono>
-#include "Common/FileUtil.h"
 #include <iostream>
-#include <fstream>
 
 
 
@@ -18,6 +17,14 @@ std::mutex localPadQueueMutex = std::mutex();
 
 CEXIBrawlback::CEXIBrawlback()
 {
+    INFO_LOG(BRAWLBACK, "------- %s\n", SConfig::GetInstance().GetGameID().c_str());
+    if (std::filesystem::exists(Sync::getSyncLogFilePath())) {
+        std::filesystem::remove(Sync::getSyncLogFilePath());
+    }
+    if (std::filesystem::exists(File::GetExeDirectory() + "User/Logs/dolphin.log")) {
+        std::filesystem::remove(File::GetExeDirectory() + "User/Logs/dolphin.log");
+    }
+
     INFO_LOG(BRAWLBACK, "BRAWLBACK exi ctor");
     // TODO: initialize this only when finding matches
     auto enet_init_res = enet_initialize();
@@ -265,6 +272,13 @@ void CEXIBrawlback::handleLocalPadData(u8* data)
     }
     else {
         this->SendCmdToGame(EXICommand::CMD_FRAMEDATA, &framedataToSendToGame);
+        
+        // for checking desyncs
+        //for (int i = 0; i < 2; i++) {
+        //    Sync::SyncLog(Sync::stringifyFramedata(framedataToSendToGame.playerFrameDatas[i]));
+        //}
+        //INFO_LOG(BRAWLBACK, "Using injected inputs for this frame:\n");
+        //INFO_LOG(BRAWLBACK, "Inputs: %u\n", framedataToSendToGame.playerFrameDatas[0].pad.buttons);
     }
 
 }
@@ -515,11 +529,13 @@ void CEXIBrawlback::SetupRollback(u32 frame) {
             if (pIdx == this->localPlayerIdx) {
 
                 // on the last frame of rollback, the rest of the logic still hasn't grabbed local inputs.
-                // we those, so grab them here
-                if (i == this->rollbackInfo.endFrame) {
+                // we need those, so grab them here
+                if (i == this->rollbackInfo.endFrame) { 
                     Match::PlayerFrameData* pastFramedata = findInPlayerFrameDataQueue(this->localPlayerFrameData, i);
-                    if (pastFramedata)
+                    if (pastFramedata) {
                         memcpy(&this->rollbackInfo.pastFrameDatas[frameDiff].playerFrameDatas[pIdx], pastFramedata, sizeof(Match::PlayerFrameData));
+                        INFO_LOG(BRAWLBACK, "Copying in pastFrameData for frame %u for pidx %u\n", i, (unsigned int)pIdx);
+                    }
                 }
                 continue;
             }

@@ -181,7 +181,8 @@ void TimeSync::ProcessFrameAck(FrameAck* frameAck) {
     if (frame % PING_DISPLAY_INTERVAL == 0) {
         std::stringstream dispStr;
         dispStr << "Ping (rtt): ";
-        dispStr << rtt_ms << " ms\n";
+        dispStr << (int)rtt_ms << " ms\n";
+        dispStr << "Frame delay: " << FRAME_DELAY << "\n";
         OSD::AddTypedMessage(OSD::MessageType::NetPlayPing, dispStr.str(), OSD::Duration::NORMAL, OSD::Color::GREEN);
     }
 }
