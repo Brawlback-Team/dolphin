@@ -18,12 +18,14 @@ std::mutex localPadQueueMutex = std::mutex();
 CEXIBrawlback::CEXIBrawlback()
 {
     INFO_LOG(BRAWLBACK, "------- %s\n", SConfig::GetInstance().GetGameID().c_str());
+#ifdef _WIN32
     if (std::filesystem::exists(Sync::getSyncLogFilePath())) {
         std::filesystem::remove(Sync::getSyncLogFilePath());
     }
     if (std::filesystem::exists(File::GetExeDirectory() + "User/Logs/dolphin.log")) {
         std::filesystem::remove(File::GetExeDirectory() + "User/Logs/dolphin.log");
     }
+#endif
 
     INFO_LOG(BRAWLBACK, "BRAWLBACK exi ctor");
     // TODO: initialize this only when finding matches
@@ -42,21 +44,28 @@ CEXIBrawlback::CEXIBrawlback()
 Brawlback::UserInfo CEXIBrawlback::getUserInfo() {
   Brawlback::UserInfo info;
 
-  std::fstream lylat;
-  std::string lylat_json_path = File::GetExeDirectory() + "/lylat.json";
-  INFO_LOG(BRAWLBACK, "Reading lylat json from %s\n", lylat_json_path.c_str());
-  File::OpenFStream(lylat, lylat_json_path, std::ios_base::in);
-  json lylat_json;
-  lylat_json << lylat;
-  lylat.close();
-  INFO_LOG(BRAWLBACK, lylat_json.dump(4).c_str());
+  std::string lylat;
+#ifdef _WIN32
+    std::string lylat_json_path = File::GetExeDirectory() + "/lylat.json";
+#else
+    // This will look on "~/Libraries/Application Support/Dolphin/lylat.json" on macosx
+    std::string lylat_json_path = File::GetUserPath(D_USER_IDX) + "lylat.json";
+#endif
+    INFO_LOG(BRAWLBACK, "Reading lylat json from %s\n", lylat_json_path.c_str());
+    std::string data;
+    if (!File::ReadFileToString(lylat_json_path, data))
+    {
+        ERROR_LOG(BRAWLBACK, "Could not find lylat.json.");
+        return info;
+    }
 
-  lylat_json = lylat_json[0];
+  json j = json::parse(data);
+  INFO_LOG(BRAWLBACK, "JSON Contents: %s", j.dump(4).c_str());
 
-  info.uid = lylat_json["uid"].get<std::string>();
-  info.playKey = lylat_json["playKey"].get<std::string>();
+  info.uid = j["uid"].get<std::string>();
+  info.playKey = j["playKey"].get<std::string>();
+  info.connectCode = j["connectCode"].get<std::string>();
   info.displayName = "Dev Test";
-  info.connectCode = lylat_json["connect_code"].get<std::string>();
   info.latestVersion = "test";
   info.fileContents = "test";
 
