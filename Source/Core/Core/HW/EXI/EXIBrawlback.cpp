@@ -76,13 +76,13 @@ CEXIBrawlback::~CEXIBrawlback()
 {
     enet_deinitialize();
     enet_host_destroy(this->server);
-    //if (this->netplay_thread.joinable()) {
+    if (this->netplay_thread.joinable()) {
         this->netplay_thread.join();
-    //}
+    }
 
-    //if (this->matchmaking_thread.joinable()) {
+    if (this->matchmaking_thread.joinable()) {
       this->matchmaking_thread.join();
-    //}
+    }
     this->matchmaking.release();
 }
 
