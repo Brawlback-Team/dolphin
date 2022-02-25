@@ -14,9 +14,15 @@
 #include <vector>
 
 #include "Core/Brawlback/BrawlbackUtility.h"
+
+#pragma warning( push )
+#pragma warning( disable : 4946 )
 #include "Core/Brawlback/include/json.hpp"
+#pragma warning( pop )
 
 using json = nlohmann::json;
+
+// NOTE: Heavily derived from Slippi's Matchmaking class/logic.
 
 class Matchmaking
 {
