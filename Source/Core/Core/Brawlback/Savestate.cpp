@@ -5,6 +5,9 @@
 #include <Common/MemoryUtil.h>
 #include <Core/HW/EXI/EXI.h>
 #include <thread>
+#include "VideoCommon/OnScreenDisplay.h"
+
+#include "MemRegions.h"
 
 #define LOW_BOUND_MEM 0x80000000
 
@@ -119,10 +122,10 @@ void BrawlbackSavestate::initBackupLocs()
 
         //{0x80673460, 0x80b8db60, nullptr, "OverlayCommon"}, // OverlayCommon 5mb
         //{0x80673460, 0x80673460+0x28D380, nullptr, "OverlayCommon first half"}, // OverlayCommon first half
-        {/*0x80673460+0x28D380*/0x809007E0, 0x80b8db60, nullptr, "OverlayCommon second half"}, // OverlayCommon second half
+        //{/*0x80673460+0x28D380*/0x809007E0, 0x80b8db60, nullptr, "OverlayCommon second half"}, // OverlayCommon second half
 
         //{/*0x80673460+0x28D380*/0x809007E0, 0x809007E0+0x1469C0, nullptr, "OverlayCommon 3/4"}, // OverlayCommon 3/4
-        //{/*0x80673460+0x28D380*/0x809007E0+0x1469C0, 0x80b8db60, nullptr, "OverlayCommon 4/4"}, // OverlayCommon 4/4
+        {/*0x80673460+0x28D380*/0x809007E0+0x1469C0, 0x80b8db60, nullptr, "OverlayCommon 4/4"}, // OverlayCommon 4/4
 
         //{0x810f1a60, 0x81162560, nullptr, "OverlayStage"}, // OverlayStage
         //{0x81162560, 0x811aa160, nullptr, "OverlayMenu"}, // OverlayMenu
@@ -146,23 +149,6 @@ void BrawlbackSavestate::initBackupLocs()
 
 
 
-        // invalid read 0x80046c90
-        // crash (with camera structs excluded)
-        // 0x81287908
-        // 0x800473cc
-        // 0x807143b0
-        // 0x807109a0
-        // 0x808e4a64
-        // 0x8002e618
-        // crash (without camera structs excluded)
-        /*Address:      Back Chain    LR Save
-        0x805b4cf0:   0x805b4d00    0x8127ad30
-        0x805b4d00:   0x805b4d20    0x8071ea60
-        0x805b4d20:   0x805b4d40    0x807271e4
-        0x805b4d40:   0x805b4d70    0x80712de0
-        0x805b4d70:   0x805b4d80    0x808e3a84
-        0x805b4d80:   0x805b4da0    0x808e4d88
-        */
 
         //{0x9151fa00, 0x91a72e00, nullptr, "Fighter1Resource"}, // Fighter1Resource  (crashes without this, but it's so big... need to cut this down)
         {0x9151fa00, 0x9151fa00+0x2A9A00, nullptr, "first half of Fighter1Resource"}, // first half of Fighter1Resource
@@ -204,7 +190,7 @@ void BrawlbackSavestate::initBackupLocs()
 
         {0x935d7660, 0x000089a0}, // CPP Framework heap (subject to change...??)
 
-
+        //{0x805bacc0, 0x40 * 5}, // gfPadSystem
         
         {0x80663e00, 0x1a4}, // CameraController
         {0x80663b40, 0x198}, // cmAiController
@@ -213,7 +199,8 @@ void BrawlbackSavestate::initBackupLocs()
     };
 
     //SlippiInitBackupLocations(this->backupLocs, allMem, excludeSections);
-    SlippiInitBackupLocations(this->backupLocs, fullBackupRegions, excludeSections);
+    //SlippiInitBackupLocations(this->backupLocs, fullBackupRegions, excludeSections);
+    SlippiInitBackupLocations(this->backupLocs, memRegions, excludeSections);
     //SlippiInitBackupLocations(this->backupLocs, test, excludeSections);
   
     static bool once = true;
@@ -226,6 +213,8 @@ void BrawlbackSavestate::initBackupLocs()
             totalsize += size;
         }
         double dsize = ((double)totalsize / 1000.0) / 1000.0;
+        std::string savestates_str = "Savestates total size: " + std::to_string(dsize) + " mb\n";
+        OSD::AddTypedMessage(OSD::MessageType::Typeless, savestates_str, OSD::Duration::NORMAL, OSD::Color::GREEN);
         INFO_LOG(BRAWLBACK, "Savestates total size: %f mb\n", dsize);
     }
     once = false;

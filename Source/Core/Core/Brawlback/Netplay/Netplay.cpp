@@ -67,7 +67,7 @@ void BrawlbackNetplay::BroadcastGameSettings(ENetHost* server, Match::GameSettin
     settingsPckt.append(settings, sizeof(Match::GameSettings));
 
     this->BroadcastPacket(settingsPckt, ENET_PACKET_FLAG_RELIABLE, server);
-    INFO_LOG(BRAWLBACK, "Sent game settings data packet");
+    INFO_LOG(BRAWLBACK, "Sent game settings data packet\n");
 }
 
 
