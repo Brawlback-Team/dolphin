@@ -67,9 +67,10 @@ namespace Brawlback
     }
 
     namespace Sync {
+        // utilities to use for logging game info & finding desyncs
         using Mem::bit_rep;
 
-        std::string Sync::getSyncLogFilePath() { return File::GetExeDirectory() + "synclog.txt"; }
+        std::string Sync::getSyncLogFilePath() { return File::GetExeDirectory() + "/synclog.txt"; }
         
         std::string Sync::str_byte(uint8_t byte)
         {
@@ -122,6 +123,48 @@ namespace Brawlback
             return ret;
         }
 
+    }
+
+    namespace Dump {
+        
+        void DumpArray(const std::string& filename, const u8* data, size_t length)
+        {
+            if (!data)
+                return;
+
+            File::IOFile f(filename, "wb");
+
+            if (!f)
+            {
+                ERROR_LOG(BRAWLBACK, "Failed to dump %s: Can't open file\n", filename.c_str());
+                return;
+            }
+
+            if (!f.WriteBytes(data, length))
+            {
+                ERROR_LOG(BRAWLBACK, "Failed to dump %s: Failed to write to file\n", filename.c_str());
+            }
+        }
+
+        void DoMemDumpIteration(int& dump_num) {
+            std::string dump_num_str = std::to_string(dump_num);
+            std::string frame_folder = File::GetUserPath(D_DUMP_IDX) + "/memdumps/dump" + dump_num_str;
+            if (!std::filesystem::exists(frame_folder))
+                std::filesystem::create_directories(frame_folder);
+            
+            std::string mem1_file = frame_folder + "/mem1_" + dump_num_str + ".raw";
+            std::string mem2_file = frame_folder + "/mem2_" + dump_num_str + ".raw";
+
+            Dump::DumpMem(AddressSpace::Type::Mem1, mem1_file);
+            Dump::DumpMem(AddressSpace::Type::Mem2, mem2_file);
+            dump_num += 1;
+        }
+
+        void DumpMem(AddressSpace::Type memType, const std::string& dumpPath) {
+            AddressSpace::Accessors* accessors = AddressSpace::GetAccessors(memType);
+            DumpArray(dumpPath, accessors->begin(),
+                    std::distance(accessors->begin(), accessors->end()));
+        }
     }
 
 }

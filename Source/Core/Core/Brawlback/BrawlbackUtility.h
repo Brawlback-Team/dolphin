@@ -6,6 +6,7 @@
 
 #include "Common/FileUtil.h"
 #include "Common/CommonTypes.h"
+#include "Common/Timer.h"
 #include "Core/Brawlback/Brawltypes.h"
 
 #include "Common/Logging/Log.h"
@@ -14,8 +15,11 @@
 #include "SlippiUtility.h"
 
 #define MAX_ROLLBACK_FRAMES 7
-#define FRAME_DELAY 2
-#define ROLLBACK_IMPL true
+
+// must be >= 1
+#define FRAME_DELAY 3
+
+#define ROLLBACK_IMPL false
 
 // number of max FrameData's to keep in the queue
 #define FRAMEDATA_MAX_QUEUE_SIZE 120 
@@ -31,11 +35,23 @@
 #define MAX_NUM_PLAYERS 4
 #define BRAWLBACK_PORT 7779
 
+// GGPO
+#define GGPO_LOG_ENABLE true
+#define GGPO_LOG_TIMESTAMPS true
+#define GGPO_OOP_PERCENT 0
+// ------------
+
 
 // 59.94 Hz (16.66 ms in a frame for 60fps)  ( -- is this accurate? This is the case for melee, idk if it also applies here)
-#define USEC_IN_FRAME 16683
-//#define USEC_IN_FRAME 16666
+//#define USEC_IN_FRAME 16683
+#define USEC_IN_FRAME 16666
 
+// ---
+// mem dumping related
+#include "Core/HW/AddressSpace.h"
+#include "Common/FileUtil.h"
+#include "Common/IOFile.h"
+// ---
 
 namespace Brawlback {
     const u8 NAMETAG_SIZE = 8;
@@ -236,6 +252,11 @@ namespace Brawlback {
     template <typename T>
     T Clamp(T input, T Max, T Min) {
         return input > Max ? Max : ( input < Min ? Min : input );
+    }
+
+    namespace Dump {
+        void DoMemDumpIteration(int& dump_num);
+        void DumpMem(AddressSpace::Type memType, const std::string& dumpPath);
     }
 
 }
