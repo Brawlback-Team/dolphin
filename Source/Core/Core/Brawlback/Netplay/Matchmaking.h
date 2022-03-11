@@ -79,6 +79,7 @@ public:
   std::vector<UserInfo> GetPlayerInfo();
   std::string GetPlayerName(u8 port);
   std::vector<u16> GetStages();
+  u16 GetRandomStage();
   u8 RemotePlayerCount();
   static bool IsFixedRulesMode(OnlinePlayMode mode);
 

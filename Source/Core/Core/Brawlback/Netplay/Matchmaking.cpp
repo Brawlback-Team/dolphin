@@ -15,6 +15,8 @@
 #elif defined _WIN32
 #endif
 
+// NOTE: Heavily derived from Slippi's Matchmaking class/logic.
+
 const std::string scm_slippi_semver_str = "Brawlback - dev";
 
 class MmMessageType
@@ -630,16 +632,23 @@ void Matchmaking::handleMatchmaking()
 	if (m_allowedStages.empty())
 	{
 		// Default case, shouldn't ever really be hit but it's here just in case
-		m_allowedStages.push_back(0x3); // Pokemon
-		m_allowedStages.push_back(0x8); // Yoshi's Story
-		m_allowedStages.push_back(0x1C); // Dream Land
-		m_allowedStages.push_back(0x1F); // Battlefield
-		m_allowedStages.push_back(0x20); // Final Destination
+		m_allowedStages.push_back(0x1); // Battlefield
+		m_allowedStages.push_back(0x2); // FD 
+		m_allowedStages.push_back(0x3); // Delfino's Secret
+		m_allowedStages.push_back(0x5); // Metal Cavern
+		//m_allowedStages.push_back(0x0D); // Yoshi's Island
+        //m_allowedStages.push_back(0x2A); // Yoshi's Story
+		m_allowedStages.push_back(0x1C); // Wario land
+        //m_allowedStages.push_back(0x2D); // Dream land
+        m_allowedStages.push_back(0x2E); // PS2
+        //m_allowedStages.push_back(0x23); // Green hill zone
+        //m_allowedStages.push_back(0x21); // Smashville
+
 
 		// Add FoD if singles
 		if (m_playerInfo.size() == 2)
 		{
-			m_allowedStages.push_back(0x2); // FoD
+			//m_allowedStages.push_back(0x1F); // FoD
 		}
 	}
 
@@ -663,6 +672,16 @@ std::vector<UserInfo> Matchmaking::GetPlayerInfo()
 std::vector<u16> Matchmaking::GetStages()
 {
 	return m_allowedStages;
+}
+
+u16 Matchmaking::GetRandomStage() {
+    int randStageIdx = generator() % m_allowedStages.size();
+    for (u16 stageID : m_allowedStages) {
+        INFO_LOG(BRAWLBACK, "Allowed stage id: %u\n", (unsigned int)stageID);
+    }
+    INFO_LOG(BRAWLBACK, "rand stage idx chosen: %i\n", randStageIdx);
+    INFO_LOG(BRAWLBACK, "rand stage id chosen: %u\n", (unsigned int)m_allowedStages[randStageIdx]);
+    return m_allowedStages[randStageIdx];
 }
 
 std::string Matchmaking::GetPlayerName(u8 port)
