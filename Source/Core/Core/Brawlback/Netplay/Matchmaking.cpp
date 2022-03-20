@@ -427,7 +427,7 @@ void Matchmaking::startMatchmaking()
 				i++;
 			}
 
-			sprintf(lanAddr, "%s:%d", IP, m_hostPort);
+			//sprintf(lanAddr, "%s:%d", IP, m_hostPort);
 		}
 	}
 

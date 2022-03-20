@@ -38,6 +38,27 @@ private:
     void handleFindMatch(u8* payload);
     void handleStartMatch(u8* payload);
 
+    // REPLAYS
+    json replay;
+    int curIndex;
+    int curFrame;
+    void handleNumPlayers(int* payload);
+    void handleRandom(u32* payload);
+    void handleStage(u8* payload);
+    void handleIndex(int* payload);
+    void handleStartPosition(float* payload);
+    void handleStartFighter(int* payload);
+    void handleItemIds(itemIdName* payload, int size);
+    void handleItemVarients(u16* payload, int size);
+    void handleGame(u32* payload);
+    void handleInputs(u8* payload);
+    void handlePos(float* payload);
+    void handleStick(float* payload);
+    void handleActionState(u32* payload);
+    void handleStockCount(int* payload);
+    void handleFighter(double* payload);
+    void handleEndGame();
+
     template <typename T>
     void SendCmdToGame(EXICommand cmd, T* payload);
 
