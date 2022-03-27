@@ -1146,6 +1146,7 @@ void CEXIBrawlback::handleGetNumberReplayFiles()
       t.read(&buffer[0], size);
 
       INFO_LOG(BRAWLBACK, buffer.c_str());
+      this->replayNames.push_back(entry.path().filename().string().c_str());
       this->replays.push_back(buffer.c_str());
     }
   }
@@ -1165,6 +1166,22 @@ void CEXIBrawlback::handleGetReplayFilesSize()
     sizeOfReplaysArr[i] = sizeof(this->replays[i]) / sizeof(char);
   }
   SendCmdToGame(CMD_REPLAY_SEND_REPLAY_FILES_SIZE, sizeOfReplaysArr);
+}
+void CEXIBrawlback::handleGetReplayFilesNamesSize()
+{
+  auto size = this->replayNames.size();
+  this->replayNamesArr = new const char*[size];
+  std::copy(this->replayNames.begin(), this->replayNames.end(), this->replayNamesArr);
+  u8* sizeOfReplayNamesArr = new u8[this->replayNames.size()];
+  for (int i = 0; i < this->replayNames.size(); i++)
+  {
+    sizeOfReplayNamesArr[i] = sizeof(sizeOfReplayNamesArr[i]) / sizeof(char);
+  }
+  SendCmdToGame(CMD_REPLAY_SEND_REPLAY_NAMES_SIZE, sizeOfReplayNamesArr);
+}
+void CEXIBrawlback::handleGetReplayFilesNames()
+{
+  SendCmdToGame(CMD_REPLAY_SEND_REPLAY_NAMES, this->replayNamesArr);
 }
 void CEXIBrawlback::handleGetReplayFiles()
 {
@@ -1274,6 +1291,12 @@ void CEXIBrawlback::DMAWrite(u32 address, u32 size)
         break;
     case CMD_REPLAY_GET_REPLAY_FILES:
         handleGetReplayFiles();
+        break;
+    case CMD_REPLAY_GET_REPLAY_NAMES:
+        handleGetReplayFilesNames();
+        break;
+    case CMD_REPLAY_GET_REPLAY_NAMES_SIZE:
+        handleGetReplayFilesNamesSize();
         break;
         
     
