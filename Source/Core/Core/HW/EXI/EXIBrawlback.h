@@ -40,6 +40,8 @@ private:
 
     // REPLAYS
     json replay;
+    std::vector<const char*> replays;
+    const char** replaysArr;
     int curIndex;
     int curFrame;
     void handleNumPlayers(int* payload);
@@ -58,6 +60,9 @@ private:
     void handleStockCount(int* payload);
     void handleFighter(double* payload);
     void handleEndGame();
+    void handleGetNumberReplayFiles();
+    void handleGetReplayFilesSize();
+    void handleGetReplayFiles();
 
     template <typename T>
     void SendCmdToGame(EXICommand cmd, T* payload);

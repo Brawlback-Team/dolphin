@@ -9,6 +9,10 @@
 #include "VideoCommon/OnScreenDisplay.h"
 #include <climits>
 #include <fstream>
+#include <filesystem>
+#include <vector>
+namespace fs = std::filesystem;
+
 // --- Mutexes
 std::mutex read_queue_mutex = std::mutex();
 std::mutex remotePadQueueMutex = std::mutex();
@@ -1127,8 +1131,46 @@ void CEXIBrawlback::handleEndGame()
   replayFile << replayStr;
   replayFile.close();
 }
+void CEXIBrawlback::handleGetNumberReplayFiles()
+{
+  std::string path = "./";
+  for (const auto& entry : fs::directory_iterator(path))
+  {
+    if (entry.path().string().contains("replay_"))
+    {
+      std::ifstream t(entry.path().string());
+      t.seekg(0, std::ios::end);
+      size_t size = t.tellg();
+      std::string buffer(size, ' ');
+      t.seekg(0);
+      t.read(&buffer[0], size);
 
-// recieve data from game into emulator
+      INFO_LOG(BRAWLBACK, buffer.c_str());
+      this->replays.push_back(buffer.c_str());
+    }
+  }
+  u8* sizeOfReplaysVector = new u8[1];
+  sizeOfReplaysVector[0] = this->replays.size();
+  INFO_LOG(BRAWLBACK, std::to_string(sizeOfReplaysVector[0]).c_str());
+  SendCmdToGame(CMD_REPLAY_SEND_NUMBER_REPLAY_FILES, sizeOfReplaysVector);
+}
+void CEXIBrawlback::handleGetReplayFilesSize()
+{
+  auto size = this->replays.size();
+  this->replaysArr = new const char*[size];
+  std::copy(this->replays.begin(), this->replays.end(), this->replaysArr);
+  u8* sizeOfReplaysArr = new u8[this->replays.size()];
+  for (int i = 0; i < this->replays.size(); i++)
+  {
+    sizeOfReplaysArr[i] = sizeof(this->replays[i]) / sizeof(char);
+  }
+  SendCmdToGame(CMD_REPLAY_SEND_REPLAY_FILES_SIZE, sizeOfReplaysArr);
+}
+void CEXIBrawlback::handleGetReplayFiles()
+{
+  SendCmdToGame(CMD_REPLAY_SEND_REPLAY_FILES, this->replaysArr);
+}
+    // recieve data from game into emulator
 void CEXIBrawlback::DMAWrite(u32 address, u32 size)
 {
     //INFO_LOG(BRAWLBACK, "DMAWrite size: %u\n", size);
@@ -1223,6 +1265,15 @@ void CEXIBrawlback::DMAWrite(u32 address, u32 size)
         break;
     case CMD_REPLAY_STOCK_COUNT:
         handleStockCount((int*)payload);
+        break;
+    case CMD_REPLAY_GET_NUMBER_REPLAY_FILES:
+        handleGetNumberReplayFiles();
+        break;
+    case CMD_REPLAY_GET_REPLAY_FILES_SIZE:
+        handleGetReplayFilesSize();
+        break;
+    case CMD_REPLAY_GET_REPLAY_FILES:
+        handleGetReplayFiles();
         break;
         
     
