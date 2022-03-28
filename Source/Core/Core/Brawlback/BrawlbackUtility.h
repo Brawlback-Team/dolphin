@@ -11,7 +11,6 @@
 
 #include "Common/Logging/Log.h"
 #include "Common/Logging/LogManager.h"
-
 #include "SlippiUtility.h"
 
 #define MAX_ROLLBACK_FRAMES 7

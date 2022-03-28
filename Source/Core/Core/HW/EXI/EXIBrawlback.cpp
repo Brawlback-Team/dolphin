@@ -2,7 +2,6 @@
 
 #include "EXIBrawlback.h"
 #include "Core/ConfigManager.h"
-
 #include "Core/HW/Memmap.h"
 #include <chrono>
 #include <iostream>
@@ -11,6 +10,7 @@
 #include <fstream>
 #include <filesystem>
 #include <vector>
+#include <regex>
 namespace fs = std::filesystem;
 
 // --- Mutexes
@@ -27,7 +27,19 @@ T swap_endian(T in)
     std::swap(p[i], p[sizeof(T) - i - 1]);
   return in;
 }
-
+void writeToFile(std::string filename, uint8_t* ptr, size_t len)
+{
+  std::ofstream fp;
+  fp.open(filename, std::ios::out | std::ios::binary);
+  fp.write((char*)ptr, len);
+}
+std::vector<u8> read_vector_from_disk(std::string file_path)
+{
+  std::ifstream instream(file_path, std::ios::in | std::ios::binary);
+  std::vector<u8> data((std::istreambuf_iterator<char>(instream)),
+                            std::istreambuf_iterator<char>());
+  return data;
+}
 CEXIBrawlback::CEXIBrawlback()
 {
     INFO_LOG(BRAWLBACK, "------- %s\n", SConfig::GetInstance().GetGameID().c_str());
@@ -648,10 +660,6 @@ void BroadcastFramedataAck(u32 frame, u8 playerIdx, BrawlbackNetplay* netplay, E
     //INFO_LOG(BRAWLBACK, "Sent ack for frame %u  pidx %u", frame, (unsigned int)playerIdx);
 }
 
-
-
-
-
 void CEXIBrawlback::ProcessIndividualRemoteFrameData(Match::PlayerFrameData* framedata) {
     u8 playerIdx = framedata->playerIdx;
     u32 frame = framedata->frame;
@@ -1043,16 +1051,16 @@ void CEXIBrawlback::handleStartMatch(u8* payload) {
 // REPLAYS
 void CEXIBrawlback::handleNumPlayers(int* payload)
 {
-  this->replay["numPlayers"] = swap_endian(payload[0]);
+  this->curReplay["numPlayers"] = swap_endian(payload[0]);
 }
 void CEXIBrawlback::handleRandom(u32* payload)
 {
-  this->replay["rand"] = swap_endian(payload[0]);
-  this->replay["other_rand"] = swap_endian(payload[1]);
+  this->curReplay["rand"] = swap_endian(payload[0]);
+  this->curReplay["other_rand"] = swap_endian(payload[1]);
 }
 void CEXIBrawlback::handleStage(u8* payload)
 {
-  this->replay["stageID"] = payload[0];
+  this->curReplay["stageID"] = payload[0];
 }
 void CEXIBrawlback::handleIndex(int* payload)
 {
@@ -1060,26 +1068,26 @@ void CEXIBrawlback::handleIndex(int* payload)
 }
 void CEXIBrawlback::handleStartPosition(float* payload)
 {
-  this->replay["startPositions"][std::to_string(this->curIndex)]["x"] = swap_endian(payload[0]);
-  this->replay["startPositions"][std::to_string(this->curIndex)]["y"] = swap_endian(payload[1]);
-  this->replay["startPositions"][std::to_string(this->curIndex)]["z"] = swap_endian(payload[2]);
+  this->curReplay["startPositions"][std::to_string(this->curIndex)]["x"] = swap_endian(payload[0]);
+  this->curReplay["startPositions"][std::to_string(this->curIndex)]["y"] = swap_endian(payload[1]);
+  this->curReplay["startPositions"][std::to_string(this->curIndex)]["z"] = swap_endian(payload[2]);
 }
 void CEXIBrawlback::handleStartFighter(int* payload)
 {
-  this->replay["fighterIDs"][std::to_string(this->curIndex)] = swap_endian(payload[0]);
+  this->curReplay["fighterIDs"][std::to_string(this->curIndex)] = swap_endian(payload[0]);
 }
 void CEXIBrawlback::handleItemIds(itemIdName* payload, int size)
 {
   for (int i = 0; i < size; i++)
   {
-    this->replay["curFrame"][std::to_string(this->curFrame)]["itemIDs"][std::to_string(i)] = swap_endian(payload[i]);
+    this->curReplay["curFrame"][std::to_string(this->curFrame)]["itemIDs"][std::to_string(i)] = swap_endian(payload[i]);
   }
 }
 void CEXIBrawlback::handleItemVarients(u16* payload, int size)
 {
   for (int i = 0; i < size; i++)
   {
-    this->replay["curFrame"][std::to_string(this->curFrame)]["itemVarients"][std::to_string(i)] = swap_endian(payload[i]);
+    this->curReplay["curFrame"][std::to_string(this->curFrame)]["itemVarients"][std::to_string(i)] = swap_endian(payload[i]);
   }
 }
 void CEXIBrawlback::handleGame(u32* payload)
@@ -1088,48 +1096,48 @@ void CEXIBrawlback::handleGame(u32* payload)
 }
 void CEXIBrawlback::handleInputs(u8* payload)
 {
-  this->replay["curFrame"][std::to_string(this->curFrame)]["inputs"][std::to_string(this->curIndex)]["attack"] = payload[0];
-  this->replay["curFrame"][std::to_string(this->curFrame)]["inputs"][std::to_string(this->curIndex)]["special"] = payload[1];
-  this->replay["curFrame"][std::to_string(this->curFrame)]["inputs"][std::to_string(this->curIndex)]["jump"] = payload[2];
-  this->replay["curFrame"][std::to_string(this->curFrame)]["inputs"][std::to_string(this->curIndex)]["shield"] = payload[3];
-  this->replay["curFrame"][std::to_string(this->curFrame)]["inputs"][std::to_string(this->curIndex)]["dTaunt"] = payload[4];
-  this->replay["curFrame"][std::to_string(this->curFrame)]["inputs"][std::to_string(this->curIndex)]["sTaunt"] = payload[5];
-  this->replay["curFrame"][std::to_string(this->curFrame)]["inputs"][std::to_string(this->curIndex)]["uTaunt"] = payload[6];
-  this->replay["curFrame"][std::to_string(this->curFrame)]["inputs"][std::to_string(this->curIndex)]["cStick"] = payload[7];
-  this->replay["curFrame"][std::to_string(this->curFrame)]["inputs"][std::to_string(this->curIndex)]["tapJump"] = payload[8];
+  this->curReplay["curFrame"][std::to_string(this->curFrame)]["inputs"][std::to_string(this->curIndex)]["attack"] = payload[0];
+  this->curReplay["curFrame"][std::to_string(this->curFrame)]["inputs"][std::to_string(this->curIndex)]["special"] = payload[1];
+  this->curReplay["curFrame"][std::to_string(this->curFrame)]["inputs"][std::to_string(this->curIndex)]["jump"] = payload[2];
+  this->curReplay["curFrame"][std::to_string(this->curFrame)]["inputs"][std::to_string(this->curIndex)]["shield"] = payload[3];
+  this->curReplay["curFrame"][std::to_string(this->curFrame)]["inputs"][std::to_string(this->curIndex)]["dTaunt"] = payload[4];
+  this->curReplay["curFrame"][std::to_string(this->curFrame)]["inputs"][std::to_string(this->curIndex)]["sTaunt"] = payload[5];
+  this->curReplay["curFrame"][std::to_string(this->curFrame)]["inputs"][std::to_string(this->curIndex)]["uTaunt"] = payload[6];
+  this->curReplay["curFrame"][std::to_string(this->curFrame)]["inputs"][std::to_string(this->curIndex)]["cStick"] = payload[7];
+  this->curReplay["curFrame"][std::to_string(this->curFrame)]["inputs"][std::to_string(this->curIndex)]["tapJump"] = payload[8];
 }
 void CEXIBrawlback::handlePos(float* payload)
 {
-  this->replay["curFrame"][std::to_string(this->curFrame)]["positions"][std::to_string(this->curIndex)]["x"] = swap_endian(payload[0]);
-  this->replay["curFrame"][std::to_string(this->curFrame)]["positions"][std::to_string(this->curIndex)]["y"] = swap_endian(payload[1]);
-  this->replay["curFrame"][std::to_string(this->curFrame)]["positions"][std::to_string(this->curIndex)]["z"] = swap_endian(payload[2]);
+  this->curReplay["curFrame"][std::to_string(this->curFrame)]["positions"][std::to_string(this->curIndex)]["x"] = swap_endian(payload[0]);
+  this->curReplay["curFrame"][std::to_string(this->curFrame)]["positions"][std::to_string(this->curIndex)]["y"] = swap_endian(payload[1]);
+  this->curReplay["curFrame"][std::to_string(this->curFrame)]["positions"][std::to_string(this->curIndex)]["z"] = swap_endian(payload[2]);
 }
 void CEXIBrawlback::handleStick(float* payload)
 {
-  this->replay["curFrame"][std::to_string(this->curFrame)]["sticks"][std::to_string(this->curIndex)]["x"] = swap_endian(payload[0]);
-  this->replay["curFrame"][std::to_string(this->curFrame)]["sticks"][std::to_string(this->curIndex)]["y"] = swap_endian(payload[1]);
+  this->curReplay["curFrame"][std::to_string(this->curFrame)]["sticks"][std::to_string(this->curIndex)]["x"] = swap_endian(payload[0]);
+  this->curReplay["curFrame"][std::to_string(this->curFrame)]["sticks"][std::to_string(this->curIndex)]["y"] = swap_endian(payload[1]);
 }
 void CEXIBrawlback::handleActionState(u32* payload)
 {
-  this->replay["curFrame"][std::to_string(this->curFrame)]["actionState"][std::to_string(this->curIndex)] = swap_endian(payload[0]);
+  this->curReplay["curFrame"][std::to_string(this->curFrame)]["actionState"][std::to_string(this->curIndex)] = swap_endian(payload[0]);
 }
 void CEXIBrawlback::handleStockCount(int* payload)
 {
-  this->replay["curFrame"][std::to_string(this->curFrame)]["stockCount"][std::to_string(this->curIndex)] = swap_endian(payload[0]);
+  this->curReplay["curFrame"][std::to_string(this->curFrame)]["stockCount"][std::to_string(this->curIndex)] = swap_endian(payload[0]);
 }
 void CEXIBrawlback::handleFighter(double* payload)
 {
-  this->replay["curFrame"][std::to_string(this->curFrame)]["fighterDamage"][std::to_string(this->curIndex)] = swap_endian(payload[0]);
+  this->curReplay["curFrame"][std::to_string(this->curFrame)]["fighterDamage"][std::to_string(this->curIndex)] = swap_endian(payload[0]);
 }
 void CEXIBrawlback::handleEndGame()
 {
-  std::string replayStr = replay.dump(3);
+  this->curReplaySerialized = json::to_msgpack(this->curReplay);
+  auto curReplaySerializedArr = new u8[this->curReplaySerialized.size()];
+  std::copy(this->curReplaySerialized.begin(), this->curReplaySerialized.end(), curReplaySerializedArr);
+
   const auto p1 = std::chrono::system_clock::now();
   const auto timestamp = std::chrono::duration_cast<std::chrono::seconds>(p1.time_since_epoch()).count();
-  std::ofstream replayFile;
-  replayFile.open("replay_" + std::to_string(timestamp) + ".json");
-  replayFile << replayStr;
-  replayFile.close();
+  writeToFile("replay_" + std::to_string(timestamp) + ".brba", curReplaySerializedArr, this->curReplaySerialized.size());
 }
 void CEXIBrawlback::handleGetNumberReplayFiles()
 {
@@ -1138,20 +1146,14 @@ void CEXIBrawlback::handleGetNumberReplayFiles()
   {
     if (entry.path().string().contains("replay_"))
     {
-      std::ifstream t(entry.path().string());
-      t.seekg(0, std::ios::end);
-      size_t size = t.tellg();
-      std::string buffer(size, ' ');
-      t.seekg(0);
-      t.read(&buffer[0], size);
-
-      INFO_LOG(BRAWLBACK, buffer.c_str());
+      auto replay = read_vector_from_disk(entry.path().string());
       this->replayNames.push_back(entry.path().filename().string().c_str());
-      this->replays.push_back(buffer.c_str());
+      json j = json::from_msgpack(replay);
+      this->replays.push_back(j.dump().c_str());
     }
   }
   u8* sizeOfReplaysVector = new u8[1];
-  sizeOfReplaysVector[0] = this->replays.size();
+  sizeOfReplaysVector[0] = (u8)this->replays.size();
   INFO_LOG(BRAWLBACK, std::to_string(sizeOfReplaysVector[0]).c_str());
   SendCmdToGame(CMD_REPLAY_SEND_NUMBER_REPLAY_FILES, sizeOfReplaysVector);
 }
@@ -1163,7 +1165,7 @@ void CEXIBrawlback::handleGetReplayFilesSize()
   u8* sizeOfReplaysArr = new u8[this->replays.size()];
   for (int i = 0; i < this->replays.size(); i++)
   {
-    sizeOfReplaysArr[i] = sizeof(this->replays[i]) / sizeof(char);
+    sizeOfReplaysArr[i] = (u8)strlen(this->replays[i]);
   }
   SendCmdToGame(CMD_REPLAY_SEND_REPLAY_FILES_SIZE, sizeOfReplaysArr);
 }
@@ -1175,7 +1177,7 @@ void CEXIBrawlback::handleGetReplayFilesNamesSize()
   u8* sizeOfReplayNamesArr = new u8[this->replayNames.size()];
   for (int i = 0; i < this->replayNames.size(); i++)
   {
-    sizeOfReplayNamesArr[i] = sizeof(sizeOfReplayNamesArr[i]) / sizeof(char);
+    sizeOfReplayNamesArr[i] = (u8)strlen(this->replayNames[i]);
   }
   SendCmdToGame(CMD_REPLAY_SEND_REPLAY_NAMES_SIZE, sizeOfReplayNamesArr);
 }

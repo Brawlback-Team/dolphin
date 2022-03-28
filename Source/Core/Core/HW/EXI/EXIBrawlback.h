@@ -39,7 +39,8 @@ private:
     void handleStartMatch(u8* payload);
 
     // REPLAYS
-    json replay;
+    json curReplay;
+    std::vector<u8> curReplaySerialized;
     std::vector<const char*> replays;
     std::vector<const char*> replayNames;
     const char** replaysArr;
