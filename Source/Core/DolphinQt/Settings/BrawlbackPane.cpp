@@ -14,9 +14,8 @@ void BrawlbackPane::CreateWidgets()
 {
   m_delay_frames_label = new QLabel(tr("Delay Frames"));
   m_delay_frames = new QSpinBox();
-  // TODO: Set proper min / max values for delay frames (not sure what's appropriate)
   m_delay_frames->setMinimum(1);
-  m_delay_frames->setMaximum(20);
+  m_delay_frames->setMaximum(7);
 
   m_force_custom_netplay_port = new QCheckBox(tr("Force Netplay Port"));
   m_custom_netplay_port = new QSpinBox();
