@@ -20,6 +20,19 @@ namespace Brawlback
         return nullptr;
     }
 
+    namespace Match {
+        
+        bool isPlayerFrameDataEqual(const PlayerFrameData& p1, const PlayerFrameData& p2) {
+            //bool frames = p1.frame == p2.frame;
+            //bool idxs = p1.playerIdx == p2.playerIdx;
+            bool buttons = p1.pad.buttons == p2.pad.buttons;
+            bool sticks = p1.pad.stickX == p2.pad.stickX && p1.pad.stickY == p2.pad.stickY && p1.pad.cStickX == p2.pad.cStickX && p1.pad.cStickY == p2.pad.cStickY;
+            bool triggers = p1.pad.LTrigger == p2.pad.LTrigger && p1.pad.RTrigger == p2.pad.RTrigger;
+            return buttons && sticks && triggers;
+        }
+
+    }
+
 
     namespace Mem {
         

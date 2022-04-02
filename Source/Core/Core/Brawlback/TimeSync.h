@@ -4,10 +4,6 @@
 #include "Core/Brawlback/Netplay/Netplay.h"
 
 
-// TODO?
-// pass numPlayers into ctor or something so we don't have
-// to pass it into basically every func here lol
-
 namespace Brawlback {
 class TimeSync {
 

@@ -227,6 +227,7 @@ int Matchmaking::receiveMessage(json &msg, int timeoutMs)
 
 void Matchmaking::MatchmakeThread()
 {
+    Common::SetCurrentThreadName("BrawlbackMatchmakingPhase1");
 	while (IsSearching())
 	{
 		switch (m_state)
@@ -634,7 +635,7 @@ void Matchmaking::handleMatchmaking()
 		// Default case, shouldn't ever really be hit but it's here just in case
 		m_allowedStages.push_back(0x1); // Battlefield
 		m_allowedStages.push_back(0x2); // FD 
-		m_allowedStages.push_back(0x3); // Delfino's Secret
+		//m_allowedStages.push_back(0x3); // Delfino's Secret
 		m_allowedStages.push_back(0x5); // Metal Cavern
 		//m_allowedStages.push_back(0x0D); // Yoshi's Island
         //m_allowedStages.push_back(0x2A); // Yoshi's Story

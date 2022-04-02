@@ -29,7 +29,7 @@ void BrawlbackNetplay::SendAsync(std::unique_ptr<BrawlbackNetPacket> packet, ENe
     ENetUtil::WakeupThread(host);
 }
 
-void BrawlbackNetplay::BroadcastPacket(sf::Packet& packet, int enet_flag, ENetHost* server) {
+void BrawlbackNetplay::BroadcastPacket(const sf::Packet& packet, int enet_flag, ENetHost* server) {
     ENetPacket* p = enet_packet_create(packet.getData(), packet.getDataSize(), enet_flag);
     enet_host_broadcast(server, 0, p);
 }
@@ -37,8 +37,8 @@ void BrawlbackNetplay::BroadcastPacket(sf::Packet& packet, int enet_flag, ENetHo
 void BrawlbackNetplay::FlushAsyncQueue(ENetHost* server) {
     while (!async_queue.empty())
     {
-        BrawlbackNetPacket packet = *(async_queue.front().get());
-        BroadcastPacket(packet.first, packet.second, server);
+        BrawlbackNetPacket* packet = async_queue.front().get();
+        BroadcastPacket(packet->first, packet->second, server);
         async_queue.pop_front();
     }
 }

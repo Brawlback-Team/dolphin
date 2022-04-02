@@ -20,8 +20,6 @@ bool TimeSync::shouldStallFrame(s32 currentFrame, s32 latestRemoteFrame, u8 numP
 
     s32 frameDiff = currentFrame - latestRemoteFrame;
 
-    INFO_LOG(BRAWLBACK, "local frame: %u  remote frame %u  diff %d\n", currentFrame, latestRemoteFrame, frameDiff);
-
     std::stringstream dispStr;
     dispStr << "| Frame diff: " << frameDiff << " |\n";
     //OSD::AddTypedMessage(OSD::MessageType::NetPlayBuffer, dispStr.str(), OSD::Duration::NORMAL, OSD::Color::CYAN);
@@ -37,10 +35,12 @@ bool TimeSync::shouldStallFrame(s32 currentFrame, s32 latestRemoteFrame, u8 numP
             ERROR_LOG(BRAWLBACK, "CONNECTION STALLED\n");
             this->isConnectionStalled = true;
         }
-        INFO_LOG(BRAWLBACK, "Exceeded rollback lim, halting for one frame. Frame: %u  Latest (wo delay) %u diff %u\n", currentFrame, latestRemoteFrame - FRAME_DELAY, frameDiff);
+        ERROR_LOG(BRAWLBACK, "Exceeded frameDiff lim, halting for one frame. Frame: %u  Latest (wo delay) %u diff %u\n", currentFrame, latestRemoteFrame - FRAME_DELAY, frameDiff);
         return true;
     }
     this->stallFrameCount = 0;
+
+    #define MAX_US_OFFSET 10000 // 60% of a frame
 
     // Return true if we are over 60% of a frame ahead of our opponent. Currently limiting how
 	// often this happens because I'm worried about jittery data causing a lot of unneccesary delays.
@@ -51,15 +51,15 @@ bool TimeSync::shouldStallFrame(s32 currentFrame, s32 latestRemoteFrame, u8 numP
 	if (isTimeSyncFrame && !this->isSkipping)
 	{
 		s32 offsetUs = this->calcTimeOffsetUs(numPlayers);
-		INFO_LOG(BRAWLBACK, "[Frame %u] Offset is: %d us", currentFrame, offsetUs);
+		WARN_LOG(BRAWLBACK, "[Frame %u] Offset is: %d us", currentFrame, offsetUs);
 
 		// TODO: figure out a better solution here for doubles?
-		if (offsetUs > 10000)
+		if (offsetUs > MAX_US_OFFSET)
 		{
 			this->isSkipping = true;
 
 			int maxSkipFrames = currentFrame <= 120 ? 5 : 1; // On early frames, support skipping more frames
-			this->framesToSkip = ((offsetUs - 10000) / USEC_IN_FRAME) + 1;
+			this->framesToSkip = ((offsetUs - MAX_US_OFFSET) / USEC_IN_FRAME) + 1;
             INFO_LOG(BRAWLBACK, "Unclamped framesToSkip %d", this->framesToSkip);
 			this->framesToSkip = this->framesToSkip > maxSkipFrames ? maxSkipFrames : this->framesToSkip; // Only skip 5 frames max
 
@@ -82,8 +82,8 @@ bool TimeSync::shouldStallFrame(s32 currentFrame, s32 latestRemoteFrame, u8 numP
 	return false;
 }
 
-// getting frame with delay
-void TimeSync::TimeSyncUpdate(u32 frame, u8 numPlayers) {
+// called when sending inputs
+void TimeSync::TimeSyncUpdate(u32 frame, u8 numPlayers) { // frame with delay
     u64 currentTime = Common::Timer::GetTimeUs();
     {   // store the time that we sent framedata
         std::lock_guard<std::mutex> lock(this->ackTimersMutex);
@@ -100,7 +100,7 @@ void TimeSync::TimeSyncUpdate(u32 frame, u8 numPlayers) {
 
 
 // getting frame with delay
-void TimeSync::ReceivedRemoteFramedata(s32 frame, u8 playerIdx, bool hasGameStarted) {
+void TimeSync::ReceivedRemoteFramedata(s32 frame, u8 localPlayerIdx, bool hasGameStarted) {
     s64 curTime = (s64)Common::Timer::GetTimeUs();
     // update frame timing/offsets for time sync logic
     
@@ -110,7 +110,7 @@ void TimeSync::ReceivedRemoteFramedata(s32 frame, u8 playerIdx, bool hasGameStar
     // are with respect to the opponent
 
     // SLIPPI LOGIC
-    auto timing = this->lastFrameTimings[playerIdx];
+    auto timing = this->lastFrameTimings[localPlayerIdx];
     if (!hasGameStarted)
     {
         // Handle case where opponent starts sending inputs before our game has reached frame 1. This will
@@ -119,70 +119,73 @@ void TimeSync::ReceivedRemoteFramedata(s32 frame, u8 playerIdx, bool hasGameStar
         timing.timeUs = curTime;
     }
 
-    s64 opponentSendTimeUs = curTime - ((s64)this->pingUs[playerIdx] / 2);
+    s64 opponentSendTimeUs = curTime - ((s64)this->pingUs[localPlayerIdx] / 2);
     s64 frameDiffOffsetUs = USEC_IN_FRAME * (timing.frame - frame);
     s64 timeOffsetUs = opponentSendTimeUs - timing.timeUs + frameDiffOffsetUs;
 
-    INFO_LOG(BRAWLBACK, "[Offset] Opp Frame: %d, My Frame: %d. Time offset: %f ms\n", 
-                                              frame-FRAME_DELAY, timing.frame-FRAME_DELAY, (double)timeOffsetUs / 1000.0);
+    if (hasGameStarted) {
+        INFO_LOG(BRAWLBACK, "[Offset] Opp Frame: %d, My Frame: %d. Time offset: %f ms\n", 
+                                              frame, timing.frame, (double)timeOffsetUs / 1000.0);
+    }
 
     // Add this offset to circular buffer for use later
 
     // frameOffsetData is being treated as a "circular buffer". Hence this logic here
-    if (this->frameOffsetData[playerIdx].buf.size() < ONLINE_LOCKSTEP_INTERVAL) {
-        this->frameOffsetData[playerIdx].buf.push_back((s32)timeOffsetUs);
+    if (this->frameOffsetData[localPlayerIdx].buf.size() < ONLINE_LOCKSTEP_INTERVAL) {
+        this->frameOffsetData[localPlayerIdx].buf.push_back((s32)timeOffsetUs);
     }
     else {
-        this->frameOffsetData[playerIdx].buf[this->frameOffsetData[playerIdx].idx] = (s32)timeOffsetUs;
+        this->frameOffsetData[localPlayerIdx].buf[this->frameOffsetData[localPlayerIdx].idx] = (s32)timeOffsetUs;
     }
 
-    this->frameOffsetData[playerIdx].idx = (this->frameOffsetData[playerIdx].idx + 1) % ONLINE_LOCKSTEP_INTERVAL;
+    this->frameOffsetData[localPlayerIdx].idx = (this->frameOffsetData[localPlayerIdx].idx + 1) % ONLINE_LOCKSTEP_INTERVAL;
 }
 
 
 // with delay
 void TimeSync::ProcessFrameAck(FrameAck* frameAck) {
     std::lock_guard<std::mutex> lock(this->ackTimersMutex);
-    u8 playerIdx = frameAck->playerIdx;
+    u8 localPlayerIdx = frameAck->playerIdx; // local player idx
     int frame = frameAck->frame; // this is with frame delay
 
     // SLIPPI LOGIC
 
-    int lastAcked = this->lastFrameAcked[playerIdx];
     // if this current acked frame is more recent than the last acked frame, set it
-    this->lastFrameAcked[playerIdx] = frame > lastAcked ? frame : lastAcked;
+    int lastAcked = this->lastFrameAcked[localPlayerIdx];
+    this->lastFrameAcked[localPlayerIdx] = frame > lastAcked ? frame : lastAcked;
 
     // remove old timings
-    while (!this->ackTimers[playerIdx].empty() && this->ackTimers[playerIdx].front().frame < frame) {
-        this->ackTimers[playerIdx].pop_front();
+    while (!this->ackTimers[localPlayerIdx].empty() && this->ackTimers[localPlayerIdx].front().frame < frame) {
+        this->ackTimers[localPlayerIdx].pop_front();
     }
 
     // don't get a ping if we don't have correct ack frame
-    if (this->ackTimers[playerIdx].empty()) {
-        //INFO_LOG(BRAWLBACK, "Empty acktimers\n");
+    if (this->ackTimers[localPlayerIdx].empty()) {
+        INFO_LOG(BRAWLBACK, "Empty acktimers\n");
         return;
     }
-    if (this->ackTimers[playerIdx].front().frame != frame) {
-        //INFO_LOG(BRAWLBACK, "frontframe and acked frame not equal\n");
+    if (this->ackTimers[localPlayerIdx].front().frame != frame) {
+        INFO_LOG(BRAWLBACK, "frontframe and acked frame not equal\n");
         return;
     }
 
-    auto sendTime = this->ackTimers[playerIdx].front().timeUs;
-    this->ackTimers[playerIdx].pop_front();
+    auto sendTime = this->ackTimers[localPlayerIdx].front().timeUs;
+    this->ackTimers[localPlayerIdx].pop_front();
 
     // our ping is the current gametime - the time that the inputs were originally sent at
     // inputs go from client 1 -> client 2 -> client 2 acks & sends ack to client 1 -> client 1 receives ack here
-    // so this is full RTT (round trip time). To get ping just from client to client, divide this by 2
-    this->pingUs[playerIdx] = Common::Timer::GetTimeUs() - sendTime;
-    u64 rtt = this->pingUs[playerIdx];
+    // so this is full RTT (round trip time).
+    u64 curTime = Common::Timer::GetTimeUs();
+    this->pingUs[localPlayerIdx] = curTime - sendTime;
+    u64 rtt = this->pingUs[localPlayerIdx];
     double rtt_ms = (double)rtt / 1000.0;
 
-    INFO_LOG(BRAWLBACK, "Received ack for frame %u (w/o delay: %u)  [pIdx %u rtt %f ms]\n", frame, frame-FRAME_DELAY, (unsigned int)playerIdx, rtt_ms);
+    INFO_LOG(BRAWLBACK, "Received ack for frame %u (w/o delay: %u)  [pIdx %u rtt %f ms]\n", frame, frame-FRAME_DELAY, (unsigned int)localPlayerIdx, rtt_ms);
 
     if (frame % PING_DISPLAY_INTERVAL == 0) {
         std::stringstream dispStr;
-        dispStr << "Ping (rtt): ";
-        dispStr << (int)rtt_ms << " ms\n";
+        dispStr << "Ping (rtt): " << (int)rtt_ms << " ms\n";
+        dispStr << "Time offset: " << (double)this->calcTimeOffsetUs(2) / 1000 << " ms\n";
         dispStr << "Frame delay: " << FRAME_DELAY << "\n";
         OSD::AddTypedMessage(OSD::MessageType::NetPlayPing, dispStr.str(), OSD::Duration::NORMAL, OSD::Color::GREEN);
     }
@@ -201,6 +204,7 @@ int TimeSync::getMinAckFrame(u8 numPlayers) {
 
 
 // SLIPPI LOGIC
+// discards highest and lowest offsets, then averages the rest
 s32 TimeSync::calcTimeOffsetUs(u8 numPlayers) {
     bool empty = true;
 	for (int i = 0; i < numPlayers; i++)
@@ -227,9 +231,9 @@ s32 TimeSync::calcTimeOffsetUs(u8 numPlayers) {
 
 		std::sort(buf.begin(), buf.end());
 
-		int bufSize = (int)buf.size(); // 30
-		int offset = (int)((1.0f / 3.0f) * bufSize); // 1/3 bufSize  -- 10
-		int end = bufSize - offset; // 30 - 10 = 20
+		int bufSize = (int)buf.size();
+		int offset = (int)((1.0f / 3.0f) * bufSize); // takes the "middle third" of the offsets (discards higher-end vals and lower-end vals)
+		int end = bufSize - offset;
 
 		int sum = 0;
 		for (int i = offset; i < end; i++)
@@ -237,7 +241,7 @@ s32 TimeSync::calcTimeOffsetUs(u8 numPlayers) {
 			sum += buf[i];
 		}
 
-		int count = end - offset; // 20 - 10 = 10
+		int count = end - offset;
 		if (count <= 0)
 		{
 			return 0;
@@ -254,13 +258,8 @@ s32 TimeSync::calcTimeOffsetUs(u8 numPlayers) {
 			maxOffset = offsets[i];
 	}
 
-    std::stringstream timeOffsets;
-    timeOffsets << "Time offsets: ";
-    for (s32 o : offsets) {
-        timeOffsets << o << " |";
-    }
-	timeOffsets << " | Max offset: " << maxOffset;
-    INFO_LOG(BRAWLBACK, "%s\n", timeOffsets.str().c_str());
+
+    INFO_LOG(BRAWLBACK, "Max time offset: %i\n", maxOffset);
 	return maxOffset;
 }
 

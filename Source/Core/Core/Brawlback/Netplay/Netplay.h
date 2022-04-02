@@ -38,7 +38,7 @@ public:
     ~BrawlbackNetplay();
 
     void SendAsync(std::unique_ptr<BrawlbackNetPacket> packet, ENetHost* host);
-    void BroadcastPacket(sf::Packet& packet, int enet_flag, ENetHost* server);
+    void BroadcastPacket(const sf::Packet& packet, int enet_flag, ENetHost* server);
     void FlushAsyncQueue(ENetHost* server);
 
     // sends FrameData to all peers (async/udp)

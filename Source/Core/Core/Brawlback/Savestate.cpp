@@ -6,6 +6,8 @@
 #include <Core/HW/EXI/EXI.h>
 #include <thread>
 #include "VideoCommon/OnScreenDisplay.h"
+#include "Common/Thread.h"
+#include "Common/Timer.h"
 
 #include "MemRegions.h"
 
@@ -223,6 +225,46 @@ void BrawlbackSavestate::initBackupLocs()
 typedef std::vector<SlippiUtility::Savestate::ssBackupLoc>::iterator backupLocIterator;
 
 void captureMemRegions(backupLocIterator start, backupLocIterator end) {
+
+    /* https://stackoverflow.com/questions/18314523/sse-copy-avx-copy-and-stdcopy-performance
+    int GetMSB(u32* dwordPtr)
+    {
+        if(dwordPtr)
+        {
+            int result = 1;
+    #if defined(_WIN64)
+            if(dwordPtr & 0xFFFFFFFF00000000) { result += 32; dwordPtr &= 0xFFFFFFFF00000000; }
+            if(dwordPtr & 0xFFFF0000FFFF0000) { result += 16; dwordPtr &= 0xFFFF0000FFFF0000; }
+            if(dwordPtr & 0xFF00FF00FF00FF00) { result += 8;  dwordPtr &= 0xFF00FF00FF00FF00; }
+            if(dwordPtr & 0xF0F0F0F0F0F0F0F0) { result += 4;  dwordPtr &= 0xF0F0F0F0F0F0F0F0; }
+            if(dwordPtr & 0xCCCCCCCCCCCCCCCC) { result += 2;  dwordPtr &= 0xCCCCCCCCCCCCCCCC; }
+            if(dwordPtr & 0xAAAAAAAAAAAAAAAA) { result += 1; }
+    #else
+            if(dwordPtr & 0xFFFF0000) { result += 16; dwordPtr &= 0xFFFF0000; }
+            if(dwordPtr & 0xFF00FF00) { result += 8;  dwordPtr &= 0xFF00FF00; }
+            if(dwordPtr & 0xF0F0F0F0) { result += 4;  dwordPtr &= 0xF0F0F0F0; }
+            if(dwordPtr & 0xCCCCCCCC) { result += 2;  dwordPtr &= 0xCCCCCCCC; }
+            if(dwordPtr & 0xAAAAAAAA) { result += 1; }
+    #endif
+            return result;
+        }
+        else
+        {
+            return 0;
+        }
+    }
+    u32* processMask, systemMask;
+    GetProcessAffinityMask(GetCurrentProcess(), &processMask, &systemMask);
+    SetProcessAffinityMask(GetCurrentProcess(), 1 << (GetMSB(processMask) - 1) );
+    // Set Process Priority. you can use REALTIME_PRIORITY_CLASS.
+    SetPriorityClass(GetCurrentProcess(), HIGH_PRIORITY_CLASS);
+    */
+
+    // The process affinity mask is a bitmask where each set bit represents a core on
+	// which this process is allowed to run
+    //u32 all_threads_mask = 0b11111111111111111111111111111111;
+    //Common::SetCurrentThreadAffinity(all_threads_mask);
+    //INFO_LOG(BRAWLBACK, "Starting save %u", Common::Timer::GetTimeUs());
     for (auto it = start; it != end; ++it) {
         auto size = it->endAddress - it->startAddress;
         Memory::CopyFromEmu(it->data, it->startAddress, size);  // game -> emu
@@ -231,8 +273,17 @@ void captureMemRegions(backupLocIterator start, backupLocIterator end) {
 
 void BrawlbackSavestate::Capture()
 {
+    //auto middle = backupLocs.begin() + backupLocs.size() / 2;
     captureMemRegions(backupLocs.begin(), backupLocs.end());
 
+    //INFO_LOG(BRAWLBACK, "Starting save1 %u", Common::Timer::GetTimeUs());
+    //std::thread capture1(captureMemRegions, backupLocs.begin(), middle);
+    //INFO_LOG(BRAWLBACK, "Starting save2 %u", Common::Timer::GetTimeUs());
+    //std::thread capture2(captureMemRegions, middle, backupLocs.end());
+
+
+    //capture1.join();
+    //capture2.join();
     /*
     // copy game mem
     for (auto it = backupLocs.begin(); it != backupLocs.end(); ++it)

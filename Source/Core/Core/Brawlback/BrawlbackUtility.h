@@ -13,15 +13,16 @@
 #include "Common/Logging/LogManager.h"
 #include "SlippiUtility.h"
 
-#define MAX_ROLLBACK_FRAMES 7
+#define MAX_ROLLBACK_FRAMES 4
 
 // must be >= 1
 #define FRAME_DELAY 3
+static_assert(FRAME_DELAY + MAX_ROLLBACK_FRAMES >= 6); // 6 frames of "compensation" covers ~190 ping which is more than sufficient imo
 
-#define ROLLBACK_IMPL false
+#define ROLLBACK_IMPL true
 
 // number of max FrameData's to keep in the queue
-#define FRAMEDATA_MAX_QUEUE_SIZE 120 
+#define FRAMEDATA_MAX_QUEUE_SIZE 30 
 // update ping display every X frames
 #define PING_DISPLAY_INTERVAL 60
 
@@ -34,16 +35,15 @@
 #define MAX_NUM_PLAYERS 4
 #define BRAWLBACK_PORT 7779
 
-// GGPO
-#define GGPO_LOG_ENABLE true
-#define GGPO_LOG_TIMESTAMPS true
-#define GGPO_OOP_PERCENT 0
-// ------------
 
 
 // 59.94 Hz (16.66 ms in a frame for 60fps)  ( -- is this accurate? This is the case for melee, idk if it also applies here)
 //#define USEC_IN_FRAME 16683
-#define USEC_IN_FRAME 16666
+
+#define MS_IN_FRAME (1000 / 60)
+#define USEC_IN_FRAME (MS_IN_FRAME*1000)
+#define MS_TO_FRAMES(ms) (ms * 60 / 1000)
+#define FRAMES_TO_MS(frames) (1000 * frames / 60)
 
 // ---
 // mem dumping related
@@ -117,8 +117,8 @@ namespace Brawlback {
       CMD_GET_MATCH_STATE = 4,
       CMD_SET_MATCH_SELECTIONS = 6,
 
-      CMD_OPEN_LOGIN = 7,
-      CMD_LOGOUT = 8,
+      CMD_TIMER_START = 7,
+      CMD_TIMER_END = 8,
       CMD_UPDATE = 9,
       
       CMD_GET_ONLINE_STATUS = 10,
@@ -428,6 +428,8 @@ namespace Brawlback {
             }
 
         };
+
+        bool isPlayerFrameDataEqual(const PlayerFrameData& p1, const PlayerFrameData& p2);
         
     }
 
