@@ -1151,42 +1151,38 @@ void CEXIBrawlback::handleGetNumberReplayFiles()
       this->replays.push_back(j.dump().c_str());
     }
   }
-  u8* sizeOfReplaysVector = new u8[1];
-  sizeOfReplaysVector[0] = (u8)this->replays.size();
-  INFO_LOG(BRAWLBACK, std::to_string(sizeOfReplaysVector[0]).c_str());
-  SendCmdToGame(CMD_REPLAY_SEND_NUMBER_REPLAY_FILES, sizeOfReplaysVector);
+  u8 numReplayFiles = (u8)this->replays.size();
+  INFO_LOG(BRAWLBACK,
+           (std::string("Number of replay files: ") + std::to_string(numReplayFiles)).c_str());
+  SendCmdToGame(CMD_REPLAY_SEND_NUMBER_REPLAY_FILES, &numReplayFiles);
 }
 void CEXIBrawlback::handleGetReplayFilesSize()
 {
-  auto size = this->replays.size();
-  this->replaysArr = new const char*[size];
-  std::copy(this->replays.begin(), this->replays.end(), this->replaysArr);
-  u8* sizeOfReplaysArr = new u8[this->replays.size()];
-  for (int i = 0; i < this->replays.size(); i++)
+  const auto size = this->replays.size();
+  std::vector<u8> sizeOfReplaysVec(size);
+  for (int i = 0; i < size; i++)
   {
-    sizeOfReplaysArr[i] = (u8)strlen(this->replays[i]);
+    sizeOfReplaysVec[i] = (u8)strlen(this->replays[i]);
   }
-  SendCmdToGame(CMD_REPLAY_SEND_REPLAY_FILES_SIZE, sizeOfReplaysArr);
+  SendCmdToGame(CMD_REPLAY_SEND_REPLAY_FILES_SIZE, sizeOfReplaysVec.data());
 }
 void CEXIBrawlback::handleGetReplayFilesNamesSize()
 {
   auto size = this->replayNames.size();
-  this->replayNamesArr = new const char*[size];
-  std::copy(this->replayNames.begin(), this->replayNames.end(), this->replayNamesArr);
-  u8* sizeOfReplayNamesArr = new u8[this->replayNames.size()];
-  for (int i = 0; i < this->replayNames.size(); i++)
+  std::vector<u8> sizeOfReplayNamesArr(size);
+  for (int i = 0; i < size; i++)
   {
     sizeOfReplayNamesArr[i] = (u8)strlen(this->replayNames[i]);
   }
-  SendCmdToGame(CMD_REPLAY_SEND_REPLAY_NAMES_SIZE, sizeOfReplayNamesArr);
+  SendCmdToGame(CMD_REPLAY_SEND_REPLAY_NAMES_SIZE, sizeOfReplayNamesArr.data());
 }
 void CEXIBrawlback::handleGetReplayFilesNames()
 {
-  SendCmdToGame(CMD_REPLAY_SEND_REPLAY_NAMES, this->replayNamesArr);
+  SendCmdToGame(CMD_REPLAY_SEND_REPLAY_NAMES, this->replayNames.data());
 }
 void CEXIBrawlback::handleGetReplayFiles()
 {
-  SendCmdToGame(CMD_REPLAY_SEND_REPLAY_FILES, this->replaysArr);
+  SendCmdToGame(CMD_REPLAY_SEND_REPLAY_FILES, this->replays.data());
 }
     // recieve data from game into emulator
 void CEXIBrawlback::DMAWrite(u32 address, u32 size)

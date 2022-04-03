@@ -30,7 +30,6 @@ private:
     // byte vector for sending into to the game
     std::vector<u8> read_queue = {};
 
-
     // DMA handlers
     void handleCaptureSavestate(u8* data);
     void handleLoadSavestate(u8* data);
@@ -43,8 +42,6 @@ private:
     std::vector<u8> curReplaySerialized;
     std::vector<const char*> replays;
     std::vector<const char*> replayNames;
-    const char** replaysArr;
-    const char** replayNamesArr;
     int curIndex;
     int curFrame;
     void handleNumPlayers(int* payload);
