@@ -1132,12 +1132,11 @@ void CEXIBrawlback::handleFighter(double* payload)
 void CEXIBrawlback::handleEndGame()
 {
   this->curReplaySerialized = json::to_msgpack(this->curReplay);
-  auto curReplaySerializedArr = new u8[this->curReplaySerialized.size()];
-  std::copy(this->curReplaySerialized.begin(), this->curReplaySerialized.end(), curReplaySerializedArr);
 
   const auto p1 = std::chrono::system_clock::now();
   const auto timestamp = std::chrono::duration_cast<std::chrono::seconds>(p1.time_since_epoch()).count();
-  writeToFile("replay_" + std::to_string(timestamp) + ".brba", curReplaySerializedArr, this->curReplaySerialized.size());
+  writeToFile("replay_" + std::to_string(timestamp) + ".brba", this->curReplaySerialized.data(),
+              this->curReplaySerialized.size());
 }
 void CEXIBrawlback::handleGetNumberReplayFiles()
 {
