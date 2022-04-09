@@ -11,13 +11,19 @@ namespace Brawlback
         return (buttonBits & (PADButtonBits::Z << 8)) != 0;
     }
 
-    Match::PlayerFrameDataImpl* findInPlayerFrameDataQueue(const PlayerFrameDataQueue& queue, u32 frame) {
-        for (const auto& x : queue) {
-            if (x->_playerFrameData.frame == frame) {
-                return x.get();
+    Match::PlayerFrameData* findInPlayerFrameDataQueue(const PlayerFrameDataQueue& queue, u32 frame) {
+        // this works under the assumption that the framedata queue is ordered sequentially by frame
+        Match::PlayerFrameData* ret = nullptr;
+        if (!queue.empty()) {
+            u32 begin = queue.front()->frame;
+            u32 end = queue.back()->frame;
+            if (frame >= begin && frame <= end) {
+                Match::PlayerFrameData* framedata = queue[ frame - begin ].get();
+                ASSERT(framedata->frame == frame);
+                ret = framedata;
             }
         }
-        return nullptr;
+        return ret;
     }
 
     namespace Match {

@@ -3,6 +3,7 @@
 #include <unordered_map>
 #include <array>
 #include <fstream>
+#include <optional>
 
 #include "Common/FileUtil.h"
 #include "Common/CommonTypes.h"
@@ -12,21 +13,26 @@
 #include "SlippiUtility.h"
 #include "Core/Brawlback/Brawltypes.h"
 
-// must be >= 1
-#define FRAME_DELAY 3
-static_assert(FRAME_DELAY + MAX_ROLLBACK_FRAMES >= 6); // 6 frames of "compensation" covers ~190 ping which is more than sufficient imo
+#define MAX_ROLLBACK_FRAMES 5
+
+#define FRAME_DELAY 2
+static_assert(FRAME_DELAY >= 1);
+static_assert(FRAME_DELAY + MAX_ROLLBACK_FRAMES >= 6); // frames of "compensation"
 
 #define ROLLBACK_IMPL true
 
-// number of max FrameData's to keep in the queue
+// number of max FrameData's to keep in the (remote) queue
 #define FRAMEDATA_MAX_QUEUE_SIZE 30 
 // update ping display every X frames
-#define PING_DISPLAY_INTERVAL 60
+#define PING_DISPLAY_INTERVAL 30
 
+// check clock desynchronization every X frames
 #define ONLINE_LOCKSTEP_INTERVAL 30
+
 #define GAME_START_FRAME 0
 //#define GAME_FULL_START_FRAME 1
-#define GAME_FULL_START_FRAME 250
+// players are actionable at around this frame
+#define GAME_FULL_START_FRAME 220
 
 #define MAX_REMOTE_PLAYERS 3
 #define MAX_NUM_PLAYERS 4
@@ -433,6 +439,19 @@ namespace Brawlback {
     T Clamp(T input, T Max, T Min) {
         return input > Max ? Max : ( input < Min ? Min : input );
     }
+
+    #ifndef MAX
+    #define MAX(x, y) (((x) > (y)) ? (x) : (y))
+    #endif
+
+    #ifndef MIN
+    #define MIN(x, y) (((x) < (y)) ? (x) : (y))
+    #endif
+
+    // 1 if in range (inclusive), 0 otherwise
+    #ifndef RANGE
+    #define RANGE(i, min, max) (i < min) || (i > max) ? 0 : 1
+    #endif
 
     namespace Dump {
         void DoMemDumpIteration(int& dump_num);
