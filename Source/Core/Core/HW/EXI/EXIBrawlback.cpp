@@ -1140,8 +1140,18 @@ void CEXIBrawlback::handleEndGame()
     const auto p1 = std::chrono::system_clock::now();
     const auto timestamp =
         std::chrono::duration_cast<std::chrono::seconds>(p1.time_since_epoch()).count();
-    writeToFile("replay_" + std::to_string(timestamp) + ".brba", this->curReplaySerialized.data(),
-                this->curReplaySerialized.size());
+
+    auto replaydir = SConfig::GetInstance().m_brawlbackReplayDir;
+    if (fs::is_directory(replaydir) || fs::create_directory(replaydir))
+    {
+      auto filename = fmt::format(FMT_STRING("{}/replay_{}.brba"), replaydir, timestamp);
+      writeToFile(filename, this->curReplaySerialized.data(), this->curReplaySerialized.size());
+    }
+    else
+    {
+      auto error_string = fmt::format(FMT_STRING("Failed to create replay directory: {}"), replaydir);
+      ERROR_LOG(BRAWLBACK, error_string.c_str());
+    }
   }
 }
 void CEXIBrawlback::handleGetNumberReplayFiles()

@@ -599,7 +599,7 @@ void SConfig::LoadBrawlbackSettings(IniFile& ini) {
 
     brawlback->Get("SaveReplays", &m_brawlbackSaveReplays, true);
 
-    const auto default_replay_dir = File::GetHomeDirectory() + CROSS_PLAT_DIR_SEP + "Brawlback";
+    const auto default_replay_dir = File::GetHomeDirectory() + DIR_SEP + "Brawlback";
     brawlback->Get("ReplaysDirectory", &m_brawlbackReplayDir, default_replay_dir);
 }
 
