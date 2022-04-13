@@ -329,6 +329,9 @@ void SConfig::SaveBrawlbackSettings(IniFile& ini) {
     brawlback->Set("CustomNetplayPort", m_slippiNetplayPort);
     brawlback->Set("ForceLanIP", m_slippiForceLanIp);
     brawlback->Set("LanIP", m_slippiLanIp);
+
+    brawlback->Set("SaveReplays", m_brawlbackSaveReplays);
+    brawlback->Set("ReplaysDirectory", m_brawlbackReplayDir);
 }
 
 void SConfig::LoadSettings()
@@ -593,6 +596,11 @@ void SConfig::LoadBrawlbackSettings(IniFile& ini) {
     brawlback->Get("CustomNetplayPort", &m_slippiNetplayPort, 7779);
     brawlback->Get("ForceLanIP", &m_slippiForceLanIp, false);
     brawlback->Get("LanIP", &m_slippiLanIp, "");
+
+    brawlback->Get("SaveReplays", &m_brawlbackSaveReplays, true);
+
+    const auto default_replay_dir = File::GetHomeDirectory() + CROSS_PLAT_DIR_SEP + "Brawlback";
+    brawlback->Get("ReplaysDirectory", &m_brawlbackReplayDir, default_replay_dir);
 }
 
 void SConfig::ResetRunningGameMetadata()

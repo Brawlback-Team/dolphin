@@ -42,10 +42,8 @@ struct SConfig
   bool bJITNoBlockLinking = false;
 
     // Slippi
-	bool m_slippiSaveReplays = true;
-	int m_slippiEnableQuickChat = 2; // Off
-	bool m_slippiReplayMonthFolders = false;
-	std::string m_strSlippiReplayDir;
+	bool m_brawlbackSaveReplays = true;
+	std::string m_brawlbackReplayDir;
 	bool m_slippiForceNetplayPort = false;
 	int m_slippiNetplayPort;
 	bool m_slippiForceLanIp = false;

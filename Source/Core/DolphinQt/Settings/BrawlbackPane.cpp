@@ -3,6 +3,7 @@
 
 #include "Common/Config/Config.h"
 #include "Core/ConfigManager.h"
+#include "DolphinQt/QtUtils/DolphinFileDialog.h"
 #include "DolphinQt/Settings/BrawlbackPane.h"
 
 BrawlbackPane::BrawlbackPane()
@@ -100,6 +101,16 @@ void BrawlbackPane::ConnectWidgets()
     SaveSettings();
   });
   connect(m_lan_ip, &QLineEdit::editingFinished, this, &BrawlbackPane::SaveSettings);
+
+  connect(m_save_replays, &QCheckBox::stateChanged, this, &BrawlbackPane::SaveSettings);
+  connect(m_replays_folder, &QLineEdit::editingFinished, this, &BrawlbackPane::SaveSettings);
+  connect(m_browse_replays_folder, &QPushButton::pressed, this, [this]() {
+    const auto currentReplaysPath =
+        QString::fromStdString(SConfig::GetInstance().m_brawlbackReplayDir);
+    const auto dir = DolphinFileDialog::getExistingDirectory(this, tr("Select Replay Folder"), currentReplaysPath);
+    m_replays_folder->setText(dir.isEmpty() ? currentReplaysPath : dir);
+    SaveSettings();
+  });
 }
 
 void BrawlbackPane::LoadSettings()
@@ -115,6 +126,9 @@ void BrawlbackPane::LoadSettings()
   m_force_lan_ip->setChecked(params.m_slippiForceLanIp);
   m_lan_ip->setText(QString::fromStdString(params.m_slippiLanIp));
   m_lan_ip->setVisible(params.m_slippiForceLanIp);
+
+  m_save_replays->setChecked(params.m_brawlbackSaveReplays);
+  m_replays_folder->setText(QString::fromStdString(params.m_brawlbackReplayDir));
 }
 void BrawlbackPane::SaveSettings()
 {
@@ -127,4 +141,7 @@ void BrawlbackPane::SaveSettings()
   params.m_slippiNetplayPort = m_custom_netplay_port->value();
   params.m_slippiForceLanIp = m_force_lan_ip->isChecked();
   params.m_slippiLanIp = m_lan_ip->text().toStdString();
+
+  params.m_brawlbackSaveReplays = m_save_replays->isChecked();
+  params.m_brawlbackReplayDir = m_replays_folder->text().toStdString();
 }
