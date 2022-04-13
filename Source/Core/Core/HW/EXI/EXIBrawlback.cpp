@@ -1129,17 +1129,26 @@ void CEXIBrawlback::handleFighter(double* payload)
 }
 void CEXIBrawlback::handleEndGame()
 {
-  this->curReplaySerialized = json::to_ubjson(this->curReplay);
+  //TODO: when starting game, check the saveReplays flag and doin't bother writing to JSON obj
+  // if replays are disabled?
 
-  const auto p1 = std::chrono::system_clock::now();
-  const auto timestamp = std::chrono::duration_cast<std::chrono::seconds>(p1.time_since_epoch()).count();
-  writeToFile("replay_" + std::to_string(timestamp) + ".brba", this->curReplaySerialized.data(),
-              this->curReplaySerialized.size());
+  //TODO: safe to read config here?
+  if (SConfig::GetInstance().m_brawlbackSaveReplays)
+  {
+    this->curReplaySerialized = json::to_ubjson(this->curReplay);
+
+    const auto p1 = std::chrono::system_clock::now();
+    const auto timestamp =
+        std::chrono::duration_cast<std::chrono::seconds>(p1.time_since_epoch()).count();
+    writeToFile("replay_" + std::to_string(timestamp) + ".brba", this->curReplaySerialized.data(),
+                this->curReplaySerialized.size());
+  }
 }
 void CEXIBrawlback::handleGetNumberReplayFiles()
 {
-  std::string path = "./";
-  for (const auto& entry : fs::directory_iterator(path))
+  //TODO: is it safe to read from the config here? could it be written to from another thread?
+  const auto replay_dir = SConfig::GetInstance().m_brawlbackReplayDir;
+  for (const auto& entry : fs::directory_iterator(replay_dir))
   {
     if (entry.path().string().contains("replay_"))
     {
