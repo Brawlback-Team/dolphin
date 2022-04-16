@@ -450,7 +450,7 @@ namespace Brawlback {
 
     // 1 if in range (inclusive), 0 otherwise
     #ifndef RANGE
-    #define RANGE(i, min, max) (i < min) || (i > max) ? 0 : 1
+    #define RANGE(i, min, max) ((i < min) || (i > max) ? 0 : 1)
     #endif
 
     namespace Dump {
