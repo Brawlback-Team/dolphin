@@ -13,7 +13,8 @@ namespace Brawlback
 
     Match::PlayerFrameData* findInPlayerFrameDataQueue(const PlayerFrameDataQueue& queue, u32 frame) {
         Match::PlayerFrameData* ret = nullptr;
-        /*if (!queue.empty()) {
+        #if 0
+        if (!queue.empty()) {
             // this works under the assumption that the framedata queue is ordered sequentially by frame
             u32 begin = queue.front()->frame;
             u32 end = queue.back()->frame;
@@ -24,13 +25,15 @@ namespace Brawlback
                 ASSERT(framedata->frame == frame);
                 ret = framedata;
             }
-        }*/
+        }
+        #else
         for (int i = ((int)queue.size())-1; i >= 0; i--) {
             if (queue[i]->frame == frame) {
                 ret = queue[i].get();
                 break;
             }
         }
+        #endif
         return ret;
     }
 

@@ -190,8 +190,11 @@ void CEXIBrawlback::handleLoadSavestate(u8* data)
         ERROR_LOG(BRAWLBACK, "Savestate for frame %i does not exist.", frame);
         PanicAlertFmtT("Savestate for frame {0} does not exist.", frame);
         this->isConnected = false;
-        for (int i = 0; i < this->server->peerCount; i++) {
-            enet_peer_disconnect(&this->server->peers[i], 0);
+        if (this->server) {
+            for (int i = 0; i < this->server->peerCount; i++)
+            {
+                enet_peer_disconnect(&this->server->peers[i], 0);
+            }
         }
         // in the future, exit out of the match or something here
 		return;

@@ -11,8 +11,9 @@
 #include "Common/Logging/Log.h"
 #include "Common/Logging/LogManager.h"
 #include "SlippiUtility.h"
-#include "Core/Brawlback/Brawltypes.h"
+#include "Savestate.h"
 
+// make sure this is the same as the one in Brawlback.h on the game side
 #define MAX_ROLLBACK_FRAMES 5
 
 #define FRAME_DELAY 2
@@ -22,7 +23,7 @@ static_assert(FRAME_DELAY + MAX_ROLLBACK_FRAMES >= 6); // frames of "compensatio
 #define ROLLBACK_IMPL true
 
 // number of max FrameData's to keep in the (remote) queue
-#define FRAMEDATA_MAX_QUEUE_SIZE 30 
+#define FRAMEDATA_MAX_QUEUE_SIZE 15 
 // update ping display every X frames
 #define PING_DISPLAY_INTERVAL 30
 
@@ -31,8 +32,8 @@ static_assert(FRAME_DELAY + MAX_ROLLBACK_FRAMES >= 6); // frames of "compensatio
 
 #define GAME_START_FRAME 0
 //#define GAME_FULL_START_FRAME 1
-// players are actionable at around this frame
-#define GAME_FULL_START_FRAME 220
+// before this frame we basically use delay-based netcode to ensure things are synced up
+#define GAME_FULL_START_FRAME 20
 
 #define MAX_REMOTE_PLAYERS 3
 #define MAX_NUM_PLAYERS 4
@@ -387,13 +388,13 @@ namespace Brawlback {
                 Reset();
             }
             void Reset() {
-                _rollbackInfo.isUsingPredictedInputs = false;
-                _rollbackInfo.beginFrame = 0;
-                _rollbackInfo.endFrame = 0;
-                _rollbackInfo.predictedInputs = FrameDataImpl()._frameData;
-                _rollbackInfo.pastFrameDataPopulated = false;
-                memset(_rollbackInfo.pastFrameDatas, 0, sizeof(FrameData) * MAX_ROLLBACK_FRAMES);
-                _rollbackInfo.hasPreserveBlocks = false;
+                isUsingPredictedInputs = false;
+                beginFrame = 0;
+                endFrame = 0;
+                predictedInputs = FrameData();
+                pastFrameDataPopulated = false;
+                memset(pastFrameDatas, 0, sizeof(FrameData) * MAX_ROLLBACK_FRAMES);
+                hasPreserveBlocks = false;
                 preserveBlocks = {};
             }
 
@@ -435,6 +436,8 @@ namespace Brawlback {
     Match::PlayerFrameDataImpl* findInPlayerFrameDataQueue(const PlayerFrameDataQueue& queue,
                                                            u32 frame);
 
+    int SavestateChecksum(std::vector<ssBackupLoc>* backupLocs);
+
     template <typename T>
     T Clamp(T input, T Max, T Min) {
         return input > Max ? Max : ( input < Min ? Min : input );
@@ -450,7 +453,7 @@ namespace Brawlback {
 
     // 1 if in range (inclusive), 0 otherwise
     #ifndef RANGE
-    #define RANGE(i, min, max) ((i < min) || (i > max) ? 0 : 1)
+    #define RANGE(i, min, max) (i < min) || (i > max) ? 0 : 1
     #endif
 
     namespace Dump {
