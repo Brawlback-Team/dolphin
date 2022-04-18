@@ -167,7 +167,7 @@ namespace Brawlback
         void Sync::SyncLog(const std::string& msg) {
             std::fstream synclogFile;
             File::OpenFStream(synclogFile, getSyncLogFilePath(), std::ios_base::out | std::ios_base::app);
-            synclogFile << msg;
+            synclogFile << "[Sync] " << msg << "[/Sync]\n";
             synclogFile.close();
         }
 
