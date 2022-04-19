@@ -8,8 +8,11 @@
 #include "Common/FileUtil.h"
 #include "Common/CommonTypes.h"
 #include "Common/Timer.h"
+#include "Core/Brawlback/Brawltypes.h"
+
 #include "Common/Logging/Log.h"
 #include "Common/Logging/LogManager.h"
+
 #include "SlippiUtility.h"
 #include "Savestate.h"
 
@@ -18,12 +21,13 @@
 
 #define FRAME_DELAY 2
 static_assert(FRAME_DELAY >= 1);
-static_assert(FRAME_DELAY + MAX_ROLLBACK_FRAMES >= 6); // frames of "compensation"
+static_assert(FRAME_DELAY + MAX_ROLLBACK_FRAMES >= 6); // minimum frames of "compensation"
 
 #define ROLLBACK_IMPL true
 
 // number of max FrameData's to keep in the (remote) queue
 #define FRAMEDATA_MAX_QUEUE_SIZE 15 
+static_assert(FRAMEDATA_MAX_QUEUE_SIZE > MAX_ROLLBACK_FRAMES);
 // update ping display every X frames
 #define PING_DISPLAY_INTERVAL 30
 
@@ -32,17 +36,17 @@ static_assert(FRAME_DELAY + MAX_ROLLBACK_FRAMES >= 6); // frames of "compensatio
 
 #define GAME_START_FRAME 0
 //#define GAME_FULL_START_FRAME 1
-// before this frame we basically use delay-based netcode to ensure things are synced up
-#define GAME_FULL_START_FRAME 20
+// before this frame we basically use delay-based netcode to ensure things are reasonably synced up before doing rollback stuff
+#define GAME_FULL_START_FRAME 100
 
 #define MAX_REMOTE_PLAYERS 3
 #define MAX_NUM_PLAYERS 4
 #define BRAWLBACK_PORT 7779
 
+#define TIMESYNC_MAX_US_OFFSET 10000 // 60% of a frame
 
+//#define SYNCLOG
 
-// 59.94 Hz (16.66 ms in a frame for 60fps)  ( -- is this accurate? This is the case for melee, idk if it also applies here)
-//#define USEC_IN_FRAME 16683
 
 #define MS_IN_FRAME (1000 / 60)
 #define USEC_IN_FRAME (MS_IN_FRAME*1000)
@@ -57,6 +61,9 @@ static_assert(FRAME_DELAY + MAX_ROLLBACK_FRAMES >= 6); // frames of "compensatio
 // ---
 
 namespace Brawlback {
+    const u8 NAMETAG_SIZE = 8;
+    const u8 DISPLAY_NAME_SIZE = 31;
+    const u8 CONNECT_CODE_SIZE = 10;
 
     struct UserInfo
     {
@@ -74,6 +81,7 @@ namespace Brawlback {
     {
       CMD_UNKNOWN = 0,
 
+
       CMD_ONLINE_INPUTS = 1,
       CMD_CAPTURE_SAVESTATE = 2,
       CMD_LOAD_SAVESTATE = 3,
@@ -84,36 +92,6 @@ namespace Brawlback {
       CMD_FRAMEDATA = 15,
       CMD_TIMESYNC = 16,
       CMD_ROLLBACK = 17,
-
-      // REPLAYS (RECIEVE FROM GAME)
-      CMD_REPLAY_INPUTS = 18,
-      CMD_REPLAY_STAGE = 19,
-      CMD_REPLAY_RANDOM = 20,
-      CMD_REPLAY_FIGHTER = 21,
-      CMD_REPLAY_GAME = 22,
-      CMD_REPLAY_ENDGAME = 23,
-      CMD_REPLAY_STARTPOS = 24,
-      CMD_REPLAY_POS = 25,
-      CMD_REPLAY_STARTFIGHTER = 26,
-      CMD_REPLAY_STICK = 27,
-      CMD_REPLAY_ACTIONSTATE = 28,
-      CMD_REPLAY_ITEM_IDS = 29,
-      CMD_REPLAY_ITEM_VARIENTS = 30,
-      CMD_REPLAY_NUM_PLAYERS = 31,
-      CMD_REPLAY_STOCK_COUNT = 32,
-      CMD_REPLAY_CURRENT_INDEX = 33,
-      CMD_REPLAY_GET_NUMBER_REPLAY_FILES = 34,
-      CMD_REPLAY_GET_REPLAY_FILES = 37,
-      CMD_REPLAY_GET_REPLAY_FILES_SIZE = 38,
-      CMD_REPLAY_GET_REPLAY_NAMES = 40,
-      CMD_REPLAY_GET_REPLAY_NAMES_SIZE = 42,
-
-      // REPLAYS (SEND TO GAME)
-      CMD_REPLAY_SEND_NUMBER_REPLAY_FILES = 35,
-      CMD_REPLAY_SEND_REPLAY_FILES = 36,
-      CMD_REPLAY_SEND_REPLAY_FILES_SIZE = 39,
-      CMD_REPLAY_SEND_REPLAY_NAMES = 41,
-      CMD_REPLAY_SEND_REPLAY_NAMES_SIZE = 43,
 
       CMD_GET_MATCH_STATE = 4,
       CMD_SET_MATCH_SELECTIONS = 6,
@@ -138,266 +116,114 @@ namespace Brawlback {
         int idx;
         std::vector<s32> buf;
     };
-    enum itemIdName
-    {
-      Assist_Trophy = 0x00,
-      Franklin_Badge = 0x01,
-      Banana_Peel = 0x02,
-      Barrel = 0x03,
-      Beam_Sword = 0x04,
-      Bill_Coin_mode = 0x05,
-      Bob_Omb = 0x06,
-      Crate = 0x07,
-      Bumper = 0x08,
-      Capsule = 0x09,
-      Rolling_Crate = 0x0A,
-      CD = 0x0B,
-      Gooey_Bomb = 0x0C,
-      Cracker_Launcher = 0x0D,
-      Cracker_Launcher_Shot = 0x0E,
-      Coin = 0x0F,
-      Superspicy_Curry = 0x10,
-      Superspice_Curry_Shot = 0x11,
-      Deku_Nut = 0x12,
-      Mr_Saturn = 0x13,
-      Dragoon_Part = 0x14,
-      Dragoon_Set = 0x15,
-      Dragoon_Sight = 0x16,
-      Trophy = 0x17,
-      Fire_Flower = 0x18,
-      Fire_Flower_Shot = 0x19,
-      Freezie = 0x1A,
-      Golden_Hammer = 0x1B,
-      Green_Shell = 0x1C,
-      Hammer = 0x1D,
-      Hammer_Head = 0x1E,
-      Fan = 0x1F,
-      Heart_Container = 0x20,
-      Homerun_Bat = 0x21,
-      Party_Ball = 0x22,
-      Manaphy_Heart = 0x23,
-      Maxim_Tomato = 0x24,
-      Poison_Mushroom = 0x25,
-      Super_Mushroom = 0x26,
-      Metal_Box = 0x27,
-      Hothead = 0x28,
-      Pitfall = 0x29,
-      Pokeball = 0x2A,
-      Blast_Box = 0x2B,
-      Ray_Gun = 0x2C,
-      Ray_Gun_Shot = 0x2D,
-      Lipstick = 0x2E,
-      Lipstick_Flower = 0x2F,
-      Lipstick_Shot_Dust_Powder = 0x30,
-      Sandbag = 0x31,
-      Screw_Attack = 0x32,
-      Sticker = 0x33,
-      Motion_Sensor_Bomb = 0x34,
-      Timer = 0x35,
-      Smart_Bomb = 0x36,
-      Smash_Ball = 0x37,
-      Smoke_Screen = 0x38,
-      Spring = 0x39,
-      Star_Rod = 0x3A,
-      Star_Rod_Shot = 0x3B,
-      Soccer_Ball = 0x3C,
-      Super_Scope = 0x3D,
-      Super_Scope_shot = 0x3E,
-      Star = 0x3F,
-      Food = 0x40,
-      Team_Healer = 0x41,
-      Lightning = 0x42,
-      Unira = 0x43,
-      Bunny_Hood = 0x44,
-      Warpstar = 0x45,
-      Trophy_SSE = 0x46,
-      Key = 0x47,
-      Trophy_Stand = 0x48,
-      Stock_Ball = 0x49,
-      Apple_Green_Greens = 0x4A,
-      Sidestepper = 0x4B,
-      Shellcreeper = 0x4C,
-      Pellet = 0x4D,
-      Vegetable_Summit = 0x4E,
-      Sandbag_HRC = 0x4F,
-      Auroros = 0x50,
-      Koopa1 = 0x51,
-      Koopa2 = 0x52,
-      Snakes_Box = 0x53,
-      Diddys_Peanut = 0x54,
-      Links_Bomb = 0x55,
-      Peachs_Turnup = 0x56,
-      ROBs_Gyro = 0x57,
-      Seed_edible_peanut = 0x58,
-      Snakes_Grenade = 0x59,
-      Samus_Armor_piece = 0x5A,
-      Toon_Links_Bomb = 0x5B,
-      Warios_Bike = 0x5C,
-      Warios_Bike_A = 0x5D,
-      Warios_Bike_B = 0x5E,
-      Warios_Bike_C = 0x5F,
-      Warios_Bike_D = 0x60,
-      Warios_Bike_E = 0x61,
-      Torchic = 0x62,
-      Cerebi = 0x63,
-      Chickorita = 0x64,
-      Chickoritas_Shot = 0x65,
-      Entei = 0x66,
-      Moltres = 0x67,
-      Munchlax = 0x68,
-      Deoxys = 0x69,
-      Groudon = 0x6A,
-      Gulpin = 0x6B,
-      Staryu = 0x6C,
-      Staryus_Shot = 0x6D,
-      Ho_oh = 0x6E,
-      Ho_ohs_Shot = 0x6F,
-      Jirachi = 0x70,
-      Snorlax = 0x71,
-      Bellossom = 0x72,
-      Kyogre = 0x73,
-      Kyogres_Shot = 0x74,
-      Latias_and_Latios = 0x75,
-      Lugia = 0x76,
-      Lugias_Shot = 0x77,
-      Manaphy = 0x78,
-      Weavile = 0x79,
-      Electrode = 0x7A,
-      Metagross = 0x7B,
-      Mew = 0x7C,
-      Meowth = 0x7D,
-      Meowths_Shot = 0x7E,
-      Piplup = 0x7F,
-      Togepi = 0x80,
-      Goldeen = 0x81,
-      Gardevoir = 0x82,
-      Wobuffet = 0x83,
-      Suicune = 0x84,
-      Bonsly = 0x85,
-      Andross = 0x86,
-      Andross_Shot = 0x87,
-      Barbara = 0x88,
-      Gray_Fox = 0x89,
-      Ray_MKII_Custom_Robo = 0x8A,
-      Ray_MKII_Bomb = 0x8B,
-      Ray_MKII_Gun_Shot = 0x8C,
-      Samurai_Goroh = 0x8D,
-      Devil = 0x8E,
-      Excitebike = 0x8F,
-      Jeff_Andonuts = 0x90,
-      Jeff_Pencil_Bullet = 0x91,
-      Jeff_Pencil_Rocket = 0x92,
-      Lakitu = 0x93,
-      Knuckle_Joe = 0x94,
-      Knuckle_Joe_Shot = 0x95,
-      Hammer_Bro = 0x96,
-      Hammer_Bro_Hammer = 0x97,
-      Helirin = 0x98,
-      Kat_and_Ana = 0x99,
-      Ana = 0x9A,
-      Jill_and_Drill_Dozer = 0x9B,
-      Lyn = 0x9C,
-      Little_Mac = 0x9D,
-      Metroid = 0x9E,
-      Nintendog = 0x9F,
-      NintendogFull = 0xA0,
-      Mr_Resetti = 0xA1,
-      Isaac = 0xA2,
-      Isaac_Shot = 0xA3,
-      Saki_Amamiya = 0xA4,
-      Saki_Shot_1 = 0xA5,
-      Saki_Shot_2 = 0xA6,
-      Shadow_the_Hedgehog = 0xA7,
-      Infantry = 0xA8,
-      Infantry_Shot = 0xA9,
-      Stafy = 0xAA,
-      Tank_Infantry = 0xAB,
-      Tank_Shot = 0xAC,
-      Tingle = 0xAD,
-      togezo = 0xAE,
-      Waluigi = 0xAF,
-      Dr_Wright = 0xB0,
-      Wright_Buildings = 0xB1,
-      Unknown1 = 0x7D1,
-      Unknown2 = 0x7D2,
-      Unknown3 = 0x7D3,
-      Unknown4 = 0x7D4,
-      Unknown5 = 0x7D5
-    };
+
     namespace Match
-    {   
-        struct PlayerFrameDataImpl {
-            PlayerFrameData _playerFrameData;
+    {
+        #pragma pack(push, 4)
+
+        struct PlayerFrameData {
+            u32 frame;
+            u8 playerIdx;
+            BrawlbackPad pad;
 
             // do these impact the size of the struct?
             // wouldn't the vtable ptr screw with it being interpreted on gameside???
             // (since the gameside structs don't have these ctors)
-            PlayerFrameDataImpl() {
-                _playerFrameData.frame = 0;
-                _playerFrameData.playerIdx = 0;
-                _playerFrameData.pad = BrawlbackPadImpl()._brawlbackPad;
+            PlayerFrameData() {
+                frame = 0;
+                playerIdx = 0;
+                pad = BrawlbackPad();
             }
-            PlayerFrameDataImpl(u32 _frame, u8 _playerIdx)
-            {
-                _playerFrameData.frame = _frame;
-                _playerFrameData.playerIdx = _playerIdx;
-                _playerFrameData.pad = BrawlbackPadImpl()._brawlbackPad;
+            PlayerFrameData(u32 _frame, u8 _playerIdx) {
+                frame = _frame;
+                playerIdx = _playerIdx;
+                pad = BrawlbackPad();
             }
         };
 
-        struct FrameDataImpl {
-            FrameData _frameData;
+        struct FrameData {
+            u32 randomSeed;
+            PlayerFrameData playerFrameDatas[MAX_NUM_PLAYERS];
 
-            FrameDataImpl()
-            {
-                _frameData.randomSeed = 0;
+            FrameData() {
+                randomSeed = 0;
                 for (int i = 0; i < MAX_NUM_PLAYERS; i++) {
-                    _frameData.playerFrameDatas[i] = PlayerFrameDataImpl()._playerFrameData;
+                    playerFrameDatas[i] = PlayerFrameData();
                 }
             }
-            FrameDataImpl(u32 frame)
-            {
-                _frameData.randomSeed = 0;
+            FrameData(u32 frame) {
+                randomSeed = 0;
                 for (u8 i = 0; i < MAX_NUM_PLAYERS; i++) {
-                    _frameData.playerFrameDatas[i] = PlayerFrameDataImpl(frame, i)._playerFrameData;
+                    playerFrameDatas[i] = PlayerFrameData(frame, i);
                 }
             }
         };
-        struct PlayerSettingsImpl
-        {
-            PlayerSettings _playerSettings;
-        };
 
-        struct GameSettingsImpl
-        {
-            GameSettings _gameSettings;
-        };
-        struct Game {
-            u32 version;
-            GameSettingsImpl gameSettings;
-            u32 currentFrame;
-            std::unordered_map<int32_t, FrameDataImpl*> framesByIndex;
-            std::vector<std::unique_ptr<FrameDataImpl>> frames;
-        };
 
-        struct RollbackInfoImpl {
-            RollbackInfo _rollbackInfo;
-            std::vector<SlippiUtility::Savestate::PreserveBlockImpl> preserveBlocks;
+        struct RollbackInfo {
+            bool isUsingPredictedInputs;
+            u32 beginFrame; // frame we realized we have no remote inputs
+            u32 endFrame; // frame we received new remote inputs, and should now resim with those
+            FrameData predictedInputs;
 
-            RollbackInfoImpl() {
+            bool pastFrameDataPopulated;
+            FrameData pastFrameDatas[MAX_ROLLBACK_FRAMES];
+
+            bool hasPreserveBlocks;
+            //std::vector<SlippiUtility::Savestate::PreserveBlock> preserveBlocks;
+
+            RollbackInfo() {
                 Reset();
             }
             void Reset() {
                 isUsingPredictedInputs = false;
                 beginFrame = 0;
                 endFrame = 0;
-                predictedInputs = FrameData();
+                memset(&predictedInputs, 0, sizeof(FrameData));
                 pastFrameDataPopulated = false;
                 memset(pastFrameDatas, 0, sizeof(FrameData) * MAX_ROLLBACK_FRAMES);
                 hasPreserveBlocks = false;
-                preserveBlocks = {};
+                //preserveBlocks = {};
             }
 
+        };
+
+        #pragma pack(pop)
+
+
+        enum PlayerType : u8
+        {
+            PLAYERTYPE_LOCAL = 0x0,
+            PLAYERTYPE_REMOTE = 0x1,
+        };
+
+        
+        struct PlayerSettings
+        {
+            u8 charID;
+            u8 charColor;
+            PlayerType playerType;
+            u8 controllerPort;
+            u16 nametag[NAMETAG_SIZE];
+            u8 displayName[DISPLAY_NAME_SIZE];
+            u8 connectCode[CONNECT_CODE_SIZE];
+        };
+
+        struct GameSettings
+        {
+            u8 localPlayerIdx;
+            u8 numPlayers;
+            u16 stageID;
+            u32 randomSeed;
+            PlayerSettings playerSettings[MAX_NUM_PLAYERS];
+        };
+
+        struct Game {
+            u32 version;
+            GameSettings gameSettings;
+            u32 currentFrame;
+            std::unordered_map<int32_t, FrameData*> framesByIndex;
+            std::vector<std::unique_ptr<FrameData>> frames;
         };
 
         bool isPlayerFrameDataEqual(const PlayerFrameData& p1, const PlayerFrameData& p2);
@@ -428,13 +254,13 @@ namespace Brawlback {
         std::string str_byte(uint8_t byte);
         std::string str_half(u16 half);
         void SyncLog(const std::string& msg);
-        std::string stringifyFramedata(const Match::PlayerFrameDataImpl& pfd);
+        std::string stringifyFramedata(const Match::FrameData& fd, int numPlayers);
+        std::string stringifyFramedata(const Match::PlayerFrameData& pfd);
     }
     
-    typedef std::deque<std::unique_ptr<Match::PlayerFrameDataImpl>> PlayerFrameDataQueue;
+    typedef std::deque<std::unique_ptr<Match::PlayerFrameData>> PlayerFrameDataQueue;
 
-    Match::PlayerFrameDataImpl* findInPlayerFrameDataQueue(const PlayerFrameDataQueue& queue,
-                                                           u32 frame);
+    Match::PlayerFrameData* findInPlayerFrameDataQueue(const PlayerFrameDataQueue& queue, u32 frame);
 
     int SavestateChecksum(std::vector<ssBackupLoc>* backupLocs);
 
@@ -443,18 +269,11 @@ namespace Brawlback {
         return input > Max ? Max : ( input < Min ? Min : input );
     }
 
-    #ifndef MAX
-    #define MAX(x, y) (((x) > (y)) ? (x) : (y))
-    #endif
 
-    #ifndef MIN
-    #define MIN(x, y) (((x) < (y)) ? (x) : (y))
-    #endif
-
+    inline int MAX(int x, int y) { return (((x) > (y)) ? (x) : (y)); }
+    inline int MIN(int x, int y) { return (((x) < (y)) ? (x) : (y)); }
     // 1 if in range (inclusive), 0 otherwise
-    #ifndef RANGE
-    #define RANGE(i, min, max) (i < min) || (i > max) ? 0 : 1
-    #endif
+    inline int RANGE(int i, int min, int max) { return ((i < min) || (i > max) ? 0 : 1); }
 
     namespace Dump {
         void DoMemDumpIteration(int& dump_num);

@@ -2,7 +2,7 @@
 #include "TimeSync.h"
 #include "VideoCommon/OnScreenDisplay.h"
 
-// a lot of this time sync stuff was taken from slippi
+// pretty much all of this time sync stuff was taken from slippi
 // Huge thanks to them <3
 // if need be, this can be reworked so it doesn't resemble slippi so much
 namespace Brawlback {
@@ -35,12 +35,11 @@ bool TimeSync::shouldStallFrame(s32 currentFrame, s32 latestRemoteFrame, u8 numP
             ERROR_LOG(BRAWLBACK, "CONNECTION STALLED\n");
             this->isConnectionStalled = true;
         }
-        ERROR_LOG(BRAWLBACK, "Exceeded frameDiff lim, halting for one frame. Frame: %u  Latest (wo delay) %u diff %u\n", currentFrame, latestRemoteFrame - FRAME_DELAY, frameDiff);
+        ERROR_LOG(BRAWLBACK, "Clients too far out of sync, stalling. Frame: %u  Latest %u diff %u\n", currentFrame, latestRemoteFrame, frameDiff);
         return true;
     }
     this->stallFrameCount = 0;
 
-    #define MAX_US_OFFSET 10000 // 60% of a frame
 
     // Return true if we are over 60% of a frame ahead of our opponent. Currently limiting how
 	// often this happens because I'm worried about jittery data causing a lot of unneccesary delays.
@@ -54,12 +53,12 @@ bool TimeSync::shouldStallFrame(s32 currentFrame, s32 latestRemoteFrame, u8 numP
 		WARN_LOG(BRAWLBACK, "[Frame %u] Offset is: %d us", currentFrame, offsetUs);
 
 		// TODO: figure out a better solution here for doubles?
-		if (offsetUs > MAX_US_OFFSET)
+		if (offsetUs > TIMESYNC_MAX_US_OFFSET)
 		{
 			this->isSkipping = true;
 
 			int maxSkipFrames = currentFrame <= 120 ? 5 : 1; // On early frames, support skipping more frames
-			this->framesToSkip = ((offsetUs - MAX_US_OFFSET) / USEC_IN_FRAME) + 1;
+			this->framesToSkip = ((offsetUs - TIMESYNC_MAX_US_OFFSET) / USEC_IN_FRAME) + 1;
             INFO_LOG(BRAWLBACK, "Unclamped framesToSkip %d", this->framesToSkip);
 			this->framesToSkip = this->framesToSkip > maxSkipFrames ? maxSkipFrames : this->framesToSkip; // Only skip 5 frames max
 

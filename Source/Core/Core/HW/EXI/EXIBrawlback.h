@@ -115,6 +115,7 @@ private:
     Match::RollbackInfo rollbackInfo = Match::RollbackInfo();
     void SetupRollback(u32 currentFrame, u32 rollbackEndFrame);
     std::optional<Match::PlayerFrameData> HandleInputPrediction(u32 frame, u8 playerIdx);
+    int latestConfirmedFrame = 0;
     // -------------------------------
 
     void connectToOpponent();

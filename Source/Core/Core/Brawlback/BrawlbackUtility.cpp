@@ -168,10 +168,12 @@ namespace Brawlback
         }
 
         void Sync::SyncLog(const std::string& msg) {
-            std::fstream synclogFile;
-            File::OpenFStream(synclogFile, getSyncLogFilePath(), std::ios_base::out | std::ios_base::app);
-            synclogFile << "[Sync] " << msg << "[/Sync]\n";
-            synclogFile.close();
+            if (!msg.empty()) {
+                std::fstream synclogFile;
+                File::OpenFStream(synclogFile, getSyncLogFilePath(), std::ios_base::out | std::ios_base::app);
+                synclogFile << "[Sync] " << msg << "[/Sync]\n";
+                synclogFile.close();
+            }
         }
 
         std::string Sync::stringifyFramedata(const Match::PlayerFrameDataImpl& pfd) {
@@ -206,6 +208,16 @@ namespace Brawlback
 
             ret.append(info);
             ret.append(inputs);
+            return ret;
+        }
+
+        std::string Sync::stringifyFramedata(const Match::FrameData& fd, int numPlayers) {
+            std::string ret;
+            for (int i = 0; i < numPlayers; i++) {
+                const auto& pfd = fd.playerFrameDatas[i];
+                if (pfd.frame != 0)
+                    ret.append(Sync::stringifyFramedata(pfd));
+            }
             return ret;
         }
 
