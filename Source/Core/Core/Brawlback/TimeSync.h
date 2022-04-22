@@ -32,9 +32,9 @@ public:
     int getMinAckFrame(u8 numPlayers);
 
     bool getIsConnectionStalled() { return isConnectionStalled; }
-private:
 
     s32 calcTimeOffsetUs(u8 numPlayers);
+private:
 
     FrameOffsetData frameOffsetData[MAX_NUM_PLAYERS];
 
