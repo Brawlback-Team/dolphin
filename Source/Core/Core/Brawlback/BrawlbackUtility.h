@@ -3,6 +3,7 @@
 #include <unordered_map>
 #include <array>
 #include <fstream>
+#include <optional>
 
 #include "Common/FileUtil.h"
 #include "Common/CommonTypes.h"
@@ -12,33 +13,39 @@
 #include "Common/Logging/Log.h"
 #include "Common/Logging/LogManager.h"
 #include "SlippiUtility.h"
+#include "Savestate.h"
 
-#define MAX_ROLLBACK_FRAMES 4
+// make sure this is the same as the one in Brawlback.h on the game side
+#define MAX_ROLLBACK_FRAMES 5
 
-// must be >= 1
-#define FRAME_DELAY 3
-static_assert(FRAME_DELAY + MAX_ROLLBACK_FRAMES >= 6); // 6 frames of "compensation" covers ~190 ping which is more than sufficient imo
+#define FRAME_DELAY 2
+static_assert(FRAME_DELAY >= 1);
+static_assert(FRAME_DELAY + MAX_ROLLBACK_FRAMES >= 6); // minimum frames of "compensation"
 
 #define ROLLBACK_IMPL true
 
-// number of max FrameData's to keep in the queue
-#define FRAMEDATA_MAX_QUEUE_SIZE 30 
+// number of max FrameData's to keep in the (remote) queue
+#define FRAMEDATA_MAX_QUEUE_SIZE 15 
+static_assert(FRAMEDATA_MAX_QUEUE_SIZE > MAX_ROLLBACK_FRAMES);
 // update ping display every X frames
-#define PING_DISPLAY_INTERVAL 60
+#define PING_DISPLAY_INTERVAL 30
 
+// check clock desynchronization every X frames
 #define ONLINE_LOCKSTEP_INTERVAL 30
+
 #define GAME_START_FRAME 0
 //#define GAME_FULL_START_FRAME 1
-#define GAME_FULL_START_FRAME 250
+// before this frame we basically use delay-based netcode to ensure things are reasonably synced up before doing rollback stuff
+#define GAME_FULL_START_FRAME 100
 
 #define MAX_REMOTE_PLAYERS 3
 #define MAX_NUM_PLAYERS 4
 #define BRAWLBACK_PORT 7779
 
+#define TIMESYNC_MAX_US_OFFSET 10000 // 60% of a frame
 
+//#define SYNCLOG
 
-// 59.94 Hz (16.66 ms in a frame for 60fps)  ( -- is this accurate? This is the case for melee, idk if it also applies here)
-//#define USEC_IN_FRAME 16683
 
 #define MS_IN_FRAME (1000 / 60)
 #define USEC_IN_FRAME (MS_IN_FRAME*1000)
@@ -325,14 +332,8 @@ namespace Brawlback {
     };
     namespace Match
     {
+        #pragma pack(push, 4)
 
-        enum PlayerType : u8
-        {
-            PLAYERTYPE_LOCAL = 0x0,
-            PLAYERTYPE_REMOTE = 0x1,
-        };
-
-        
         struct PlayerFrameData {
             u32 frame;
             u8 playerIdx;
@@ -353,7 +354,6 @@ namespace Brawlback {
             }
         };
 
-        //#pragma pack(push, 4)
         struct FrameData {
             u32 randomSeed;
             PlayerFrameData playerFrameDatas[MAX_NUM_PLAYERS];
@@ -371,8 +371,46 @@ namespace Brawlback {
                 }
             }
         };
-        //#pragma pack(pop)
 
+
+        struct RollbackInfo {
+            bool isUsingPredictedInputs;
+            u32 beginFrame; // frame we realized we have no remote inputs
+            u32 endFrame; // frame we received new remote inputs, and should now resim with those
+            FrameData predictedInputs;
+
+            bool pastFrameDataPopulated;
+            FrameData pastFrameDatas[MAX_ROLLBACK_FRAMES];
+
+            bool hasPreserveBlocks;
+            //std::vector<SlippiUtility::Savestate::PreserveBlock> preserveBlocks;
+
+            RollbackInfo() {
+                Reset();
+            }
+            void Reset() {
+                isUsingPredictedInputs = false;
+                beginFrame = 0;
+                endFrame = 0;
+                memset(&predictedInputs, 0, sizeof(FrameData));
+                pastFrameDataPopulated = false;
+                memset(pastFrameDatas, 0, sizeof(FrameData) * MAX_ROLLBACK_FRAMES);
+                hasPreserveBlocks = false;
+                //preserveBlocks = {};
+            }
+
+        };
+
+        #pragma pack(pop)
+
+
+        enum PlayerType : u8
+        {
+            PLAYERTYPE_LOCAL = 0x0,
+            PLAYERTYPE_REMOTE = 0x1,
+        };
+
+        
         struct PlayerSettings
         {
             u8 charID;
@@ -399,34 +437,6 @@ namespace Brawlback {
             u32 currentFrame;
             std::unordered_map<int32_t, FrameData*> framesByIndex;
             std::vector<std::unique_ptr<FrameData>> frames;
-        };
-
-        struct RollbackInfo {
-            bool isUsingPredictedInputs;
-            u32 beginFrame; // frame we realized we have no remote inputs
-            u32 endFrame; // frame we received new remote inputs, and should now resim with those
-            FrameData predictedInputs;
-
-            bool pastFrameDataPopulated;
-            FrameData pastFrameDatas[MAX_ROLLBACK_FRAMES];
-
-            bool hasPreserveBlocks;
-            std::vector<SlippiUtility::Savestate::PreserveBlock> preserveBlocks;
-
-            RollbackInfo() {
-                Reset();
-            }
-            void Reset() {
-                isUsingPredictedInputs = false;
-                beginFrame = 0;
-                endFrame = 0;
-                predictedInputs = FrameData();
-                pastFrameDataPopulated = false;
-                memset(pastFrameDatas, 0, sizeof(FrameData) * MAX_ROLLBACK_FRAMES);
-                hasPreserveBlocks = false;
-                preserveBlocks = {};
-            }
-
         };
 
         bool isPlayerFrameDataEqual(const PlayerFrameData& p1, const PlayerFrameData& p2);
@@ -457,6 +467,7 @@ namespace Brawlback {
         std::string str_byte(uint8_t byte);
         std::string str_half(u16 half);
         void SyncLog(const std::string& msg);
+        std::string stringifyFramedata(const Match::FrameData& fd, int numPlayers);
         std::string stringifyFramedata(const Match::PlayerFrameData& pfd);
     }
     
@@ -464,10 +475,18 @@ namespace Brawlback {
 
     Match::PlayerFrameData* findInPlayerFrameDataQueue(const PlayerFrameDataQueue& queue, u32 frame);
 
+    int SavestateChecksum(std::vector<ssBackupLoc>* backupLocs);
+
     template <typename T>
     T Clamp(T input, T Max, T Min) {
         return input > Max ? Max : ( input < Min ? Min : input );
     }
+
+
+    inline int MAX(int x, int y) { return (((x) > (y)) ? (x) : (y)); }
+    inline int MIN(int x, int y) { return (((x) < (y)) ? (x) : (y)); }
+    // 1 if in range (inclusive), 0 otherwise
+    inline int RANGE(int i, int min, int max) { return ((i < min) || (i > max) ? 0 : 1); }
 
     namespace Dump {
         void DoMemDumpIteration(int& dump_num);

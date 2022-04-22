@@ -21,6 +21,10 @@ public:
 
     //static bool shouldForceInit;
 
+    std::vector<ssBackupLoc>* getBackupLocs() { return &backupLocs; }
+
+    int frame = -1;
+    int checksum = -1;
 private:
 
 
