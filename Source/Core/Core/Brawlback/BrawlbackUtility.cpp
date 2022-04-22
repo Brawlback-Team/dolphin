@@ -11,8 +11,8 @@ namespace Brawlback
         return (buttonBits & (PADButtonBits::Z << 8)) != 0;
     }
 
-    Match::PlayerFrameData* findInPlayerFrameDataQueue(const PlayerFrameDataQueue& queue, u32 frame) {
-        Match::PlayerFrameData* ret = nullptr;
+    Match::PlayerFrameDataImpl* findInPlayerFrameDataQueue(const PlayerFrameDataQueue& queue, u32 frame) {
+        Match::PlayerFrameDataImpl* ret = nullptr;
         #if 0
         if (!queue.empty()) {
             // this works under the assumption that the framedata queue is ordered sequentially by frame
