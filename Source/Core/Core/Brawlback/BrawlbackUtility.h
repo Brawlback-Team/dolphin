@@ -7,13 +7,10 @@
 #include "Common/FileUtil.h"
 #include "Common/CommonTypes.h"
 #include "Common/Timer.h"
-#include "Core/Brawlback/Brawltypes.h"
-
 #include "Common/Logging/Log.h"
 #include "Common/Logging/LogManager.h"
 #include "SlippiUtility.h"
-
-#define MAX_ROLLBACK_FRAMES 4
+#include "Core/Brawlback/Brawltypes.h"
 
 // must be >= 1
 #define FRAME_DELAY 3
@@ -53,9 +50,6 @@ static_assert(FRAME_DELAY + MAX_ROLLBACK_FRAMES >= 6); // 6 frames of "compensat
 // ---
 
 namespace Brawlback {
-    const u8 NAMETAG_SIZE = 8;
-    const u8 DISPLAY_NAME_SIZE = 31;
-    const u8 CONNECT_CODE_SIZE = 10;
 
     struct UserInfo
     {
@@ -324,106 +318,76 @@ namespace Brawlback {
       Unknown5 = 0x7D5
     };
     namespace Match
-    {
-
-        enum PlayerType : u8
-        {
-            PLAYERTYPE_LOCAL = 0x0,
-            PLAYERTYPE_REMOTE = 0x1,
-        };
-
-        
-        struct PlayerFrameData {
-            u32 frame;
-            u8 playerIdx;
-            BrawlbackPad pad;
+    {   
+        struct PlayerFrameDataImpl {
+            PlayerFrameData _playerFrameData;
 
             // do these impact the size of the struct?
             // wouldn't the vtable ptr screw with it being interpreted on gameside???
             // (since the gameside structs don't have these ctors)
-            PlayerFrameData() {
-                frame = 0;
-                playerIdx = 0;
-                pad = BrawlbackPad();
+            PlayerFrameDataImpl() {
+                _playerFrameData.frame = 0;
+                _playerFrameData.playerIdx = 0;
+                _playerFrameData.pad = BrawlbackPadImpl()._brawlbackPad;
             }
-            PlayerFrameData(u32 _frame, u8 _playerIdx) {
-                frame = _frame;
-                playerIdx = _playerIdx;
-                pad = BrawlbackPad();
+            PlayerFrameDataImpl(u32 _frame, u8 _playerIdx)
+            {
+                _playerFrameData.frame = _frame;
+                _playerFrameData.playerIdx = _playerIdx;
+                _playerFrameData.pad = BrawlbackPadImpl()._brawlbackPad;
             }
         };
 
-        //#pragma pack(push, 4)
-        struct FrameData {
-            u32 randomSeed;
-            PlayerFrameData playerFrameDatas[MAX_NUM_PLAYERS];
+        struct FrameDataImpl {
+            FrameData _frameData;
 
-            FrameData() {
-                randomSeed = 0;
+            FrameDataImpl()
+            {
+                _frameData.randomSeed = 0;
                 for (int i = 0; i < MAX_NUM_PLAYERS; i++) {
-                    playerFrameDatas[i] = PlayerFrameData();
+                    _frameData.playerFrameDatas[i] = PlayerFrameDataImpl()._playerFrameData;
                 }
             }
-            FrameData(u32 frame) {
-                randomSeed = 0;
+            FrameDataImpl(u32 frame)
+            {
+                _frameData.randomSeed = 0;
                 for (u8 i = 0; i < MAX_NUM_PLAYERS; i++) {
-                    playerFrameDatas[i] = PlayerFrameData(frame, i);
+                    _frameData.playerFrameDatas[i] = PlayerFrameDataImpl(frame, i)._playerFrameData;
                 }
             }
         };
-        //#pragma pack(pop)
-
-        struct PlayerSettings
+        struct PlayerSettingsImpl
         {
-            u8 charID;
-            u8 charColor;
-            PlayerType playerType;
-            u8 controllerPort;
-            u16 nametag[NAMETAG_SIZE];
-            u8 displayName[DISPLAY_NAME_SIZE];
-            u8 connectCode[CONNECT_CODE_SIZE];
+            PlayerSettings _playerSettings;
         };
 
-        struct GameSettings
+        struct GameSettingsImpl
         {
-            u8 localPlayerIdx;
-            u8 numPlayers;
-            u16 stageID;
-            u32 randomSeed;
-            PlayerSettings playerSettings[MAX_NUM_PLAYERS];
+            GameSettings _gameSettings;
         };
-
         struct Game {
             u32 version;
-            GameSettings gameSettings;
+            GameSettingsImpl gameSettings;
             u32 currentFrame;
-            std::unordered_map<int32_t, FrameData*> framesByIndex;
-            std::vector<std::unique_ptr<FrameData>> frames;
+            std::unordered_map<int32_t, FrameDataImpl*> framesByIndex;
+            std::vector<std::unique_ptr<FrameDataImpl>> frames;
         };
 
-        struct RollbackInfo {
-            bool isUsingPredictedInputs;
-            u32 beginFrame; // frame we realized we have no remote inputs
-            u32 endFrame; // frame we received new remote inputs, and should now resim with those
-            FrameData predictedInputs;
+        struct RollbackInfoImpl {
+            RollbackInfo _rollbackInfo;
+            std::vector<SlippiUtility::Savestate::PreserveBlockImpl> preserveBlocks;
 
-            bool pastFrameDataPopulated;
-            FrameData pastFrameDatas[MAX_ROLLBACK_FRAMES];
-
-            bool hasPreserveBlocks;
-            std::vector<SlippiUtility::Savestate::PreserveBlock> preserveBlocks;
-
-            RollbackInfo() {
+            RollbackInfoImpl() {
                 Reset();
             }
             void Reset() {
-                isUsingPredictedInputs = false;
-                beginFrame = 0;
-                endFrame = 0;
-                predictedInputs = FrameData();
-                pastFrameDataPopulated = false;
-                memset(pastFrameDatas, 0, sizeof(FrameData) * MAX_ROLLBACK_FRAMES);
-                hasPreserveBlocks = false;
+                _rollbackInfo.isUsingPredictedInputs = false;
+                _rollbackInfo.beginFrame = 0;
+                _rollbackInfo.endFrame = 0;
+                _rollbackInfo.predictedInputs = FrameDataImpl()._frameData;
+                _rollbackInfo.pastFrameDataPopulated = false;
+                memset(_rollbackInfo.pastFrameDatas, 0, sizeof(FrameData) * MAX_ROLLBACK_FRAMES);
+                _rollbackInfo.hasPreserveBlocks = false;
                 preserveBlocks = {};
             }
 
@@ -457,12 +421,13 @@ namespace Brawlback {
         std::string str_byte(uint8_t byte);
         std::string str_half(u16 half);
         void SyncLog(const std::string& msg);
-        std::string stringifyFramedata(const Match::PlayerFrameData& pfd);
+        std::string stringifyFramedata(const Match::PlayerFrameDataImpl& pfd);
     }
     
-    typedef std::deque<std::unique_ptr<Match::PlayerFrameData>> PlayerFrameDataQueue;
+    typedef std::deque<std::unique_ptr<Match::PlayerFrameDataImpl>> PlayerFrameDataQueue;
 
-    Match::PlayerFrameData* findInPlayerFrameDataQueue(const PlayerFrameDataQueue& queue, u32 frame);
+    Match::PlayerFrameDataImpl* findInPlayerFrameDataQueue(const PlayerFrameDataQueue& queue,
+                                                           u32 frame);
 
     template <typename T>
     T Clamp(T input, T Max, T Min) {

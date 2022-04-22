@@ -15,9 +15,9 @@
 
 #include "Core/Brawlback/BrawlbackUtility.h"
 
+#include "Core/Brawlback/include/json.hpp"
 #pragma warning( push )
 #pragma warning( disable : 4946 )
-#include "Core/Brawlback/include/json.hpp"
 #pragma warning( pop )
 
 using json = nlohmann::json;

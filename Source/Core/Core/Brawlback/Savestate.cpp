@@ -187,7 +187,7 @@ void BrawlbackSavestate::initBackupLocs()
 
 
     // wip
-    static std::vector<PreserveBlock> excludeSections = {
+    static std::vector<PreserveBlockImpl> excludeSections = {
         // {start address, size}
 
         {0x935d7660, 0x000089a0}, // CPP Framework heap (subject to change...??)
@@ -309,7 +309,7 @@ void BrawlbackSavestate::Capture()
 
 }
 
-void BrawlbackSavestate::Load(std::vector<PreserveBlock> blocks)
+void BrawlbackSavestate::Load(std::vector<PreserveBlockImpl> blocks)
 {
 
     // Back up regions of game that should stay the same between savestates
@@ -319,10 +319,10 @@ void BrawlbackSavestate::Load(std::vector<PreserveBlock> blocks)
         if (!preservationMap.count(*it)) // if this PreserveBlock is NOT in our preservationMap
         {
             // TODO: Clear preservation map when game ends
-            preservationMap[*it] = std::vector<u8>(it->length); // init new entry at this PreserveBlock key
+            preservationMap[*it] = std::vector<u8>(it->_preserveBlock.length); // init new entry at this PreserveBlock key
         }
 
-        Memory::CopyFromEmu(&preservationMap[*it][0], it->address, it->length);
+        Memory::CopyFromEmu(&preservationMap[*it][0], it->_preserveBlock.address, it->_preserveBlock.length);
     }
 
 
@@ -348,7 +348,7 @@ void BrawlbackSavestate::Load(std::vector<PreserveBlock> blocks)
     // Restore preservation blocks
     for (auto it = blocks.begin(); it != blocks.end(); ++it)
     {
-        Memory::CopyToEmu(it->address, &preservationMap[*it][0], it->length);
+        Memory::CopyToEmu(it->_preserveBlock.address, &preservationMap[*it][0], it->_preserveBlock.length);
     }
   
 

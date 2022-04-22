@@ -93,6 +93,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Core\Brawlback\BrawlbackUtility.h" />
+    <ClInclude Include="Core\Brawlback\include\json.hpp" />
     <ClInclude Include="Core\Brawlback\MemRegions.h" />
     <ClInclude Include="Core\Brawlback\Netplay\Matchmaking.h" />
     <ClInclude Include="Core\Brawlback\Brawltypes.h" />

@@ -11,9 +11,9 @@ namespace Brawlback
         return (buttonBits & (PADButtonBits::Z << 8)) != 0;
     }
 
-    Match::PlayerFrameData* findInPlayerFrameDataQueue(const PlayerFrameDataQueue& queue, u32 frame) {
+    Match::PlayerFrameDataImpl* findInPlayerFrameDataQueue(const PlayerFrameDataQueue& queue, u32 frame) {
         for (const auto& x : queue) {
-            if (x->frame == frame) {
+            if (x->_playerFrameData.frame == frame) {
                 return x.get();
             }
         }
@@ -22,12 +22,17 @@ namespace Brawlback
 
     namespace Match {
         
-        bool isPlayerFrameDataEqual(const PlayerFrameData& p1, const PlayerFrameData& p2) {
+        bool isPlayerFrameDataEqual(const PlayerFrameDataImpl& p1, const PlayerFrameDataImpl& p2)
+    {
             //bool frames = p1.frame == p2.frame;
             //bool idxs = p1.playerIdx == p2.playerIdx;
-            bool buttons = p1.pad.buttons == p2.pad.buttons;
-            bool sticks = p1.pad.stickX == p2.pad.stickX && p1.pad.stickY == p2.pad.stickY && p1.pad.cStickX == p2.pad.cStickX && p1.pad.cStickY == p2.pad.cStickY;
-            bool triggers = p1.pad.LTrigger == p2.pad.LTrigger && p1.pad.RTrigger == p2.pad.RTrigger;
+            bool buttons = p1._playerFrameData.pad.buttons == p2._playerFrameData.pad.buttons;
+            bool sticks = p1._playerFrameData.pad.stickX == p2._playerFrameData.pad.stickX &&
+                          p1._playerFrameData.pad.stickY == p2._playerFrameData.pad.stickY &&
+                          p1._playerFrameData.pad.cStickX == p2._playerFrameData.pad.cStickX &&
+                          p1._playerFrameData.pad.cStickY == p2._playerFrameData.pad.cStickY;
+            bool triggers = p1._playerFrameData.pad.LTrigger == p2._playerFrameData.pad.LTrigger &&
+                            p1._playerFrameData.pad.RTrigger == p2._playerFrameData.pad.RTrigger;
             return buttons && sticks && triggers;
         }
 
@@ -108,26 +113,33 @@ namespace Brawlback
             synclogFile.close();
         }
 
-        std::string Sync::stringifyFramedata(const Match::PlayerFrameData& pfd) {
+        std::string Sync::stringifyFramedata(const Match::PlayerFrameDataImpl& pfd) {
             std::string ret;
 
 
             std::string info;
-            info.append("[Frame " + std::to_string(pfd.frame) + "] [P" + std::to_string(pfd.playerIdx+1) + "]\n");
+            info.append("[Frame " + std::to_string(pfd._playerFrameData.frame) + "] [P" +
+                        std::to_string(pfd._playerFrameData.playerIdx + 1) + "]\n");
 
 
             std::string inputs;
 
-            std::string sticks = "[StickX: " + std::to_string((int)pfd.pad.stickX) + "] [StickY: " + std::to_string((int)pfd.pad.stickY) + "]\n";
+            std::string sticks =
+                "[StickX: " + std::to_string((int)pfd._playerFrameData.pad.stickX) +
+                "] [StickY: " + std::to_string((int)pfd._playerFrameData.pad.stickY) + "]\n";
             inputs.append(sticks);
             
-            std::string csticks = "[CStickX: " + std::to_string((int)pfd.pad.cStickX) + "] [CStickY: " + std::to_string((int)pfd.pad.cStickY) + "]\n";
+            std::string csticks =
+                "[CStickX: " + std::to_string((int)pfd._playerFrameData.pad.cStickX) +
+                "] [CStickY: " + std::to_string((int)pfd._playerFrameData.pad.cStickY) + "]\n";
             inputs.append(csticks);
             
-            std::string triggers = "[LTrigger: " + std::to_string((int)pfd.pad.LTrigger) + "] [RTrigger: " + std::to_string((int)pfd.pad.RTrigger) + "]\n";
+            std::string triggers =
+                "[LTrigger: " + std::to_string((int)pfd._playerFrameData.pad.LTrigger) +
+                "] [RTrigger: " + std::to_string((int)pfd._playerFrameData.pad.RTrigger) + "]\n";
             inputs.append(triggers);
             
-            std::string buttons = "[Buttons: " + str_half(pfd.pad.buttons) + "\n";
+            std::string buttons = "[Buttons: " + str_half(pfd._playerFrameData.pad.buttons) + "\n";
             inputs.append(buttons);
 
 

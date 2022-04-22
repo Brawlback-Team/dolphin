@@ -3,7 +3,7 @@
 #include "Common/CommonTypes.h"
 #include <unordered_map>
 #include "Common/ChunkFile.h"
-
+#include "Core/Brawlback/include/brawlback-exi-structures/PreserveBlock.h"
 /*
 ============================================
 This, along with SlippiUtility.cpp is a place to hold code from the Slippi repo.
@@ -30,14 +30,14 @@ namespace SlippiUtility
     {
 
     // Types
-    struct PreserveBlock
+    struct PreserveBlockImpl
     {
-        u32 address;
-        u32 length;
+        PreserveBlock _preserveBlock;
 
-        bool operator==(const PreserveBlock& p) const
+        bool operator==(const PreserveBlockImpl& p) const
         {
-        return address == p.address && length == p.length;
+          return this->_preserveBlock.address == p._preserveBlock.address &&
+                 this->_preserveBlock.length == p._preserveBlock.length;
         }
     };
 
@@ -51,9 +51,9 @@ namespace SlippiUtility
 
     struct preserve_hash_fn
     {
-        std::size_t operator()(const PreserveBlock& node) const
+      std::size_t operator()(const PreserveBlockImpl & node) const
         {
-        return node.address ^ node.length;  // TODO: This is probably a bad hash
+        return node._preserveBlock.address ^ node._preserveBlock.length;  // TODO: This is probably a bad hash
         }
     };
 
@@ -67,7 +67,7 @@ namespace SlippiUtility
     // Funcs
     void SlippiInitBackupLocations(std::vector<ssBackupLoc>& backupLocs,
                                     std::vector<ssBackupLoc>& fullBackupRegions,
-                                    std::vector<PreserveBlock>& excludeSections);
+                                    std::vector<PreserveBlockImpl>& excludeSections);
 
     } // namespace Savestate
 

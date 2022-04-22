@@ -8,14 +8,14 @@ namespace SlippiUtility
     namespace Savestate
     {
 
-    bool cmpFn(PreserveBlock pb1, PreserveBlock pb2)
+    bool cmpFn(PreserveBlockImpl pb1, PreserveBlockImpl pb2)
     {
-        return pb1.address < pb2.address;
+        return pb1._preserveBlock.address < pb2._preserveBlock.address;
     }
 
     void SlippiInitBackupLocations(std::vector<ssBackupLoc>& backupLocs,
                                     std::vector<ssBackupLoc>& fullBackupRegions,
-                                    std::vector<PreserveBlock>& excludeSections)
+                                    std::vector<PreserveBlockImpl>& excludeSections)
     {
         static std::vector<ssBackupLoc> processedLocs = {};
 
@@ -44,12 +44,12 @@ namespace SlippiUtility
         int idx = 0;
         for (auto it = excludeSections.begin(); it != excludeSections.end(); ++it)
         {
-            PreserveBlock ipb = *it;
+            PreserveBlockImpl ipb = *it;
 
-            while (ipb.length > 0)
+            while (ipb._preserveBlock.length > 0)
             {
                 // Move up the backupLocs index until we reach a section relevant to us
-                while (idx < backupLocs.size() && ipb.address >= backupLocs[idx].endAddress)
+                while (idx < backupLocs.size() && ipb._preserveBlock.address >= backupLocs[idx].endAddress)
                 {
                     idx += 1;
                 }
@@ -61,27 +61,27 @@ namespace SlippiUtility
                 }
 
                 // Handle case where our exclusion starts before the actual backup section
-                if (ipb.address < backupLocs[idx].startAddress)
+                if (ipb._preserveBlock.address < backupLocs[idx].startAddress)
                 {
-                    int newSize = (s32)ipb.length - ((s32)backupLocs[idx].startAddress - (s32)ipb.address);
+                    int newSize = (s32)ipb._preserveBlock.length - ((s32)backupLocs[idx].startAddress - (s32)ipb._preserveBlock.address);
 
-                    ipb.length = newSize > 0 ? newSize : 0;
-                    ipb.address = backupLocs[idx].startAddress;
+                    ipb._preserveBlock.length = newSize > 0 ? newSize : 0;
+                    ipb._preserveBlock.address = backupLocs[idx].startAddress;
                     continue;
                 }
 
                 // Determine new size (how much we removed from backup)
-                int newSize = (s32)ipb.length - ((s32)backupLocs[idx].endAddress - (s32)ipb.address);
+                int newSize = (s32)ipb._preserveBlock.length - ((s32)backupLocs[idx].endAddress - (s32)ipb._preserveBlock.address);
 
                 // Add split section after exclusion
-                if (backupLocs[idx].endAddress > ipb.address + ipb.length)
+                if (backupLocs[idx].endAddress > ipb._preserveBlock.address + ipb._preserveBlock.length)
                 {
-                    ssBackupLoc newLoc = {ipb.address + ipb.length, backupLocs[idx].endAddress, nullptr};
+                    ssBackupLoc newLoc = {ipb._preserveBlock.address + ipb._preserveBlock.length, backupLocs[idx].endAddress, nullptr};
                     backupLocs.insert(backupLocs.begin() + idx + 1, newLoc);
                 }
 
                 // Modify section to end at the exclusion start
-                backupLocs[idx].endAddress = ipb.address;
+                backupLocs[idx].endAddress = ipb._preserveBlock.address;
                 if (backupLocs[idx].endAddress <= backupLocs[idx].startAddress)
                 {
                     backupLocs.erase(backupLocs.begin() + idx);
@@ -89,8 +89,8 @@ namespace SlippiUtility
 
                 // Set new size to see if there's still more to process
                 newSize = newSize > 0 ? newSize : 0;
-                ipb.address = ipb.address + (ipb.length - newSize);
-                ipb.length = (u32)newSize;
+                ipb._preserveBlock.address = ipb._preserveBlock.address + (ipb._preserveBlock.length - newSize);
+                ipb._preserveBlock.length = (u32)newSize;
             }
         }
 
