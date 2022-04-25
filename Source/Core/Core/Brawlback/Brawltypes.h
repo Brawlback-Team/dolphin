@@ -1,5 +1,5 @@
 #pragma once
-#include "include/brawlback-exi-structures/RollbackInfo.h"
+#include "include/brawlback-exi-structures/ExiStructures.h"
 
 enum PADButtonBits : u16
 {
@@ -83,15 +83,8 @@ struct gfPadGamecube
 #pragma pack(pop)
 
 
-#pragma pack(push, 2)
-struct BrawlbackPad {
-    unsigned short buttons;
-    char stickX;
-    char stickY;
-    char cStickX;
-    char cStickY;
-    char LTrigger;
-    char RTrigger;
+struct BrawlbackPadImpl {
+    BrawlbackPad _brawlbackPad;
 
     BrawlbackPadImpl()
     {
