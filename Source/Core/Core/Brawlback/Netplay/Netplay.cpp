@@ -43,7 +43,7 @@ void BrawlbackNetplay::FlushAsyncQueue(ENetHost* server) {
     }
 }
 
-void BrawlbackNetplay::BroadcastPlayerFrameData(ENetHost* server, Match::PlayerFrameDataImpl* framedata) {
+void BrawlbackNetplay::BroadcastPlayerFrameData(ENetHost* server, PlayerFrameData* framedata) {
     // send framedata to all peers
     sf::Packet frame_data_packet = sf::Packet();
 
@@ -52,26 +52,26 @@ void BrawlbackNetplay::BroadcastPlayerFrameData(ENetHost* server, Match::PlayerF
     frame_data_packet.append(&frame_data_cmd, sizeof(u8));
 
     // append framedata
-    frame_data_packet.append(framedata, sizeof(Match::PlayerFrameDataImpl));
+    frame_data_packet.append(framedata, sizeof(PlayerFrameData));
 
     std::pair<sf::Packet, int> pckt_content = std::make_pair(frame_data_packet, ENET_PACKET_FLAG_UNSEQUENCED);
     std::unique_ptr<BrawlbackNetPacket> pckt = std::make_unique<BrawlbackNetPacket>(pckt_content);
     this->SendAsync(std::move(pckt), server);
 }
 
-void BrawlbackNetplay::BroadcastGameSettings(ENetHost* server, Match::GameSettingsImpl* settings)
+void BrawlbackNetplay::BroadcastGameSettings(ENetHost* server, GameSettings* settings)
 {
     sf::Packet settingsPckt = sf::Packet();
     u8 cmd_byte = NetPacketCommand::CMD_GAME_SETTINGS;
     settingsPckt.append(&cmd_byte, sizeof(cmd_byte));
-    settingsPckt.append(settings, sizeof(Match::GameSettingsImpl));
+    settingsPckt.append(settings, sizeof(GameSettings));
 
     this->BroadcastPacket(settingsPckt, ENET_PACKET_FLAG_RELIABLE, server);
     INFO_LOG(BRAWLBACK, "Sent game settings data packet\n");
 }
 
 
-void BrawlbackNetplay::BroadcastPlayerFrameDataWithPastFrames(ENetHost* server, const std::vector<Match::PlayerFrameDataImpl*>& framedatas) {
+void BrawlbackNetplay::BroadcastPlayerFrameDataWithPastFrames(ENetHost* server, const std::vector<PlayerFrameData*>& framedatas) {
     sf::Packet frame_data_packet = sf::Packet();
 
     // append cmd byte
@@ -83,9 +83,9 @@ void BrawlbackNetplay::BroadcastPlayerFrameDataWithPastFrames(ENetHost* server, 
     frame_data_packet.append(&sizeofFramedatas, sizeof(sizeofFramedatas));
 
     // append framedata
-    for (Match::PlayerFrameDataImpl* framedata : framedatas)
+    for (PlayerFrameData* framedata : framedatas)
     {
-      frame_data_packet.append(framedata, sizeof(Match::PlayerFrameDataImpl));
+      frame_data_packet.append(framedata, sizeof(PlayerFrameData));
     }
 
     //INFO_LOG(BRAWLBACK, "Sending input packet of size: %u   num inputs: %u\n", frame_data_packet.getDataSize(), framedatas.size());

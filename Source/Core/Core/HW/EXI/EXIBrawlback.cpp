@@ -2,12 +2,16 @@
 
 #include "EXIBrawlback.h"
 #include "Core/ConfigManager.h"
-
 #include "Core/HW/Memmap.h"
 #include <chrono>
 #include <iostream>
 #include "VideoCommon/OnScreenDisplay.h"
-
+#include <climits>
+#include <fstream>
+#include <filesystem>
+#include <vector>
+#include <regex>
+namespace fs = std::filesystem;
 
 // --- Mutexes
 std::mutex read_queue_mutex = std::mutex();
@@ -15,12 +19,36 @@ std::mutex remotePadQueueMutex = std::mutex();
 std::mutex localPadQueueMutex = std::mutex();
 // -------------------------------
 
+template <class T>
+T swap_endian(T in)
+{
+  char* const p = reinterpret_cast<char*>(&in);
+  for (size_t i = 0; i < sizeof(T) / 2; ++i)
+    std::swap(p[i], p[sizeof(T) - i - 1]);
+  return in;
+}
+void writeToFile(std::string filename, uint8_t* ptr, size_t len)
+{
+  std::ofstream fp;
+  fp.open(filename, std::ios::out | std::ios::binary);
+  fp.write((char*)ptr, len);
+}
+std::vector<u8> read_vector_from_disk(std::string file_path)
+{
+  std::ifstream instream(file_path, std::ios::in | std::ios::binary);
+  std::vector<u8> data((std::istreambuf_iterator<char>(instream)),
+                            std::istreambuf_iterator<char>());
+  return data;
+}
 CEXIBrawlback::CEXIBrawlback()
 {
     INFO_LOG(BRAWLBACK, "------- %s\n", SConfig::GetInstance().GetGameID().c_str());
 #ifdef _WIN32
     if (std::filesystem::exists(Sync::getSyncLogFilePath())) {
         std::filesystem::remove(Sync::getSyncLogFilePath());
+    }
+    if (std::filesystem::exists(File::GetExeDirectory() + "User/Logs/dolphin.log")) {
+        std::filesystem::remove(File::GetExeDirectory() + "User/Logs/dolphin.log");
     }
 #endif
 
@@ -141,9 +169,6 @@ void CEXIBrawlback::handleCaptureSavestate(u8* data)
     }
 
 	ss->Capture();
-    //ss->frame = frame;
-    //ss->checksum = SavestateChecksum(ss->getBackupLocs()); // really expensive calculation
-    //INFO_LOG(BRAWLBACK, "Savestate for frame %i checksum is %i\n", ss->frame, ss->checksum);
 	activeSavestates[frame] = std::move(ss);
 
 	u32 timeDiff = (u32)(Common::Timer::GetTimeUs() - startTime);
@@ -153,7 +178,7 @@ void CEXIBrawlback::handleCaptureSavestate(u8* data)
 void CEXIBrawlback::handleLoadSavestate(u8* data)
 {
 
-    Match::RollbackInfo* loadStateRollbackInfo = (Match::RollbackInfo*)data;
+    RollbackInfo* loadStateRollbackInfo = (RollbackInfo*)data;
     // the frame we should load state for is the frame we first began not receiving inputs
     //u32 frame = Common::swap32(loadStateRollbackInfo->beginFrame);
     s32 frame = (s32)SlippiUtility::Mem::readWord((u8*)&loadStateRollbackInfo->beginFrame);
@@ -168,11 +193,8 @@ void CEXIBrawlback::handleLoadSavestate(u8* data)
         ERROR_LOG(BRAWLBACK, "Savestate for frame %i does not exist.", frame);
         PanicAlertFmtT("Savestate for frame {0} does not exist.", frame);
         this->isConnected = false;
-        if (this->server) {
-            for (int i = 0; i < this->server->peerCount; i++)
-            {
-                enet_peer_disconnect(&this->server->peers[i], 0);
-            }
+        for (int i = 0; i < this->server->peerCount; i++) {
+            enet_peer_disconnect(&this->server->peers[i], 0);
         }
         // in the future, exit out of the match or something here
 		return;
@@ -181,7 +203,7 @@ void CEXIBrawlback::handleLoadSavestate(u8* data)
 	u64 startTime = Common::Timer::GetTimeUs();
 
 	// Fetch preservation blocks
-	std::vector<PreserveBlock> blocks = {};
+	std::vector<PreserveBlockImpl> blocks = {};
 
     /*
 	// Get preservation blocks
@@ -209,7 +231,7 @@ void CEXIBrawlback::handleLoadSavestate(u8* data)
 	activeSavestates.clear();
 
 	u32 timeDiff = (u32)(Common::Timer::GetTimeUs() - startTime);
-    ERROR_LOG(BRAWLBACK, "Loaded savestate for frame %d in: %f ms", frame, ((double)timeDiff) / 1000);
+    INFO_LOG(BRAWLBACK, "Loaded savestate for frame %d in: %f ms", frame, ((double)timeDiff) / 1000);
 }
 
 template <typename T>
@@ -229,30 +251,30 @@ void CEXIBrawlback::SendCmdToGame(EXICommand cmd) {
     this->read_queue.push_back(cmd);
 }
 
-Match::PlayerFrameData CreateDummyPlayerFrameData(u32 frame, u8 playerIdx) {
-    Match::PlayerFrameData dummy_framedata = Match::PlayerFrameData();
-    dummy_framedata.frame = frame;
-    dummy_framedata.playerIdx = playerIdx;
-    dummy_framedata.pad = BrawlbackPad(); // empty pad
-    return dummy_framedata;
+PlayerFrameData CreateDummyPlayerFrameData(u32 frame, u8 playerIdx) {
+    PlayerFrameData dummyframe = PlayerFrameData();
+    dummyframe.frame = frame;
+    dummyframe.playerIdx = playerIdx;
+    dummyframe.pad = BrawlbackPad();  // empty pad
+    return dummyframe;
 }
 
-// `data` is a ptr to a PlayerFrameData struct
+// `data` is a ptr to a PlayerFrameDataImpl struct
 // this is called every frame at the beginning of the frame
 void CEXIBrawlback::handleLocalPadData(u8* data)
 {
-    Match::PlayerFrameData* playerFramedata = (Match::PlayerFrameData*)data;
+    PlayerFrameData* playerFramedata = (PlayerFrameData*)data;
     int idx = 0;
     // first 4 bytes are current game frame
     u32 frame = SlippiUtility::Mem::readWord(data, idx, 999, 0); // properly switched endianness
     u8 playerIdx = playerFramedata->playerIdx;
-    playerFramedata->frame = frame; // properly switched endianness
+    playerFramedata->frame = frame;  // properly switched endianness
 
     if (frame == GAME_START_FRAME) {
         // push framedatas for first few delay frames
         for (int i = GAME_START_FRAME; i < FRAME_DELAY; i++) {
-            this->remotePlayerFrameData[playerIdx].push_back(std::make_unique<Match::PlayerFrameData>(CreateDummyPlayerFrameData(i, playerIdx)));
-            this->localPlayerFrameData.push_back(std::make_unique<Match::PlayerFrameData>(CreateDummyPlayerFrameData(i, playerIdx)));
+            this->remotePlayerFrameData[playerIdx].push_back(std::make_unique<PlayerFrameData>(CreateDummyPlayerFrameData(i, playerIdx)));
+            this->localPlayerFrameData.push_back(std::make_unique<PlayerFrameData>(CreateDummyPlayerFrameData(i, playerIdx)));
         }
         this->hasGameStarted = true;
     }
@@ -262,9 +284,6 @@ void CEXIBrawlback::handleLocalPadData(u8* data)
         OSD::AddTypedMessage(OSD::MessageType::NetPlayBuffer, "Timesyncs: " + std::to_string(numTimesyncs) + "\n", OSD::Duration::NORMAL, OSD::Color::CYAN);
         numTimesyncs = 0;
     }
-
-    if (frame % PING_DISPLAY_INTERVAL == 0)
-        OSD::AddTypedMessage(OSD::MessageType::BrawlbackBuffer, "Time offset: " + std::to_string( (double)timeSync->calcTimeOffsetUs(this->numPlayers) / 1000 ) + " ms\n"); 
     
     int remote_frame = (int)this->GetLatestRemoteFrame();
     bool shouldTimeSync = this->timeSync->shouldStallFrame(frame, remote_frame, this->numPlayers);
@@ -283,15 +302,22 @@ void CEXIBrawlback::handleLocalPadData(u8* data)
         this->handleSendInputs(frame);
 
         // getting inputs for all players & sending them to game
-        Match::FrameData framedataToSendToGame = Match::FrameData(frame);
+        FrameData framedataToSendToGame = FrameData(frame);
         framedataToSendToGame.randomSeed = 0x496ffd00; // tmp
-        // populates playerFrameDatas field of the above FrameData
+        // populates playerFrameDatas field of the above FrameDataImpl
         std::pair<bool, bool> foundData = this->getInputsForGame(framedataToSendToGame, frame);
 
         #if ROLLBACK_IMPL
         if (this->rollbackInfo.pastFrameDataPopulated) {
             this->SendCmdToGame(EXICommand::CMD_ROLLBACK, &this->rollbackInfo);
-            this->rollbackInfo.Reset(); // reset rollbackInfo
+            Reset(this->rollbackInfo);  // reset rollbackInfo
+            /*for (FrameData fd : rollbackInfo.pastFrameDatas) {
+                if (fd.playerFrameDatas[0].frame != 0) {
+                    for (int i = 0; i < 2; i++) {
+                        Sync::SyncLog(Sync::stringifyFramedata(fd.playerFrameDatas[i]));
+                    }
+                }
+            }*/
             return;
         }
         #endif
@@ -302,20 +328,21 @@ void CEXIBrawlback::handleLocalPadData(u8* data)
             numTimesyncs += 1;
         }
         else {
-            #ifdef SYNCLOG
-            if (!rollbackInfo.isUsingPredictedInputs) {
-                Sync::SyncLog(Sync::stringifyFramedata(framedataToSendToGame, 2));
-            }
-            #endif
             this->SendCmdToGame(EXICommand::CMD_FRAMEDATA, &framedataToSendToGame);
+            
+            // for checking desyncs
+            //for (int i = 0; i < 2; i++) {
+            //    Sync::SyncLog(Sync::stringifyFramedata(framedataToSendToGame.playerFrameDatas[i]));
+            //}
+
         }
 
     }
 }
 
-void CEXIBrawlback::storeLocalInputs(Match::PlayerFrameData* localPlayerFramedata) {
+void CEXIBrawlback::storeLocalInputs(PlayerFrameData* localPlayerFramedata) {
     std::lock_guard<std::mutex> local_lock (localPadQueueMutex);
-    std::unique_ptr<Match::PlayerFrameData> pFD = std::make_unique<Match::PlayerFrameData>(*localPlayerFramedata);
+    std::unique_ptr<PlayerFrameData> pFD = std::make_unique<PlayerFrameData>(*localPlayerFramedata);
     // local inputs offset by FRAME_DELAY to mask latency
     // Once we hit frame X, we send inputs for that frame, but pretend they're from frame X+2
     // so those inputs now have an extra 2 frames to get to the opponent before the opponent's
@@ -325,51 +352,49 @@ void CEXIBrawlback::storeLocalInputs(Match::PlayerFrameData* localPlayerFramedat
 
     // make sure we're storing inputs sequentially
     if (!this->localPlayerFrameData.empty() && localPlayerFramedata->frame == this->localPlayerFrameData.back()->frame + 1) {
-        WARN_LOG(BRAWLBACK, "Didn't push local framedata for frame %u\n", pFD->frame);
+      WARN_LOG(BRAWLBACK, "Didn't push local framedata for frame %u\n", pFD->frame);
+        return;
     }
-    else {
-        // store local framedata
-        if (this->localPlayerFrameData.size() + 1 > FRAMEDATA_MAX_QUEUE_SIZE) {
-            //INFO_LOG(BRAWLBACK, "Popping local framedata for frame %u\n", this->localPlayerFrameData.front()->frame);
-            this->localPlayerFrameData.pop_front();
-        }
-        this->localPlayerFrameData.push_back(std::move(pFD));
+
+    // store local framedata
+    if (this->localPlayerFrameData.size() + 1 > FRAMEDATA_MAX_QUEUE_SIZE) {
+        WARN_LOG(BRAWLBACK, "Hit local player framedata queue max size! %u\n", this->localPlayerFrameData.size());
+        PlayerFrameData* pop_data = this->localPlayerFrameData.front().release();
+        INFO_LOG(BRAWLBACK, "Popping local framedata for frame %u\n", pop_data->frame);
+        free(pop_data);
+        this->localPlayerFrameData.pop_front();
     }
+    this->localPlayerFrameData.push_back(std::move(pFD));
 }
 
 void CEXIBrawlback::handleSendInputs(u32 frame) {
     // broadcast this local framedata
     if (!this->localPlayerFrameData.empty()) {
         std::lock_guard<std::mutex> local_lock (localPadQueueMutex);
-        
+
+        // this strat is taken from slippi [ thanks fizzi <3 ]
         // each frame we send local inputs to the other client(s)
         // those clients then acknowledge those inputs and send that ack(nowledgement)
-        // back to us. All acked inputs are irrelevant (unless we need to rollback)
-        // since we know for a fact the remote client has them.
-        // We track what frame of inputs has been acked ("localHeadFrame")
-        // so that when we go to send inputs, we only send the un-acked ones.
-        // We send *all* unacked inputs so that when the remote client doesn't receive inputs, and needs to rollback
+        // back to us. All the inputs that are acked shouldn't be kept track of in the
+        // local pad queue since we know for a fact the remote client has them/
+        // Inputs that *are* kept track of in the local pad queue are inputs that
+        // we don't know for sure the remote client has received.
+        // that's why we send *all* local inputs with every packet.
+        // so that when the remote client doesn't receive inputs, and needs to rollback
         // the next packet will have all the inputs that that client hasn't received.
-        int minAckFrame = this->timeSync->getMinAckFrame(this->numPlayers);
-
-        // clamp to current frame to prevent it dropping local inputs that haven't been used yet
-        minAckFrame = MIN(minAckFrame, frame); 
-
+        this->DropAckedInputs(frame);
 
         int localPadQueueSize = (int)this->localPlayerFrameData.size();
         if (localPadQueueSize == 0) return; // no inputs, nothing to send
-        int endIdx = localPadQueueSize-1 - (this->localPlayerFrameData.back()->frame - minAckFrame);
 
-        std::vector<Match::PlayerFrameData*> localFramedatas = {};
+        std::vector<PlayerFrameData*> localFramedatas = {};
         // push framedatas from back to front
         // this means the resulting vector (localFramedatas) will have the most
         // recent framedata in the first position, and the oldest framedata in the last position
-        for (int i = localPadQueueSize-1; i > endIdx; i--) {
+        for (int i = localPadQueueSize-1; i >= 0; i--) {
             const auto& localFramedata = this->localPlayerFrameData[i];
-            // make sure we queue up these inputs sequentially
             if (localFramedatas.empty() || ( !localFramedatas.empty() && localFramedatas.back()->frame > localFramedata->frame) ) {
-                Match::PlayerFrameData* inputToSend = localFramedata.get();
-                localFramedatas.push_back(inputToSend);
+                localFramedatas.push_back(localFramedata.get());
             }
         }
 
@@ -382,7 +407,10 @@ void CEXIBrawlback::handleSendInputs(u32 frame) {
     }
 }
 
-std::pair<bool, bool> CEXIBrawlback::getInputsForGame(Match::FrameData& framedataToSendToGame, u32 frame) {
+std::pair<bool, bool> CEXIBrawlback::getInputsForGame(FrameData& framedataToSendToGame, u32 frame) {
+    // TODO (pine):
+    // holy shit clean up this mess please
+
     std::lock_guard<std::mutex> lock (remotePadQueueMutex);
 
     // first is if we've found local inputs, second is if we've found remote inputs
@@ -394,7 +422,7 @@ std::pair<bool, bool> CEXIBrawlback::getInputsForGame(Match::FrameData& framedat
         if (playerIdx == this->localPlayerIdx && !this->localPlayerFrameData.empty()) {
             std::lock_guard<std::mutex> local_lock (localPadQueueMutex);
 
-            Match::PlayerFrameData* localFrameData = findInPlayerFrameDataQueue(this->localPlayerFrameData, frame);
+            PlayerFrameData* localFrameData = findInPlayerFrameDataQueue(this->localPlayerFrameData, frame);
             foundData.first = localFrameData != nullptr;
             if (localFrameData) {
                 framedataToSendToGame.playerFrameDatas[this->localPlayerIdx] = *localFrameData;
@@ -414,23 +442,14 @@ std::pair<bool, bool> CEXIBrawlback::getInputsForGame(Match::FrameData& framedat
         // -------- search for remote player's inputs --------
         if (!this->remotePlayerFrameData.empty() && !this->remotePlayerFrameData[playerIdx].empty()) {
             // find framedata in queue that has the frame we want to inject into the game (current frame - frame delay)
-            //INFO_LOG(BRAWLBACK, "Remote framedata q range: %u - %u\n", this->remotePlayerFrameData[playerIdx].front()->frame, this->remotePlayerFrameData[playerIdx].back()->frame);
+            INFO_LOG(BRAWLBACK, "Remote framedata q range: %u - %u\n", this->remotePlayerFrameData[playerIdx].front()->frame, this->remotePlayerFrameData[playerIdx].back()->frame);
             
-            Match::PlayerFrameData* remoteFrameData = findInPlayerFrameDataQueue(this->remotePlayerFrameData[playerIdx], frame);
+            PlayerFrameData* remoteFrameData = findInPlayerFrameDataQueue(this->remotePlayerFrameData[playerIdx], frame);
             foundData.second = remoteFrameData != nullptr;
             if (remoteFrameData) {
                 framedataToSendToGame.playerFrameDatas[playerIdx] = *remoteFrameData;
-                // we've just received this frame's inputs, so if we were using predicted inputs, we now need to rollback
-                #if ROLLBACK_IMPL
-                if ( ( this->rollbackInfo.isUsingPredictedInputs || this->latestConfirmedFrame < (int)frame ) && frame > GAME_FULL_START_FRAME) {
-                    this->SetupRollback(frame, frame);
-                }
-                #else
-                if (false) {}
-                #endif
-                else {
-                    INFO_LOG(BRAWLBACK, "found remote inputs frame %u\n", frame);
-                    this->latestConfirmedFrame = (int)frame;
+                if (this->rollbackInfo.isUsingPredictedInputs && frame > GAME_FULL_START_FRAME) {
+                    this->SetupRollback(frame);
                 }
             }
 
@@ -438,39 +457,90 @@ std::pair<bool, bool> CEXIBrawlback::getInputsForGame(Match::FrameData& framedat
         // --------------------------------------------------
 
         #if ROLLBACK_IMPL
-        if (!foundData.second && frame > GAME_FULL_START_FRAME) { // didn't find framedata for this frame.
+        if (!foundData.second) { // didn't find framedata for this frame.
             INFO_LOG(BRAWLBACK, "no remote framedata - frame %u remotePIdx %i\n", frame, playerIdx);
             if (this->remotePlayerFrameData[playerIdx].size() >= MAX_ROLLBACK_FRAMES) {
 
-                Match::PlayerFrameData* justRecvdInputs = nullptr;
-                for (s32 i = (s32)frame; i >= latestConfirmedFrame+1 && !justRecvdInputs; i--) {
-                    justRecvdInputs = findInPlayerFrameDataQueue(this->remotePlayerFrameData[playerIdx], i);
-                }
+            //                                      don't rollback on early frames to avoid weird stuff with file loads
+                if (!this->rollbackInfo.isUsingPredictedInputs && frame > GAME_FULL_START_FRAME) {
+                    INFO_LOG(BRAWLBACK, "Trying to find frame for predicted inputs...\n");
+                    u32 frameWithDelay = frame + FRAME_DELAY;
 
-                if (justRecvdInputs && latestConfirmedFrame >= GAME_FULL_START_FRAME) {
-                    INFO_LOG(BRAWLBACK, "Found past remote inputs for rollback. Frame %i rbBeginFrame: %u", frame, rollbackInfo.beginFrame);
-                    this->SetupRollback(frame, justRecvdInputs->frame);
+                    u32 searchEndFrame = frameWithDelay >= MAX_ROLLBACK_FRAMES ? frameWithDelay - MAX_ROLLBACK_FRAMES : 0; // clamp to 0
+                    // iterate MAX_ROLLBACK_FRAMES into the past to find player framedata
+                    // this is where we """"predict""""" player inputs when we don't receive them.
+                    for (u32 frameIter = frameWithDelay; frameIter >= searchEndFrame; frameIter--) {
+                        // find most recent frame that exists
+                        if (this->remotePlayerFrameDataMap[playerIdx].count(frameIter)) {
+                            INFO_LOG(BRAWLBACK, "found frame for predicting inputs %u\n", frameIter);
+                            PlayerFrameData mostRecentFramedata = *this->remotePlayerFrameDataMap[playerIdx][frameIter];
+                            // copy it into the framedata that'll be sent to the game
+                            framedataToSendToGame.playerFrameDatas[playerIdx] = mostRecentFramedata;
+
+                            foundData.second = true;
+
+                            // set rollback info
+                            this->rollbackInfo.isUsingPredictedInputs = true;
+                            this->rollbackInfo.beginFrame = frame;
+                            this->rollbackInfo.predictedInputs.playerFrameDatas[playerIdx] = mostRecentFramedata;
+
+                            // populate past framedata with this current frame of local inputs
+                            PlayerFrameData pastLocalInputs = *this->localPlayerFrameData[this->localPlayerFrameData.size()-1 -FRAME_DELAY].get();
+                            this->rollbackInfo.pastFrameDatas[0].playerFrameDatas[this->localPlayerIdx] = pastLocalInputs;
+                            INFO_LOG(BRAWLBACK, "Inserting first past local input for rollback, frame %u in idx %u\n", pastLocalInputs.frame, 0);
+
+                            break;
+                        }
+                    }
+
+                    if (!foundData.second) {
+                        INFO_LOG(BRAWLBACK, "Searched %u - %u   remote framedata range: %u - %u\n",
+                        searchEndFrame, frameWithDelay, this->remotePlayerFrameData[playerIdx].front()->frame, this->remotePlayerFrameData[playerIdx].back()->frame);
+                        // couldn't find relevant past framedata
+                        // this probably means the difference between clients is greater than MAX_ROLLBACK_FRAMES
+                        // foundData.second will be false, so this should time-sync later in handleLocalPadData
+                        WARN_LOG(BRAWLBACK, "Couldn't find framedata when we should rollback!! Will timesync\n");
+                    }
                 }
                 else {
-                    if (!this->rollbackInfo.isUsingPredictedInputs) {
-                        std::optional<Match::PlayerFrameData> predictedInputs = this->HandleInputPrediction(frame, playerIdx);
-                        if (predictedInputs) {
-                            foundData.second = true;
-                            framedataToSendToGame.playerFrameDatas[playerIdx] = predictedInputs.value();
-                        }
+
+                    // we've already encountered a frame without inputs, and have set rollbackinfo, so just use those predicted inputs
+                    PlayerFrameData predictedInputs;
+                    predictedInputs = this->rollbackInfo.predictedInputs.playerFrameDatas[playerIdx];
+                    INFO_LOG(BRAWLBACK, "Using predicted inputs from frame %u\n", predictedInputs.frame);
+                    framedataToSendToGame.playerFrameDatas[playerIdx] = predictedInputs;
+                    foundData.second = true;
+
+                    int numFramesWithoutRemoteInputs = frame - predictedInputs.frame; // this is >= 2
+                    u32 pastLocalInputDesiredFrame = predictedInputs.frame + numFramesWithoutRemoteInputs;
+
+                    // if we've been predicting for more than max rollback frames
+                    if (numFramesWithoutRemoteInputs >= MAX_ROLLBACK_FRAMES) {
+                        INFO_LOG(BRAWLBACK, "Num frames without remote inputs exceedes max rollback frames\n");
+                        // let parent func know that we "havent found remote inputs" so it'll timesync
+                        foundData.second = false;
                     }
-                    else {
-                        Match::PlayerFrameData predictedInputs = this->rollbackInfo.predictedInputs.playerFrameDatas[playerIdx];
-                        if (frame - predictedInputs.frame < MAX_ROLLBACK_FRAMES) {
-                            INFO_LOG(BRAWLBACK, "Using predicted inputs from frame %u\n", predictedInputs.frame);
-                            framedataToSendToGame.playerFrameDatas[playerIdx] = predictedInputs;
-                            foundData.second = true;
+                    if (numFramesWithoutRemoteInputs <= MAX_ROLLBACK_FRAMES) {
+                        // while we're using predicted inputs, we want to keep track of local inputs so that if a rollback happens
+                        // we can resimulate with local inputs as well as remote ones
+
+                        bool found = false;
+                        // find local inputs with desired frame
+                        PlayerFrameData* localInputs = findInPlayerFrameDataQueue(this->localPlayerFrameData, pastLocalInputDesiredFrame);
+                        if (localInputs) {
+                            this->rollbackInfo.pastFrameDatas[numFramesWithoutRemoteInputs-1].playerFrameDatas[this->localPlayerIdx] = *localInputs;
+                            INFO_LOG(BRAWLBACK, "Found past local input for rollback frame %u. inserting to idx %i\n", localInputs->frame, numFramesWithoutRemoteInputs-1);
+                            found = true;
                         }
-                        else {
-                            WARN_LOG(BRAWLBACK, "Prediction threshold reached! Predicted frame %u  current frame %u \n", predictedInputs.frame, frame);
-                            // will timesync
+
+                        if (!found) {
+                            WARN_LOG(BRAWLBACK, "Couldn't find past local inputs for rollback! frame %u\n", pastLocalInputDesiredFrame);
+                            WARN_LOG(BRAWLBACK, "Local pad input range: [%u - %u]\n", this->localPlayerFrameData.back()->frame, this->localPlayerFrameData.front()->frame);
                         }
+
                     }
+
+
                 }
 
             }
@@ -491,119 +561,69 @@ std::pair<bool, bool> CEXIBrawlback::getInputsForGame(Match::FrameData& framedat
 }
 
 
-std::optional<Match::PlayerFrameData> CEXIBrawlback::HandleInputPrediction(u32 frame, u8 playerIdx) {
-    std::optional<Match::PlayerFrameData> ret = std::nullopt;
-
-    INFO_LOG(BRAWLBACK, "Trying to find frame for predicted inputs...\n");
-
-    // do we even need a loop here to find the inputs for prediction? I think they should always be the latest confirmed frame
-    for (s32 frameIter = this->latestConfirmedFrame; frameIter < (int)frame; frameIter++) {
-        // find most recent frame that exists
-        Match::PlayerFrameData* predictedInputs = findInPlayerFrameDataQueue(this->remotePlayerFrameData[playerIdx], frameIter);
-        if (predictedInputs) {
-            INFO_LOG(BRAWLBACK, "found frame for predicting inputs %i\n", frameIter);
-
-            ret = std::make_optional(*predictedInputs);
-
-            s32 rollbackBeginFrame = frameIter + 1;
-            // set rollback info
-
-            // we are currently predicting
-            this->rollbackInfo.isUsingPredictedInputs = true;
-            // we begin our "rollback state" on the latest confirmed remote frame + 1
-            this->rollbackInfo.beginFrame = rollbackBeginFrame;
-            // store predicted inputs
-            this->rollbackInfo.predictedInputs.playerFrameDatas[playerIdx] = *predictedInputs;
-
-            break;
-        }
-    }
-
-    if (!ret) {
-        INFO_LOG(BRAWLBACK, "Searched [%i, %i)   remote framedata range: %u - %u\n",
-        this->latestConfirmedFrame, frame, this->remotePlayerFrameData[playerIdx].front()->frame, this->remotePlayerFrameData[playerIdx].back()->frame);
-        // couldn't find relevant past framedata
-        // this probably means the difference between clients is greater than MAX_ROLLBACK_FRAMES
-        // foundData.second will be false, so this should time-sync later in handleLocalPadData
-        WARN_LOG(BRAWLBACK, "Couldn't find framedata when we should rollback!! Will timesync\n");
-    }
-
-    return ret;
-}
-
-
-
 // prepares RollbackInfo struct with relevant rollback info
-// currentFrame is the current frame we're on, and confirmFrame is the latest frame of inputs we just received
-void CEXIBrawlback::SetupRollback(u32 currentFrame, u32 confirmFrame) {
-    rollbackInfo.beginFrame = latestConfirmedFrame+1; // frame to rollback to
-    this->latestConfirmedFrame = (int)confirmFrame; // frame of latest confirmed remote inputs
-    this->rollbackInfo.endFrame = currentFrame; // current frame we need to resim up to
+void CEXIBrawlback::SetupRollback(u32 frame) {
+    this->rollbackInfo.endFrame = frame;
+    //INFO_LOG(BRAWLBACK, "Received remote inputs after having predicted inputs!\n");
+    INFO_LOG(BRAWLBACK, "Rollback frame diff: %u - %u\n", this->rollbackInfo.endFrame, this->rollbackInfo.beginFrame);
 
-    INFO_LOG(BRAWLBACK, "Rollback confirmed frame range: [%u, %u] currentFrame: %u  localPidx %i\n", this->rollbackInfo.beginFrame, confirmFrame, currentFrame, this->localPlayerIdx);
+    for (u32 i = this->rollbackInfo.beginFrame; i <= this->rollbackInfo.endFrame; i++) {
 
-    for (u32 i = this->rollbackInfo.beginFrame; i <= currentFrame; i++) {
+        u32 frameDiff = i - this->rollbackInfo.beginFrame;
 
         for (int pIdx = 0; pIdx < this->numPlayers; pIdx++) {
+            if (pIdx == this->localPlayerIdx) {
 
-            const PlayerFrameDataQueue& inputQueue = pIdx == this->localPlayerIdx ? this->localPlayerFrameData : this->remotePlayerFrameData[pIdx];
-            
-            u32 frameDiff = i - this->rollbackInfo.beginFrame; // idx.  [0, MAX_ROLLBACK_FRAMES]
-            ASSERT(frameDiff < MAX_ROLLBACK_FRAMES && frameDiff >= 0); // don't index out of bounds
-            
-            Match::PlayerFrameData* inputToPopulate = &this->rollbackInfo.pastFrameDatas[frameDiff].playerFrameDatas[pIdx];
-
-            // inputs we have received / are local should just be copied into past framedatas
-            if (RANGE(i, this->rollbackInfo.beginFrame, confirmFrame) || pIdx == this->localPlayerIdx) {
-                Match::PlayerFrameData* pastInputs = findInPlayerFrameDataQueue(inputQueue, i);
-                if (pastInputs) {
-                    INFO_LOG(BRAWLBACK, "Inserting inputs idx %u pidx %i frame %u\n", frameDiff, pIdx, pastInputs->frame);
-                    memcpy(inputToPopulate, pastInputs, sizeof(Match::PlayerFrameData));
+                // on the last frame of rollback, the rest of the logic still hasn't grabbed local inputs.
+                // we need those, so grab them here
+                if (i == this->rollbackInfo.endFrame) { 
+                    PlayerFrameData* pastFramedata = findInPlayerFrameDataQueue(this->localPlayerFrameData, i);
+                    if (pastFramedata) {
+                        memcpy(&this->rollbackInfo.pastFrameDatas[frameDiff].playerFrameDatas[pIdx], pastFramedata, sizeof(PlayerFrameData));
+                        INFO_LOG(BRAWLBACK, "Copying in pastFrameData for frame %u for pidx %u\n", i, (unsigned int)pIdx);
+                    }
                 }
-                else {
-                    ERROR_LOG(BRAWLBACK, "Couldn't find past inputs for rollback! Frame %u pidx %i\n", i, pIdx);
-                }
+                continue;
             }
-            // inputs we haven't received, and aren't local, and should still be predicted
+
+
+            // copy in past remote inputs
+            if (this->remotePlayerFrameDataMap[pIdx].count(i)) {
+
+                PlayerFrameData* pastFramedata = this->remotePlayerFrameDataMap[pIdx][i];
+                memcpy(&this->rollbackInfo.pastFrameDatas[frameDiff].playerFrameDatas[pIdx], pastFramedata, sizeof(PlayerFrameData));
+                INFO_LOG(BRAWLBACK, "Found remote inputs for rollback frame %u  frameDiff %u\n", i, frameDiff);
+                this->rollbackInfo.pastFrameDataPopulated = true;
+
+            }
             else {
-                // remote inputs should be the predicted inputs
-                Match::PlayerFrameData predictedInputs = this->rollbackInfo.predictedInputs.playerFrameDatas[pIdx];
-                predictedInputs.frame = i; // rekey predicted inputs - pretending these are remote inputs
-                predictedInputs.playerIdx = pIdx;
-                INFO_LOG(BRAWLBACK, "Inserting predicted inputs idx %u pidx %i frame %u\n", frameDiff, predictedInputs.playerIdx, predictedInputs.frame);
-                *inputToPopulate = predictedInputs;
+                ERROR_LOG(BRAWLBACK, "couldn't find remote input for rollback. frame %u\n", i);
             }
-
-        }
-
-    }
-
-
-    // this indicates that we should roll back on this frame
-    this->rollbackInfo.pastFrameDataPopulated = true;
-
-    #if 0
-    // print rollbackInfo
-    INFO_LOG(BRAWLBACK, "RbInfo: beginFrame %u  endFrame: %u\n", rollbackInfo.beginFrame, confirmFrame);
-    for (int i = 0; i < MAX_ROLLBACK_FRAMES; i++) {
-        const Match::FrameData& fd = rollbackInfo.pastFrameDatas[i];
-        INFO_LOG(BRAWLBACK, "~~~~~~~ pastFramedatas[%i] ~~~~~~~\n", i);
-        for (int pIdx = 0; pIdx < 2; pIdx++) {
-            if (fd.playerFrameDatas[pIdx].frame != 0)
-                INFO_LOG(BRAWLBACK, "pIdx %u:::   Frame %u\n", (unsigned int)fd.playerFrameDatas[pIdx].playerIdx, fd.playerFrameDatas[pIdx].frame);
         }
     }
-    #endif
-
-    #ifdef SYNCLOG
-    for (int b = 0; b < MAX_ROLLBACK_FRAMES; b++) {
-        if (rollbackInfo.pastFrameDatas[b].playerFrameDatas[0].frame <= confirmFrame)
-            Sync::SyncLog(Sync::stringifyFramedata(rollbackInfo.pastFrameDatas[b], 2));
-    }
-    #endif
 
 }
 
+void CEXIBrawlback::DropAckedInputs(u32 currFrame) {
+    // Remove pad reports that have been received and acked
+    u32 minAckFrame = (u32)this->timeSync->getMinAckFrame(this->numPlayers);
+    //if (minAckFrame > currFrame) {
+    //    INFO_LOG(BRAWLBACK, "minAckFrame > currFrame      %u > %u\n", minAckFrame, currFrame);
+    //}
+
+    // BANDAID SOLUTION?? - TODO: FIX FOR REAL(?)
+    minAckFrame = minAckFrame > currFrame ? currFrame : minAckFrame; // clamp to current frame to prevent it dropping local inputs that haven't been used yet
+
+    //INFO_LOG(BRAWLBACK, "Checking to drop local inputs, oldest frame: %d | minAckFrame: %u",
+    //            this->localPlayerFrameData.front()->frame, minAckFrame);
+    //INFO_LOG(BRAWLBACK, "Local input queue frame range: %u - %u\n", this->localPlayerFrameData.front()->frame, this->localPlayerFrameData.back()->frame);
+
+    while (!this->localPlayerFrameData.empty() && this->localPlayerFrameData.front()->frame < minAckFrame)
+    {
+        INFO_LOG(BRAWLBACK, "Dropping local input for frame %d from queue", this->localPlayerFrameData.front()->frame);
+        this->localPlayerFrameData.pop_front();
+    }
+}
 
 u32 CEXIBrawlback::GetLatestRemoteFrame() {
     u32 lowestFrame = 0;
@@ -638,41 +658,40 @@ void BroadcastFramedataAck(u32 frame, u8 playerIdx, BrawlbackNetplay* netplay, E
     //INFO_LOG(BRAWLBACK, "Sent ack for frame %u  pidx %u", frame, (unsigned int)playerIdx);
 }
 
-
-
-
-
-void CEXIBrawlback::ProcessIndividualRemoteFrameData(Match::PlayerFrameData* framedata) {
+void CEXIBrawlback::ProcessIndividualRemoteFrameData(PlayerFrameData* framedata) {
     u8 playerIdx = framedata->playerIdx;
     u32 frame = framedata->frame;
     PlayerFrameDataQueue& remoteFramedataQueue = this->remotePlayerFrameData[playerIdx];
 
-    if (!remoteFramedataQueue.empty() ) {
-        // if the remote frame we're trying to process is not newer than the most recent frame, we don't care about it
-        if (frame <= remoteFramedataQueue.back()->frame)
-            return;
-        // make sure the inputs we're adding are sequential
-        ASSERT(frame == remoteFramedataQueue.back()->frame + 1); 
-    }
+    // if the remote frame we're trying to process is not newer than the most recent frame, we don't care about it
+    if (!remoteFramedataQueue.empty() && frame <= remoteFramedataQueue.back()->frame) return;
 
-    std::unique_ptr<Match::PlayerFrameData> f = std::make_unique<Match::PlayerFrameData>(*framedata);
+    std::unique_ptr<PlayerFrameData> f = std::make_unique<PlayerFrameData>(*framedata);
     INFO_LOG(BRAWLBACK, "Received opponent framedata. Player %u frame: %u (w/o delay %u)\n", (unsigned int)playerIdx, frame, frame-FRAME_DELAY);
 
     remoteFramedataQueue.push_back(std::move(f));
+    if (!remoteFramedataQueue.empty()) {
+        this->remotePlayerFrameDataMap[playerIdx][frame] = remoteFramedataQueue.back().get();
+    }
 
     // clamp size of remote player framedata queue
     while (remoteFramedataQueue.size() > FRAMEDATA_MAX_QUEUE_SIZE) {
         //WARN_LOG(BRAWLBACK, "Hit remote player framedata queue max size! %u\n", remoteFramedataQueue.size());
+        PlayerFrameData* front_data = remoteFramedataQueue.front().release();
+        if (this->remotePlayerFrameDataMap[playerIdx].count(front_data->frame)) {
+            this->remotePlayerFrameDataMap[playerIdx].erase(front_data->frame);
+        }
+        delete front_data;
         remoteFramedataQueue.pop_front();
     }
 }
 
-void CEXIBrawlback::ProcessRemoteFrameData(Match::PlayerFrameData* framedatas, u8 numFramedatas_u8) {
+void CEXIBrawlback::ProcessRemoteFrameData(PlayerFrameData* framedatas, u8 numFramedatas_u8) {
     s32 numFramedatas = (s32)numFramedatas_u8;
-    // framedatas may point to one or more PlayerFrameData's.
+    // framedatas may point to one or more PlayerFrameDataImpl's.
     // Also note. this array is the reverse of the local pad queue, in that
     // the 0th element here is the most recent framedata.
-    Match::PlayerFrameData* mostRecentFramedata = &framedatas[0];
+    PlayerFrameData* mostRecentFramedata = &framedatas[0];
     u32 frame = mostRecentFramedata->frame;
     u8 playerIdx = mostRecentFramedata->playerIdx; // remote player idx
 
@@ -685,19 +704,11 @@ void CEXIBrawlback::ProcessRemoteFrameData(Match::PlayerFrameData* framedatas, u
 
     if (numFramedatas > 0) {
         std::lock_guard<std::mutex> lock (remotePadQueueMutex);
-
-        std::stringstream s;
-        s << "Received " << numFramedatas << " framedatas. [";
-        for (int i = 0; i < numFramedatas; i++) {
-            s << framedatas[i].frame << ", ";
-        }
-        s << "]";
-        INFO_LOG(BRAWLBACK, "%s\n", s.str().c_str());
+        //INFO_LOG(BRAWLBACK, "Received %i framedatas. Range: [%u - %u]\n", numFramedatas, framedatas[numFramedatas-1].frame, frame);
 
         u32 maxFrame = 0;
-        // index 0 is most recent, and we want to process new framedata oldest first, then newer ones
         for (s32 i = numFramedatas-1; i >= 0; i--) {
-            Match::PlayerFrameData* framedata = &framedatas[i];
+            PlayerFrameData* framedata = &framedatas[i];
             maxFrame = framedata->frame > maxFrame ? framedata->frame : maxFrame;
             this->ProcessIndividualRemoteFrameData(framedata);
         }
@@ -713,14 +724,14 @@ void CEXIBrawlback::ProcessFrameAck(FrameAck* frameAck) {
     this->timeSync->ProcessFrameAck(frameAck);
 }
 
-void CEXIBrawlback::ProcessGameSettings(Match::GameSettings* opponentGameSettings) {
+void CEXIBrawlback::ProcessGameSettings(GameSettings* opponentGameSettings) {
     // merge game settings for all remote/local players, then pass that back to the game
 
     this->localPlayerIdx = this->isHost ? 0 : 1;
     // assumes 1v1
     int remotePlayerIdx = this->isHost ? 1 : 0;
 
-    Match::GameSettings* mergedGameSettings = this->gameSettings.get();
+    GameSettings* mergedGameSettings = this->gameSettings.get();
     INFO_LOG(BRAWLBACK, "ProcessGameSettings for player %u\n", this->localPlayerIdx);
     INFO_LOG(BRAWLBACK, "Remote player idx: %i\n", remotePlayerIdx);
 
@@ -756,8 +767,8 @@ void CEXIBrawlback::ProcessGameSettings(Match::GameSettings* opponentGameSetting
         // set our stage based on the one the other client generated
         mergedGameSettings->stageID = opponentGameSettings->stageID;
     }
-    mergedGameSettings->playerSettings[localPlayerIdx].playerType = Match::PlayerType::PLAYERTYPE_LOCAL;
-    mergedGameSettings->playerSettings[remotePlayerIdx].playerType = Match::PlayerType::PLAYERTYPE_REMOTE;
+    mergedGameSettings->playerSettings[localPlayerIdx].playerType = PlayerType::PLAYERTYPE_LOCAL;
+    mergedGameSettings->playerSettings[remotePlayerIdx].playerType = PlayerType::PLAYERTYPE_REMOTE;
 
     // if we're not host, we just connected to host and received their game settings,
     // now we need to send our game settings back to them so they can start their game too
@@ -784,7 +795,7 @@ void CEXIBrawlback::ProcessNetReceive(ENetEvent* event) {
             case NetPacketCommand::CMD_FRAME_DATA:
                 {
                     u8 numFramedatas = data[0];
-                    Match::PlayerFrameData* framedata = (Match::PlayerFrameData*)(&data[1]);
+                    PlayerFrameData* framedata = (PlayerFrameData*)(&data[1]);
                     this->ProcessRemoteFrameData(framedata, numFramedatas);
                 }
                 break;
@@ -797,7 +808,7 @@ void CEXIBrawlback::ProcessNetReceive(ENetEvent* event) {
             case NetPacketCommand::CMD_GAME_SETTINGS:
                 {
                     INFO_LOG(BRAWLBACK, "Received game settings from opponent");
-                    Match::GameSettings* gameSettingsFromOpponent = (Match::GameSettings*)data;
+                    GameSettings* gameSettingsFromOpponent = (GameSettings*)data;
                     this->ProcessGameSettings(gameSettingsFromOpponent);
                 }
                 break;
@@ -1032,12 +1043,166 @@ void CEXIBrawlback::handleFindMatch(u8* payload) {
 
 void CEXIBrawlback::handleStartMatch(u8* payload) {
     //if (!payload) return;
-    Match::GameSettings* settings = (Match::GameSettings*)payload;
-    this->gameSettings = std::make_unique<Match::GameSettings>(*settings);
+    GameSettings* settings = (GameSettings*)payload;
+    this->gameSettings = std::make_unique<GameSettings>(*settings);
 }
 
+// REPLAYS
+void CEXIBrawlback::handleNumPlayers(int* payload)
+{
+  this->curReplay["numPlayers"] = swap_endian(payload[0]);
+}
+void CEXIBrawlback::handleRandom(u32* payload)
+{
+  this->curReplay["rand"] = swap_endian(payload[0]);
+  this->curReplay["other_rand"] = swap_endian(payload[1]);
+}
+void CEXIBrawlback::handleStage(u8* payload)
+{
+  this->curReplay["stageID"] = payload[0];
+}
+void CEXIBrawlback::handleIndex(int* payload)
+{
+  this->curIndex = swap_endian(payload[0]);
+}
+void CEXIBrawlback::handleStartPosition(float* payload)
+{
+  this->curReplay["startPositions"][std::to_string(this->curIndex)]["x"] = swap_endian(payload[0]);
+  this->curReplay["startPositions"][std::to_string(this->curIndex)]["y"] = swap_endian(payload[1]);
+  this->curReplay["startPositions"][std::to_string(this->curIndex)]["z"] = swap_endian(payload[2]);
+}
+void CEXIBrawlback::handleStartFighter(int* payload)
+{
+  this->curReplay["fighterIDs"][std::to_string(this->curIndex)] = swap_endian(payload[0]);
+}
+void CEXIBrawlback::handleItemIds(itemIdName* payload, int size)
+{
+  for (int i = 0; i < size; i++)
+  {
+    this->curReplay["curFrame"][std::to_string(this->curFrame)]["itemIDs"][std::to_string(i)] = swap_endian(payload[i]);
+  }
+}
+void CEXIBrawlback::handleItemVarients(u16* payload, int size)
+{
+  for (int i = 0; i < size; i++)
+  {
+    this->curReplay["curFrame"][std::to_string(this->curFrame)]["itemVarients"][std::to_string(i)] = swap_endian(payload[i]);
+  }
+}
+void CEXIBrawlback::handleGame(u32* payload)
+{
+  this->curFrame = swap_endian(payload[1]);
+}
+void CEXIBrawlback::handleInputs(u8* payload)
+{
+  this->curReplay["curFrame"][std::to_string(this->curFrame)]["inputs"][std::to_string(this->curIndex)]["attack"] = payload[0];
+  this->curReplay["curFrame"][std::to_string(this->curFrame)]["inputs"][std::to_string(this->curIndex)]["special"] = payload[1];
+  this->curReplay["curFrame"][std::to_string(this->curFrame)]["inputs"][std::to_string(this->curIndex)]["jump"] = payload[2];
+  this->curReplay["curFrame"][std::to_string(this->curFrame)]["inputs"][std::to_string(this->curIndex)]["shield"] = payload[3];
+  this->curReplay["curFrame"][std::to_string(this->curFrame)]["inputs"][std::to_string(this->curIndex)]["dTaunt"] = payload[4];
+  this->curReplay["curFrame"][std::to_string(this->curFrame)]["inputs"][std::to_string(this->curIndex)]["sTaunt"] = payload[5];
+  this->curReplay["curFrame"][std::to_string(this->curFrame)]["inputs"][std::to_string(this->curIndex)]["uTaunt"] = payload[6];
+  this->curReplay["curFrame"][std::to_string(this->curFrame)]["inputs"][std::to_string(this->curIndex)]["cStick"] = payload[7];
+  this->curReplay["curFrame"][std::to_string(this->curFrame)]["inputs"][std::to_string(this->curIndex)]["tapJump"] = payload[8];
+}
+void CEXIBrawlback::handlePos(float* payload)
+{
+  this->curReplay["curFrame"][std::to_string(this->curFrame)]["positions"][std::to_string(this->curIndex)]["x"] = swap_endian(payload[0]);
+  this->curReplay["curFrame"][std::to_string(this->curFrame)]["positions"][std::to_string(this->curIndex)]["y"] = swap_endian(payload[1]);
+  this->curReplay["curFrame"][std::to_string(this->curFrame)]["positions"][std::to_string(this->curIndex)]["z"] = swap_endian(payload[2]);
+}
+void CEXIBrawlback::handleStick(float* payload)
+{
+  this->curReplay["curFrame"][std::to_string(this->curFrame)]["sticks"][std::to_string(this->curIndex)]["x"] = swap_endian(payload[0]);
+  this->curReplay["curFrame"][std::to_string(this->curFrame)]["sticks"][std::to_string(this->curIndex)]["y"] = swap_endian(payload[1]);
+}
+void CEXIBrawlback::handleActionState(u32* payload)
+{
+  this->curReplay["curFrame"][std::to_string(this->curFrame)]["actionState"][std::to_string(this->curIndex)] = swap_endian(payload[0]);
+}
+void CEXIBrawlback::handleStockCount(int* payload)
+{
+  this->curReplay["curFrame"][std::to_string(this->curFrame)]["stockCount"][std::to_string(this->curIndex)] = swap_endian(payload[0]);
+}
+void CEXIBrawlback::handleFighter(double* payload)
+{
+  this->curReplay["curFrame"][std::to_string(this->curFrame)]["fighterDamage"][std::to_string(this->curIndex)] = swap_endian(payload[0]);
+}
+void CEXIBrawlback::handleEndGame()
+{
+  //TODO: when starting game, check the saveReplays flag and doin't bother writing to JSON obj
+  // if replays are disabled?
 
-// recieve data from game into emulator
+  //TODO: safe to read config here?
+  if (SConfig::GetInstance().m_brawlbackSaveReplays)
+  {
+    this->curReplaySerialized = json::to_ubjson(this->curReplay);
+
+    const auto p1 = std::chrono::system_clock::now();
+    const auto timestamp =
+        std::chrono::duration_cast<std::chrono::seconds>(p1.time_since_epoch()).count();
+
+    auto replaydir = SConfig::GetInstance().m_brawlbackReplayDir;
+    if (fs::is_directory(replaydir) || fs::create_directory(replaydir))
+    {
+      auto filename = fmt::format(FMT_STRING("{}/replay_{}.brba"), replaydir, timestamp);
+      writeToFile(filename, this->curReplaySerialized.data(), this->curReplaySerialized.size());
+    }
+    else
+    {
+      auto error_string = fmt::format(FMT_STRING("Failed to create replay directory: {}"), replaydir);
+      ERROR_LOG(BRAWLBACK, error_string.c_str());
+    }
+  }
+}
+void CEXIBrawlback::handleGetNumberReplayFiles()
+{
+  //TODO: is it safe to read from the config here? could it be written to from another thread?
+  const auto replay_dir = SConfig::GetInstance().m_brawlbackReplayDir;
+  for (const auto& entry : fs::directory_iterator(replay_dir))
+  {
+    if (entry.path().string().contains("replay_"))
+    {
+      auto replay = read_vector_from_disk(entry.path().string());
+      this->replayNames.push_back(entry.path().filename().string().c_str());
+      json j = json::from_ubjson(replay);
+      this->replays.push_back(j.dump().c_str());
+    }
+  }
+  u8 numReplayFiles = (u8)this->replays.size();
+  INFO_LOG(BRAWLBACK,
+           (std::string("Number of replay files: ") + std::to_string(numReplayFiles)).c_str());
+  SendCmdToGame(CMD_REPLAY_SEND_NUMBER_REPLAY_FILES, &numReplayFiles);
+}
+void CEXIBrawlback::handleGetReplayFilesSize()
+{
+  const auto size = this->replays.size();
+  std::vector<u8> sizeOfReplaysVec(size);
+  for (int i = 0; i < size; i++)
+  {
+    sizeOfReplaysVec[i] = (u8)strlen(this->replays[i]);
+  }
+  SendCmdToGame(CMD_REPLAY_SEND_REPLAY_FILES_SIZE, sizeOfReplaysVec.data());
+}
+void CEXIBrawlback::handleGetReplayFilesNamesSize()
+{
+  auto size = this->replayNames.size();
+  std::vector<u8> sizeOfReplayNamesArr(size);
+  for (int i = 0; i < size; i++)
+  {
+    sizeOfReplayNamesArr[i] = (u8)strlen(this->replayNames[i]);
+  }
+  SendCmdToGame(CMD_REPLAY_SEND_REPLAY_NAMES_SIZE, sizeOfReplayNamesArr.data());
+}
+void CEXIBrawlback::handleGetReplayFilesNames()
+{
+  SendCmdToGame(CMD_REPLAY_SEND_REPLAY_NAMES, this->replayNames.data());
+}
+void CEXIBrawlback::handleGetReplayFiles()
+{
+  SendCmdToGame(CMD_REPLAY_SEND_REPLAY_FILES, this->replays.data());
+}
+    // recieve data from game into emulator
 void CEXIBrawlback::DMAWrite(u32 address, u32 size)
 {
     //INFO_LOG(BRAWLBACK, "DMAWrite size: %u\n", size);
@@ -1085,7 +1250,70 @@ void CEXIBrawlback::DMAWrite(u32 address, u32 size)
         //INFO_LOG(BRAWLBACK, "DMAWrite: CMD_START_MATCH");
         handleStartMatch(payload);
         break;
-
+    case CMD_REPLAY_CURRENT_INDEX:
+        handleIndex((int*)payload);
+        break;
+    case CMD_REPLAY_NUM_PLAYERS:
+        handleNumPlayers((int*)payload);
+        break;
+    case CMD_REPLAY_STAGE:
+        handleStage(payload);
+        break;
+    case CMD_REPLAY_RANDOM:
+        handleRandom((u32*)payload);
+        break;
+    case CMD_REPLAY_FIGHTER:
+        handleFighter((double*)payload);
+        break;
+    case CMD_REPLAY_GAME:
+        handleGame((u32*)payload);
+        break;
+    case CMD_REPLAY_ENDGAME:
+        handleEndGame();
+        break;
+    case CMD_REPLAY_STARTPOS:
+        handleStartPosition((float*)payload);
+        break;
+    case CMD_REPLAY_POS:
+        handlePos((float*)payload);
+        break;
+    case CMD_REPLAY_STARTFIGHTER:
+        handleStartFighter((int*)payload);
+        break;
+    case CMD_REPLAY_STICK:
+        handleStick((float*)payload);
+        break;
+    case CMD_REPLAY_ACTIONSTATE:
+        handleActionState((u32*)payload);
+        break;
+    case CMD_REPLAY_ITEM_IDS:
+        handleItemIds((itemIdName*)payload, sizeof((itemIdName*)payload) / sizeof(((itemIdName*)payload)[0]));
+        break;
+    case CMD_REPLAY_ITEM_VARIENTS:
+        handleItemVarients((u16*)payload, sizeof((u16*)payload) / sizeof(((u16*)payload)[0]));
+        break;
+    case CMD_REPLAY_INPUTS:
+        handleInputs(payload);
+        break;
+    case CMD_REPLAY_STOCK_COUNT:
+        handleStockCount((int*)payload);
+        break;
+    case CMD_REPLAY_GET_NUMBER_REPLAY_FILES:
+        handleGetNumberReplayFiles();
+        break;
+    case CMD_REPLAY_GET_REPLAY_FILES_SIZE:
+        handleGetReplayFilesSize();
+        break;
+    case CMD_REPLAY_GET_REPLAY_FILES:
+        handleGetReplayFiles();
+        break;
+    case CMD_REPLAY_GET_REPLAY_NAMES:
+        handleGetReplayFilesNames();
+        break;
+    case CMD_REPLAY_GET_REPLAY_NAMES_SIZE:
+        handleGetReplayFilesNamesSize();
+        break;
+        
     
     // just using these CMD's to track frame times lol
     case CMD_TIMER_START:

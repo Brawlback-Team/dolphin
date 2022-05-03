@@ -42,11 +42,11 @@ public:
     void FlushAsyncQueue(ENetHost* server);
 
     // sends FrameData to all peers (async/udp)
-    void BroadcastPlayerFrameData(ENetHost* server, Match::PlayerFrameDataImpl* framedata);
+    void BroadcastPlayerFrameData(ENetHost* server, PlayerFrameData* framedata);
     // sends GameSettings to all peers (sync/tcp)
-    void BroadcastGameSettings(ENetHost* server, Match::GameSettingsImpl* settings);
+    void BroadcastGameSettings(ENetHost* server, GameSettings* settings);
 
-    void BroadcastPlayerFrameDataWithPastFrames(ENetHost* server, const std::vector<Match::PlayerFrameDataImpl*>& framedatas);
+    void BroadcastPlayerFrameDataWithPastFrames(ENetHost* server, const std::vector<PlayerFrameData*>& framedatas);
 
 private:
 
