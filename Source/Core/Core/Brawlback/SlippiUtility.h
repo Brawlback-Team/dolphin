@@ -3,7 +3,7 @@
 #include "Common/CommonTypes.h"
 #include <unordered_map>
 #include "Common/ChunkFile.h"
-#include "Core/Brawlback/include/brawlback-exi-structures/PreserveBlock.h"
+#include "brawlback-exi-structures/ExiStructures.h"
 /*
 ============================================
 This, along with SlippiUtility.cpp is a place to hold code from the Slippi repo.
@@ -55,6 +55,14 @@ namespace SlippiUtility
         {
         return node._preserveBlock.address ^ node._preserveBlock.length;  // TODO: This is probably a bad hash
         }
+    };
+
+    struct preserve_eq_fn
+    {
+      bool operator()(const PreserveBlock& key1, const PreserveBlock& key2) const
+      {
+        return key1.address == key2.address && key1.length == key2.length;
+      }
     };
 
     typedef struct
