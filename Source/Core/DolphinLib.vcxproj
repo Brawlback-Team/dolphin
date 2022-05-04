@@ -31,11 +31,12 @@
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
       <TreatWarningAsError>false</TreatWarningAsError>
+      <AdditionalIncludeDirectories>$(CoreDir)Core\Brawlback\include;$(ExternalsDir)zstd\lib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>$(ExternalsDir)zstd\lib;%(AdditionalIncludeDirectories);$(ExternalsDir)nlohmann</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(CoreDir)Core\Brawlback\include;$(ExternalsDir)zstd\lib;%(AdditionalIncludeDirectories);$(ExternalsDir)nlohmann</AdditionalIncludeDirectories>
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
