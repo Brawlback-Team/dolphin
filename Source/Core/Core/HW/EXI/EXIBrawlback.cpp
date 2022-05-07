@@ -20,12 +20,18 @@ std::mutex localPadQueueMutex = std::mutex();
 // -------------------------------
 
 template <class T>
-T swap_endian(T in)
+[[nodiscard]] T swap_endian(T val)
 {
-  char* const p = reinterpret_cast<char*>(&in);
-  for (size_t i = 0; i < sizeof(T) / 2; ++i)
-    std::swap(p[i], p[sizeof(T) - i - 1]);
-  return in;
+  union U
+  {
+    T val;
+    std::array<std::uint8_t, sizeof(T)> raw;
+  } src, dst;
+
+  src.val = val;
+  std::reverse_copy(src.raw.begin(), src.raw.end(), dst.raw.begin());
+  val = dst.val;
+  return val;
 }
 void writeToFile(std::string filename, uint8_t* ptr, size_t len)
 {
@@ -1052,10 +1058,17 @@ void CEXIBrawlback::handleNumPlayers(int* payload)
 {
   this->curReplay["numPlayers"] = swap_endian(payload[0]);
 }
-void CEXIBrawlback::handleRandom(u32* payload)
+
+
+void CEXIBrawlback::handleStartReplaysStruct(u8* payload)
 {
-  this->curReplay["rand"] = swap_endian(payload[0]);
-  this->curReplay["other_rand"] = swap_endian(payload[1]);
+  if (SConfig::GetInstance().m_brawlbackSaveReplays)
+  {
+    StartReplay startReplay;
+    std::memcpy(&startReplay, payload, sizeof(StartReplay));
+    fixStartReplayEndianness(startReplay);
+    serializeStartReplay(startReplay);
+  }
 }
 void CEXIBrawlback::handleStage(u8* payload)
 {
@@ -1082,39 +1095,60 @@ void CEXIBrawlback::handleItemIds(itemIdName* payload, int size)
     this->curReplay["curFrame"][std::to_string(this->curFrame)]["itemIDs"][std::to_string(i)] = swap_endian(payload[i]);
   }
 }
-void CEXIBrawlback::handleItemVarients(u16* payload, int size)
+
+void CEXIBrawlback::handleEndOfReplay()
 {
-  for (int i = 0; i < size; i++)
+  if (SConfig::GetInstance().m_brawlbackSaveReplays)
   {
-    this->curReplay["curFrame"][std::to_string(this->curFrame)]["itemVarients"][std::to_string(i)] = swap_endian(payload[i]);
+    this->replayDirectory = SConfig::GetInstance().m_brawlbackReplayDir + "/" +
+                            SConfig::GetInstance().m_details_game_id;
+    auto ubjson = json::to_ubjson(this->curReplayJson);
+    if (!std::filesystem::exists(replayDirectory))
+    {
+      std::filesystem::create_directory(replayDirectory);
+    }
+    writeToFile(replayDirectory + "/" +
+                this->curReplayName + ".brba", ubjson.data(), ubjson.size());
   }
 }
-void CEXIBrawlback::handleGame(u32* payload)
+
+void CEXIBrawlback::handleGetStartReplay(u8* payload)
 {
-  this->curFrame = swap_endian(payload[1]);
-}
-void CEXIBrawlback::handleInputs(u8* payload)
-{
-  this->curReplay["curFrame"][std::to_string(this->curFrame)]["inputs"][std::to_string(this->curIndex)]["attack"] = payload[0];
-  this->curReplay["curFrame"][std::to_string(this->curFrame)]["inputs"][std::to_string(this->curIndex)]["special"] = payload[1];
-  this->curReplay["curFrame"][std::to_string(this->curFrame)]["inputs"][std::to_string(this->curIndex)]["jump"] = payload[2];
-  this->curReplay["curFrame"][std::to_string(this->curFrame)]["inputs"][std::to_string(this->curIndex)]["shield"] = payload[3];
-  this->curReplay["curFrame"][std::to_string(this->curFrame)]["inputs"][std::to_string(this->curIndex)]["dTaunt"] = payload[4];
-  this->curReplay["curFrame"][std::to_string(this->curFrame)]["inputs"][std::to_string(this->curIndex)]["sTaunt"] = payload[5];
-  this->curReplay["curFrame"][std::to_string(this->curFrame)]["inputs"][std::to_string(this->curIndex)]["uTaunt"] = payload[6];
-  this->curReplay["curFrame"][std::to_string(this->curFrame)]["inputs"][std::to_string(this->curIndex)]["cStick"] = payload[7];
-  this->curReplay["curFrame"][std::to_string(this->curFrame)]["inputs"][std::to_string(this->curIndex)]["tapJump"] = payload[8];
-}
-void CEXIBrawlback::handlePos(float* payload)
-{
-  this->curReplay["curFrame"][std::to_string(this->curFrame)]["positions"][std::to_string(this->curIndex)]["x"] = swap_endian(payload[0]);
-  this->curReplay["curFrame"][std::to_string(this->curFrame)]["positions"][std::to_string(this->curIndex)]["y"] = swap_endian(payload[1]);
-  this->curReplay["curFrame"][std::to_string(this->curFrame)]["positions"][std::to_string(this->curIndex)]["z"] = swap_endian(payload[2]);
-}
-void CEXIBrawlback::handleStick(float* payload)
-{
-  this->curReplay["curFrame"][std::to_string(this->curFrame)]["sticks"][std::to_string(this->curIndex)]["x"] = swap_endian(payload[0]);
-  this->curReplay["curFrame"][std::to_string(this->curFrame)]["sticks"][std::to_string(this->curIndex)]["y"] = swap_endian(payload[1]);
+  std::memcpy(&this->curIndex, payload, sizeof(u8));
+  StartReplay startReplay;
+  auto indexReplay = this->getReplayJsonAtIndex(this->curIndex);
+  auto name = this->getReplayNameAtIndex(this->curIndex);
+  if (indexReplay == json({}) || name == std::string())
+  {
+    SendCmdToGame(CMD_BAD_INDEX);
+    return;
+  }
+  auto start = indexReplay["start"];
+
+  std::memcpy(startReplay.nameBuffer, name.data(), name.size());
+  startReplay.nameSize = (u8)name.size();
+  startReplay.firstFrame = start["firstFrame"];
+  startReplay.stage = start["stage"];
+  startReplay.randomSeed = start["randomSeed"];
+  startReplay.otherRandomSeed = start["otherRandomSeed"];
+  startReplay.numPlayers = (u8)start["players"].size();
+
+  for (int i = 0; i < startReplay.numPlayers; i++)
+  {
+    auto player = start["players"][i];
+    auto position = player["startPlayerPos"];
+
+    auto& replayPlayer = startReplay.players[i];
+    auto& replayPosition = replayPlayer.startPlayer;
+
+    replayPlayer.fighterKind = player["ftKind"];
+    replayPlayer.slotID = player["slotID"];
+
+	replayPosition.xPos = position["x"];
+    replayPosition.yPos = position["y"];
+    replayPosition.zPos = position["z"];
+  }
+  SendCmdToGame(CMD_GET_START_REPLAY, &startReplay);
 }
 void CEXIBrawlback::handleActionState(u32* payload)
 {
@@ -1142,17 +1176,20 @@ void CEXIBrawlback::handleEndGame()
     const auto timestamp =
         std::chrono::duration_cast<std::chrono::seconds>(p1.time_since_epoch()).count();
 
-    auto replaydir = SConfig::GetInstance().m_brawlbackReplayDir;
-    if (fs::is_directory(replaydir) || fs::create_directory(replaydir))
-    {
-      auto filename = fmt::format(FMT_STRING("{}/replay_{}.brba"), replaydir, timestamp);
-      writeToFile(filename, this->curReplaySerialized.data(), this->curReplaySerialized.size());
-    }
-    else
-    {
-      auto error_string = fmt::format(FMT_STRING("Failed to create replay directory: {}"), replaydir);
-      ERROR_LOG(BRAWLBACK, error_string.c_str());
-    }
+void CEXIBrawlback::handleNumReplays()
+{
+  this->replayDirectory = SConfig::GetInstance().m_brawlbackReplayDir + "/" +
+                          SConfig::GetInstance().m_details_game_id;
+  auto numReplays = getNumReplays(replayDirectory);
+  SendCmdToGame(CMD_GET_NUM_REPLAYS, &numReplays);
+}
+
+json CEXIBrawlback::getReplayJsonAtIndex(int index)
+{
+  auto replays = getReplays(replayDirectory);
+  if (index > replays.size() - 1)
+  {
+    return json({});
   }
 }
 void CEXIBrawlback::handleGetNumberReplayFiles()
@@ -1222,116 +1259,67 @@ void CEXIBrawlback::DMAWrite(u32 address, u32 size)
     if (size <= 1)
         payload = nullptr;
 
+  static u64 frameTime = Common::Timer::GetTimeUs();
+  switch (command_byte)
+  {
+  case CMD_UNKNOWN:
+    INFO_LOG(BRAWLBACK, "Unknown DMAWrite command byte!");
+    break;
+  case CMD_ONLINE_INPUTS:
+    // INFO_LOG(BRAWLBACK, "DMAWrite: CMD_ONLINE_INPUTS");
+    handleLocalPadData(payload);
+    break;
+  case CMD_CAPTURE_SAVESTATE:
+    // INFO_LOG(BRAWLBACK, "DMAWrite: CMD_CAPTURE_SAVESTATE");
+    handleCaptureSavestate(payload);
+    break;
+  case CMD_LOAD_SAVESTATE:
+    // INFO_LOG(BRAWLBACK, "DMAWrite: CMD_LOAD_SAVESTATE");
+    handleLoadSavestate(payload);
+    break;
+  case CMD_FIND_OPPONENT:
+    // INFO_LOG(BRAWLBACK, "DMAWrite: CMD_FIND_OPPONENT");
+    handleFindMatch(payload);
+    break;
+  case CMD_START_MATCH:
+    // INFO_LOG(BRAWLBACK, "DMAWrite: CMD_START_MATCH");
+    handleStartMatch(payload);
+    break;
+  case CMD_REPLAY_START_REPLAYS_STRUCT:
+    handleStartReplaysStruct(payload);
+    break;
+  case CMD_REPLAY_REPLAYS_STRUCT:
+    handleReplaysStruct(payload);
+    break;
+  case CMD_REPLAYS_REPLAYS_END:
+    handleEndOfReplay();
+    break;
+  case CMD_GET_NUM_REPLAYS:
+    handleNumReplays();
+	break;
+  case CMD_GET_START_REPLAY:
+    handleGetStartReplay(payload);
+	break;
+  case CMD_GET_NEXT_FRAME:
+    handleGetNextFrame(payload, this->curIndex);
+    break;
 
-    static u64 frameTime = Common::Timer::GetTimeUs();
-    switch (command_byte)
-    {
+  // just using these CMD's to track frame times lol
+  case CMD_TIMER_START:
+  {
+    frameTime = Common::Timer::GetTimeUs();
+  }
+  break;
+  case CMD_TIMER_END:
+  {
+    u32 timeDiff = Common::Timer::GetTimeUs() - frameTime;
+    INFO_LOG(BRAWLBACK, "Game logic took %f ms\n", (double)(timeDiff / 1000.0));
+  }
+  break;
 
-    case CMD_UNKNOWN:
-        INFO_LOG(BRAWLBACK, "Unknown DMAWrite command byte!");
-        break;
-    case CMD_ONLINE_INPUTS:
-        //INFO_LOG(BRAWLBACK, "DMAWrite: CMD_ONLINE_INPUTS");
-        handleLocalPadData(payload);
-        break;
-    case CMD_CAPTURE_SAVESTATE:
-        //INFO_LOG(BRAWLBACK, "DMAWrite: CMD_CAPTURE_SAVESTATE");
-        handleCaptureSavestate(payload);
-        break;
-    case CMD_LOAD_SAVESTATE:
-        //INFO_LOG(BRAWLBACK, "DMAWrite: CMD_LOAD_SAVESTATE");
-        handleLoadSavestate(payload);
-        break;
-    case CMD_FIND_OPPONENT:
-        //INFO_LOG(BRAWLBACK, "DMAWrite: CMD_FIND_OPPONENT");
-        handleFindMatch(payload);
-        break;
-    case CMD_START_MATCH:
-        //INFO_LOG(BRAWLBACK, "DMAWrite: CMD_START_MATCH");
-        handleStartMatch(payload);
-        break;
-    case CMD_REPLAY_CURRENT_INDEX:
-        handleIndex((int*)payload);
-        break;
-    case CMD_REPLAY_NUM_PLAYERS:
-        handleNumPlayers((int*)payload);
-        break;
-    case CMD_REPLAY_STAGE:
-        handleStage(payload);
-        break;
-    case CMD_REPLAY_RANDOM:
-        handleRandom((u32*)payload);
-        break;
-    case CMD_REPLAY_FIGHTER:
-        handleFighter((double*)payload);
-        break;
-    case CMD_REPLAY_GAME:
-        handleGame((u32*)payload);
-        break;
-    case CMD_REPLAY_ENDGAME:
-        handleEndGame();
-        break;
-    case CMD_REPLAY_STARTPOS:
-        handleStartPosition((float*)payload);
-        break;
-    case CMD_REPLAY_POS:
-        handlePos((float*)payload);
-        break;
-    case CMD_REPLAY_STARTFIGHTER:
-        handleStartFighter((int*)payload);
-        break;
-    case CMD_REPLAY_STICK:
-        handleStick((float*)payload);
-        break;
-    case CMD_REPLAY_ACTIONSTATE:
-        handleActionState((u32*)payload);
-        break;
-    case CMD_REPLAY_ITEM_IDS:
-        handleItemIds((itemIdName*)payload, sizeof((itemIdName*)payload) / sizeof(((itemIdName*)payload)[0]));
-        break;
-    case CMD_REPLAY_ITEM_VARIENTS:
-        handleItemVarients((u16*)payload, sizeof((u16*)payload) / sizeof(((u16*)payload)[0]));
-        break;
-    case CMD_REPLAY_INPUTS:
-        handleInputs(payload);
-        break;
-    case CMD_REPLAY_STOCK_COUNT:
-        handleStockCount((int*)payload);
-        break;
-    case CMD_REPLAY_GET_NUMBER_REPLAY_FILES:
-        handleGetNumberReplayFiles();
-        break;
-    case CMD_REPLAY_GET_REPLAY_FILES_SIZE:
-        handleGetReplayFilesSize();
-        break;
-    case CMD_REPLAY_GET_REPLAY_FILES:
-        handleGetReplayFiles();
-        break;
-    case CMD_REPLAY_GET_REPLAY_NAMES:
-        handleGetReplayFilesNames();
-        break;
-    case CMD_REPLAY_GET_REPLAY_NAMES_SIZE:
-        handleGetReplayFilesNamesSize();
-        break;
-        
-    
-    // just using these CMD's to track frame times lol
-    case CMD_TIMER_START:
-        {
-            frameTime = Common::Timer::GetTimeUs();
-        }
-        break;
-    case CMD_TIMER_END:
-        {
-            u32 timeDiff = Common::Timer::GetTimeUs() - frameTime;
-            INFO_LOG(BRAWLBACK, "Game logic took %f ms\n", (double)(timeDiff / 1000.0));
-        }
-        break;
-    
-
-    default:
-        //INFO_LOG(BRAWLBACK, "Default DMAWrite %u\n", (unsigned int)command_byte);
-        break;
+  default:
+    // INFO_LOG(BRAWLBACK, "Default DMAWrite %u\n", (unsigned int)command_byte);
+    break;
   }
 
 }

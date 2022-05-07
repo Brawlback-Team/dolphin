@@ -25,17 +25,27 @@ public:
 
     bool IsPresent() const;
 
+  std::string replayDirectory;
+
 private:
 
     // byte vector for sending into to the game
     std::vector<u8> read_queue = {};
 
-    // DMA handlers
-    void handleCaptureSavestate(u8* data);
-    void handleLoadSavestate(u8* data);
-    void handleLocalPadData(u8* data);
-    void handleFindMatch(u8* payload);
-    void handleStartMatch(u8* payload);
+  // --- DMA handlers
+  void handleCaptureSavestate(u8* data);
+  void handleLoadSavestate(u8* data);
+  void handleLocalPadData(u8* data);
+  void handleFindMatch(u8* payload);
+  void handleStartMatch(u8* payload);
+  void handleStartReplaysStruct(u8* payload);
+  void serializeStartReplay(const StartReplay& startReplay);
+  void serializeReplay(const Replay& replay);
+  void handleReplaysStruct(u8* payload);
+  void handleEndOfReplay();
+  void handleGetNextFrame(u8* payload, int index);
+  void handleNumReplays();
+  void handleGetStartReplay(u8* payload);
 
     // REPLAYS
     json curReplay;
@@ -72,6 +82,18 @@ private:
     void SendCmdToGame(EXICommand cmd);
     // -------------------------------
 
+  // --- Replays
+  void fixStartReplayEndianness(StartReplay& startReplay);
+  void fixReplayEndianness(Replay& replay);
+  std::vector<std::vector<u8>> getReplays(std::string path);
+  std::vector<std::string> getReplayNames(std::string path);
+  u8 getNumReplays(std::string path);
+  json getReplayJsonAtIndex(int index);
+  std::string getReplayNameAtIndex(int index);
+  u8 curIndex;
+  json curReplayJson;
+  std::string curReplayName;
+  // -------------------------------
 
     // --- Net
     void MatchmakingThreadFunc();

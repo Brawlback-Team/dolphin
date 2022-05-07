@@ -123,6 +123,7 @@ void ToolBar::MakeActions()
   m_stop_action = addAction(tr("Stop"), this, &ToolBar::StopPressed);
   m_fullscreen_action = addAction(tr("FullScr"), this, &ToolBar::FullScreenPressed);
   m_screenshot_action = addAction(tr("ScrShot"), this, &ToolBar::ScreenShotPressed);
+  m_netplay_action = addAction(tr("Netplay"), this, &ToolBar::NetplayPressed);
 
   addSeparator();
 
@@ -134,7 +135,7 @@ void ToolBar::MakeActions()
   std::vector<QWidget*> items;
   for (const auto& action :
        {m_open_action, m_pause_play_action, m_stop_action, m_stop_action, m_fullscreen_action,
-        m_screenshot_action, m_config_action, m_graphics_action, m_controllers_action,
+        m_screenshot_action, m_netplay_action, m_config_action, m_graphics_action, m_controllers_action,
         m_step_action, m_step_over_action, m_step_out_action, m_skip_action, m_show_pc_action,
         m_set_pc_action})
   {
@@ -190,6 +191,7 @@ void ToolBar::UpdateIcons()
   m_stop_action->setIcon(Resources::GetScaledThemeIcon("stop"));
   m_fullscreen_action->setIcon(Resources::GetScaledThemeIcon("fullscreen"));
   m_screenshot_action->setIcon(Resources::GetScaledThemeIcon("screenshot"));
+  m_netplay_action->setIcon(Resources::GetScaledThemeIcon("netplay"));
   m_config_action->setIcon(Resources::GetScaledThemeIcon("config"));
   m_controllers_action->setIcon(Resources::GetScaledThemeIcon("gcpad"));
   m_graphics_action->setIcon(Resources::GetScaledThemeIcon("graphics"));

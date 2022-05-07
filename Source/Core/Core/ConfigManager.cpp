@@ -644,6 +644,9 @@ void SConfig::SetRunningGameMetadata(const IOS::ES::TMDReader& tmd, DiscIO::Plat
 
 void SConfig::SetRunningGameMetadata(const std::string& game_id)
 {
+  // Set a different variable with the name of the variable
+  // TODO(?): Refactor; this is super hacky
+  m_details_game_id = game_id;
   SetRunningGameMetadata(game_id, "", 0, 0, DiscIO::Region::Unknown);
 }
 
