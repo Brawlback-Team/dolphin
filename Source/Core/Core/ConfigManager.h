@@ -41,10 +41,79 @@ struct SConfig
   bool bJITNoBlockCache = false;
   bool bJITNoBlockLinking = false;
 
+    // Slippi
+	bool m_brawlbackSaveReplays = true;
+	std::string m_brawlbackReplayDir;
+	bool m_slippiForceNetplayPort = false;
+	int m_slippiNetplayPort;
+	bool m_slippiForceLanIp = false;
+	bool m_slippiCustomMMEnabled = true;
+	std::string m_slippiCustomMMServerURL = "lylat.gg";
+	std::string m_slippiCustomMMReportingURL = "https://lylat.gg/reports";
+	std::string m_slippiLanIp = "";
+	bool m_meleeUserIniBootstrapped = false;
+	bool m_blockingPipes = false;
+	bool m_coutEnabled = false;
+    int m_delayFrames = 2;
+
+  // Slippi
+  bool m_brawlbackSaveReplays = true;
+  std::string m_brawlbackReplayDir;
+  bool m_slippiForceNetplayPort = false;
+  int m_slippiNetplayPort;
+  bool m_slippiForceLanIp = false;
+  bool m_slippiCustomMMEnabled = true;
+  std::string m_slippiCustomMMServerURL = "lylat.gg";
+  std::string m_slippiCustomMMReportingURL = "https://lylat.gg/reports";
+  std::string m_slippiLanIp = "";
+  bool m_meleeUserIniBootstrapped = false;
+  bool m_blockingPipes = false;
+  bool m_coutEnabled = false;
+  int m_delayFrames = 2;
+  std::string m_details_game_id = "";
+
+  int iTimingVariance = 40;  // in milli secounds
+  bool bCPUThread = true;
+  bool bSyncGPUOnSkipIdleHack = true;
+  bool bHLE_BS2 = true;
   bool bCopyWiiSaveNetplay = true;
 
   bool bWii = false;
   bool m_is_mios = false;
+
+  // Interface settings
+  bool bConfirmStop = false;
+
+
+  bool bQoSEnabled = true;
+
+
+  enum class ShowCursor
+  {
+    Never,
+    Constantly,
+    OnMovement,
+  } m_show_cursor;
+
+  bool bLockCursor = false;
+  std::string theme_name;
+
+  // Bluetooth passthrough mode settings
+  bool m_bt_passthrough_enabled = false;
+  int m_bt_passthrough_pid = -1;
+  int m_bt_passthrough_vid = -1;
+  std::string m_bt_passthrough_link_keys;
+
+  // USB passthrough settings
+  std::set<std::pair<u16, u16>> m_usb_passthrough_devices;
+  bool IsUSBDeviceWhitelisted(std::pair<u16, u16> vid_pid) const;
+
+  // Fifo Player related settings
+  bool bLoopFifoReplay = true;
+
+  // Custom RTC
+  bool bEnableCustomRTC;
+  u32 m_customRTCValue;
 
   DiscIO::Region m_region;
 
@@ -103,6 +172,32 @@ struct SConfig
 private:
   SConfig();
   ~SConfig();
+
+  void SaveGeneralSettings(IniFile& ini);
+  void SaveInterfaceSettings(IniFile& ini);
+  void SaveGameListSettings(IniFile& ini);
+  void SaveCoreSettings(IniFile& ini);
+  void SaveInputSettings(IniFile& ini);
+  void SaveMovieSettings(IniFile& ini);
+  void SaveFifoPlayerSettings(IniFile& ini);
+  void SaveBluetoothPassthroughSettings(IniFile& ini);
+  void SaveUSBPassthroughSettings(IniFile& ini);
+  void SaveAutoUpdateSettings(IniFile& ini);
+  void SaveJitDebugSettings(IniFile& ini);
+  void SaveBrawlbackSettings(IniFile& ini);
+
+  void LoadGeneralSettings(IniFile& ini);
+  void LoadInterfaceSettings(IniFile& ini);
+  void LoadGameListSettings(IniFile& ini);
+  void LoadCoreSettings(IniFile& ini);
+  void LoadInputSettings(IniFile& ini);
+  void LoadMovieSettings(IniFile& ini);
+  void LoadFifoPlayerSettings(IniFile& ini);
+  void LoadBluetoothPassthroughSettings(IniFile& ini);
+  void LoadUSBPassthroughSettings(IniFile& ini);
+  void LoadAutoUpdateSettings(IniFile& ini);
+  void LoadJitDebugSettings(IniFile& ini);
+  void LoadBrawlbackSettings(IniFile& ini);
 
   void SetRunningGameMetadata(const std::string& game_id, const std::string& gametdb_id,
                               u64 title_id, u16 revision, DiscIO::Region region);

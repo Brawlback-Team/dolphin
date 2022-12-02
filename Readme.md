@@ -1,3 +1,31 @@
+
+# Brawlback Dolphin Fork
+
+Building this fork is the same as building mainline dolphin. See below for instructions.  
+
+
+
+
+NOTE:
+The rollback code here is *heavily* based on the code from Project Slippi. I am currently doing this because 
+a lot of the logic is relevant here. Make sure to ask the Slippi team about their thoughts on the state of 
+this codebase. I would totally understand if they are uncomfortable with it, so Slippi team, if you are reading this
+and are not happy with this, *please* let me know! I would be happy to do some refactoring if need be.  
+
+
+
+
+Important locations:  
+Core/Core/Source/HW/EXI/EXIBrawlback.h/.cpp  
+Core/Core/Source/Brawlback  
+
+
+This dolphin fork is to be used in conjunction with [Brawlback ASM](https://github.com/Brawlback-Team/brawlback-asm).  
+
+
+
+
+
 # Dolphin - A GameCube and Wii Emulator
 
 [Homepage](https://dolphin-emu.org/) | [Project Site](https://github.com/dolphin-emu/dolphin) | [Buildbot](https://dolphin.ci/) | [Forums](https://forums.dolphin-emu.org/) | [Wiki](https://wiki.dolphin-emu.org/) | [GitHub Wiki](https://github.com/dolphin-emu/dolphin/wiki) | [Issue Tracker](https://bugs.dolphin-emu.org/projects/emulator/issues) | [Coding Style](https://github.com/dolphin-emu/dolphin/blob/master/Contributing.md) | [Transifex Page](https://explore.transifex.com/delroth/dolphin-emu/)

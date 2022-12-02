@@ -550,6 +550,7 @@ void CopyFromEmu(void* data, u32 address, size_t size)
   if (!pointer)
   {
     PanicAlertFmt("Invalid range in CopyFromEmu. {:x} bytes from {:#010x}", size, address);
+    //WARN_LOG(BRAWLBACK, "Invalid range in CopyFromEmu. {:x} bytes from {:#010x}", size, address);
     return;
   }
   memcpy(data, pointer, size);

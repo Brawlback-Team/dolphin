@@ -14,6 +14,7 @@
 #include "Core/HW/EXI/EXI_DeviceIPL.h"
 #include "Core/HW/EXI/EXI_DeviceMemoryCard.h"
 #include "Core/HW/EXI/EXI_DeviceMic.h"
+#include "Core/HW/EXI/EXIBrawlback.h"
 #include "Core/HW/Memmap.h"
 
 namespace ExpansionInterface
@@ -153,6 +154,12 @@ std::unique_ptr<IEXIDevice> EXIDevice_Create(const EXIDeviceType device_type, co
 
   case EXIDeviceType::AGP:
     result = std::make_unique<CEXIAgp>(slot);
+    break;
+  case EXIDEVICE_BRAWLBACK:
+    result = std::make_unique<CEXIBrawlback>();
+    break;
+  case EXIDEVICE_BRAWLBACK:
+    result = std::make_unique<CEXIBrawlback>();
     break;
 
   case EXIDeviceType::AMBaseboard:

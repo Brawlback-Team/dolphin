@@ -36,9 +36,9 @@ enum class EXIDeviceType : int
   AGP,
   EthernetXLink,
   // Only used on Apple devices.
-  EthernetTapServer,
-  EthernetBuiltIn,
-  None = 0xFF
+  EXIDEVICE_ETHTAPSERVER,
+  EXIDEVICE_BRAWLBACK,
+  EXIDEVICE_NONE = 0xFF
 };
 
 class IEXIDevice
