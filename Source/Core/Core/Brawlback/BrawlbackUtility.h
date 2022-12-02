@@ -3,6 +3,7 @@
 #include <unordered_map>
 #include <array>
 #include <fstream>
+#include <optional>
 
 #include "Common/FileUtil.h"
 #include "Common/CommonTypes.h"
@@ -10,29 +11,41 @@
 #include "Common/Logging/Log.h"
 #include "Common/Logging/LogManager.h"
 #include "SlippiUtility.h"
-#include "Core/Brawlback/Brawltypes.h"
+#include "Brawltypes.h"
+#include "Savestate.h"
+#include "brawlback-common/ExiStructures.h"
 
 // must be >= 1
 #define FRAME_DELAY 3
 static_assert(FRAME_DELAY + MAX_ROLLBACK_FRAMES >= 6); // 6 frames of "compensation" covers ~190 ping which is more than sufficient imo
 
+#define FRAME_DELAY 2
+static_assert(FRAME_DELAY >= 1);
+static_assert(FRAME_DELAY + MAX_ROLLBACK_FRAMES >= 6); // minimum frames of "compensation"
+
 #define ROLLBACK_IMPL true
 
-// number of max FrameData's to keep in the queue
-#define FRAMEDATA_MAX_QUEUE_SIZE 30 
+// number of max FrameData's to keep in the (remote) queue
+#define FRAMEDATA_MAX_QUEUE_SIZE 15 
+static_assert(FRAMEDATA_MAX_QUEUE_SIZE > MAX_ROLLBACK_FRAMES);
 // update ping display every X frames
-#define PING_DISPLAY_INTERVAL 60
+#define PING_DISPLAY_INTERVAL 30
 
+// check clock desynchronization every X frames
 #define ONLINE_LOCKSTEP_INTERVAL 30
+
 #define GAME_START_FRAME 0
 //#define GAME_FULL_START_FRAME 1
-#define GAME_FULL_START_FRAME 250
+// before this frame we basically use delay-based netcode to ensure things are reasonably synced up before doing rollback stuff
+#define GAME_FULL_START_FRAME 100
 
 #define MAX_REMOTE_PLAYERS 3
 #define MAX_NUM_PLAYERS 4
 #define BRAWLBACK_PORT 7779
 
+#define TIMESYNC_MAX_US_OFFSET 10000 // 60% of a frame
 
+//#define SYNCLOG
 
 // 59.94 Hz (16.66 ms in a frame for 60fps)  ( -- is this accurate? This is the case for melee, idk if it also applies here)
 //#define USEC_IN_FRAME 16683
@@ -78,28 +91,15 @@ namespace Brawlback {
       CMD_TIMESYNC = 16,
       CMD_ROLLBACK = 17,
 
-      // REPLAYS (RECIEVE FROM GAME)
-      CMD_REPLAY_INPUTS = 18,
-      CMD_REPLAY_STAGE = 19,
-      CMD_REPLAY_RANDOM = 20,
-      CMD_REPLAY_FIGHTER = 21,
-      CMD_REPLAY_GAME = 22,
-      CMD_REPLAY_ENDGAME = 23,
-      CMD_REPLAY_STARTPOS = 24,
-      CMD_REPLAY_POS = 25,
-      CMD_REPLAY_STARTFIGHTER = 26,
-      CMD_REPLAY_STICK = 27,
-      CMD_REPLAY_ACTIONSTATE = 28,
-      CMD_REPLAY_ITEM_IDS = 29,
-      CMD_REPLAY_ITEM_VARIENTS = 30,
-      CMD_REPLAY_NUM_PLAYERS = 31,
-      CMD_REPLAY_STOCK_COUNT = 32,
-      CMD_REPLAY_CURRENT_INDEX = 33,
-      CMD_REPLAY_GET_NUMBER_REPLAY_FILES = 34,
-      CMD_REPLAY_GET_REPLAY_FILES = 37,
-      CMD_REPLAY_GET_REPLAY_FILES_SIZE = 38,
-      CMD_REPLAY_GET_REPLAY_NAMES = 40,
-      CMD_REPLAY_GET_REPLAY_NAMES_SIZE = 42,
+      // REPLAYS
+      CMD_REPLAY_START_REPLAYS_STRUCT = 19,
+      CMD_REPLAY_REPLAYS_STRUCT = 20,
+      CMD_REPLAYS_REPLAYS_END = 21,
+      CMD_GET_NEXT_FRAME = 22,
+      CMD_BAD_INDEX = 23,
+      CMD_GET_NUM_REPLAYS = 24,
+      CMD_SET_CUR_INDEX = 25,
+      CMD_GET_START_REPLAY = 26,
 
       // REPLAYS (SEND TO GAME)
       CMD_REPLAY_SEND_NUMBER_REPLAY_FILES = 35,
@@ -336,7 +336,7 @@ namespace Brawlback {
 
     // checks if the specified `button` is held down based on the buttonBits bitfield
     bool isButtonPressed(u16 buttonBits, PADButtonBits button);
-    void Reset(RollbackInfo& _rollbackInfo);
+    void ResetRollbackInfo(RollbackInfo& rollbackInfo);
     namespace Mem {
         void print_byte(uint8_t byte);
         void print_half(u16 half);
@@ -356,6 +356,7 @@ namespace Brawlback {
         std::string str_half(u16 half);
         void SyncLog(const std::string& msg);
         std::string stringifyFramedata(const PlayerFrameData& pfd);
+        std::string stringifyFramedata(const FrameData& fd, int numPlayers);
     }
     
     typedef std::deque<std::unique_ptr<PlayerFrameData>> PlayerFrameDataQueue;
@@ -363,10 +364,18 @@ namespace Brawlback {
     PlayerFrameData* findInPlayerFrameDataQueue(const PlayerFrameDataQueue& queue,
                                                            u32 frame);
 
+    int SavestateChecksum(std::vector<ssBackupLoc>* backupLocs);
+
     template <typename T>
     T Clamp(T input, T Max, T Min) {
         return input > Max ? Max : ( input < Min ? Min : input );
     }
+
+
+    inline int MAX(int x, int y) { return (((x) > (y)) ? (x) : (y)); }
+    inline int MIN(int x, int y) { return (((x) < (y)) ? (x) : (y)); }
+    // 1 if in range (inclusive), 0 otherwise
+    inline int RANGE(int i, int min, int max) { return ((i < min) || (i > max) ? 0 : 1); }
 
     namespace Dump {
         void DoMemDumpIteration(int& dump_num);

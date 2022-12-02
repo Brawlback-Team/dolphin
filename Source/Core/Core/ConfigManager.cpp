@@ -721,6 +721,21 @@ void SConfig::LoadDefaults()
 
   bWii = false;
 
+  bLoopFifoReplay = true;
+
+  bJITOff = false;  // debugger only settings
+  bJITLoadStoreOff = false;
+  bJITLoadStoreFloatingOff = false;
+  bJITLoadStorePairedOff = false;
+  bJITFloatingPointOff = false;
+  bJITIntegerOff = false;
+  bJITPairedOff = false;
+  bJITSystemRegistersOff = false;
+  bJITBranchOff = false;
+  bJITRegisterCacheOff = false;
+
+  m_EXIDevice[1] = ExpansionInterface::EXIDEVICE_BRAWLBACK;
+
   ResetRunningGameMetadata();
 }
 

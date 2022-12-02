@@ -56,6 +56,22 @@ struct SConfig
 	bool m_coutEnabled = false;
     int m_delayFrames = 2;
 
+  // Slippi
+  bool m_brawlbackSaveReplays = true;
+  std::string m_brawlbackReplayDir;
+  bool m_slippiForceNetplayPort = false;
+  int m_slippiNetplayPort;
+  bool m_slippiForceLanIp = false;
+  bool m_slippiCustomMMEnabled = true;
+  std::string m_slippiCustomMMServerURL = "lylat.gg";
+  std::string m_slippiCustomMMReportingURL = "https://lylat.gg/reports";
+  std::string m_slippiLanIp = "";
+  bool m_meleeUserIniBootstrapped = false;
+  bool m_blockingPipes = false;
+  bool m_coutEnabled = false;
+  int m_delayFrames = 2;
+  std::string m_details_game_id = "";
+
   int iTimingVariance = 40;  // in milli secounds
   bool bCPUThread = true;
   bool bSyncGPUOnSkipIdleHack = true;
@@ -64,6 +80,40 @@ struct SConfig
 
   bool bWii = false;
   bool m_is_mios = false;
+
+  // Interface settings
+  bool bConfirmStop = false;
+
+
+  bool bQoSEnabled = true;
+
+
+  enum class ShowCursor
+  {
+    Never,
+    Constantly,
+    OnMovement,
+  } m_show_cursor;
+
+  bool bLockCursor = false;
+  std::string theme_name;
+
+  // Bluetooth passthrough mode settings
+  bool m_bt_passthrough_enabled = false;
+  int m_bt_passthrough_pid = -1;
+  int m_bt_passthrough_vid = -1;
+  std::string m_bt_passthrough_link_keys;
+
+  // USB passthrough settings
+  std::set<std::pair<u16, u16>> m_usb_passthrough_devices;
+  bool IsUSBDeviceWhitelisted(std::pair<u16, u16> vid_pid) const;
+
+  // Fifo Player related settings
+  bool bLoopFifoReplay = true;
+
+  // Custom RTC
+  bool bEnableCustomRTC;
+  u32 m_customRTCValue;
 
   DiscIO::Region m_region;
 

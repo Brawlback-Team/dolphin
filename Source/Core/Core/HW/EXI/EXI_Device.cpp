@@ -158,6 +158,9 @@ std::unique_ptr<IEXIDevice> EXIDevice_Create(const EXIDeviceType device_type, co
   case EXIDEVICE_BRAWLBACK:
     result = std::make_unique<CEXIBrawlback>();
     break;
+  case EXIDEVICE_BRAWLBACK:
+    result = std::make_unique<CEXIBrawlback>();
+    break;
 
   case EXIDeviceType::AMBaseboard:
   case EXIDeviceType::None:

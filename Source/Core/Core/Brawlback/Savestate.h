@@ -17,7 +17,7 @@ public:
 
 
     void Capture();
-    void Load(std::vector<PreserveBlockImpl> blocks);
+    void Load(std::vector<PreserveBlock> blocks);
 
     //static bool shouldForceInit;
 

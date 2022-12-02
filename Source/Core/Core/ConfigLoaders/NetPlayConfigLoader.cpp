@@ -30,24 +30,23 @@ public:
 
   void Load(Config::Layer* layer) override
   {
-    layer->Set(Config::MAIN_CPU_THREAD, m_settings.cpu_thread);
-    layer->Set(Config::MAIN_CPU_CORE, m_settings.cpu_core);
-    layer->Set(Config::MAIN_ENABLE_CHEATS, m_settings.enable_cheats);
-    layer->Set(Config::MAIN_GC_LANGUAGE, m_settings.selected_language);
-    layer->Set(Config::MAIN_OVERRIDE_REGION_SETTINGS, m_settings.override_region_settings);
-    layer->Set(Config::MAIN_DSP_HLE, m_settings.dsp_hle);
-    layer->Set(Config::MAIN_OVERCLOCK_ENABLE, m_settings.oc_enable);
-    layer->Set(Config::MAIN_OVERCLOCK, m_settings.oc_factor);
-    for (ExpansionInterface::Slot slot : ExpansionInterface::SLOTS)
-      layer->Set(Config::GetInfoForEXIDevice(slot), m_settings.exi_device[slot]);
-    layer->Set(Config::MAIN_MEMORY_CARD_SIZE, m_settings.memcard_size_override);
-    layer->Set(Config::SESSION_SAVE_DATA_WRITABLE, m_settings.savedata_write);
-    layer->Set(Config::MAIN_RAM_OVERRIDE_ENABLE, m_settings.ram_override_enable);
-    layer->Set(Config::MAIN_MEM1_SIZE, m_settings.mem1_size);
-    layer->Set(Config::MAIN_MEM2_SIZE, m_settings.mem2_size);
-    layer->Set(Config::MAIN_FALLBACK_REGION, m_settings.fallback_region);
-    layer->Set(Config::MAIN_ALLOW_SD_WRITES, m_settings.allow_sd_writes);
-    layer->Set(Config::MAIN_DSP_JIT, m_settings.dsp_enable_jit);
+    layer->Set(Config::MAIN_CPU_THREAD, m_settings.m_CPUthread);
+    layer->Set(Config::MAIN_CPU_CORE, m_settings.m_CPUcore);
+    layer->Set(Config::MAIN_ENABLE_CHEATS, m_settings.m_EnableCheats);
+    layer->Set(Config::MAIN_GC_LANGUAGE, m_settings.m_SelectedLanguage);
+    layer->Set(Config::MAIN_OVERRIDE_REGION_SETTINGS, m_settings.m_OverrideRegionSettings);
+    layer->Set(Config::MAIN_DSP_HLE, m_settings.m_DSPHLE);
+    layer->Set(Config::MAIN_OVERCLOCK_ENABLE, m_settings.m_OCEnable);
+    layer->Set(Config::MAIN_OVERCLOCK, m_settings.m_OCFactor);
+    layer->Set(Config::MAIN_SLOT_A, static_cast<int>(m_settings.m_EXIDevice[0]));
+    layer->Set(Config::MAIN_SERIAL_PORT_1, static_cast<int>(m_settings.m_EXIDevice[2]));
+    layer->Set(Config::SESSION_SAVE_DATA_WRITABLE, m_settings.m_WriteToMemcard);
+    layer->Set(Config::MAIN_RAM_OVERRIDE_ENABLE, m_settings.m_RAMOverrideEnable);
+    layer->Set(Config::MAIN_MEM1_SIZE, m_settings.m_Mem1Size);
+    layer->Set(Config::MAIN_MEM2_SIZE, m_settings.m_Mem2Size);
+    layer->Set(Config::MAIN_FALLBACK_REGION, m_settings.m_FallbackRegion);
+    layer->Set(Config::MAIN_ALLOW_SD_WRITES, m_settings.m_AllowSDWrites);
+    layer->Set(Config::MAIN_DSP_JIT, m_settings.m_DSPEnableJIT);
 
     for (size_t i = 0; i < Config::SYSCONF_SETTINGS.size(); ++i)
     {

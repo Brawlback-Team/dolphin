@@ -1,32 +1,100 @@
 #include "BrawlbackUtility.h"
 
 #include "VideoCommon/OnScreenDisplay.h"
+#include <Core/HW/Memmap.h>
 
 
 namespace Brawlback
 {
-    void Reset(RollbackInfo& _rollbackInfo)
+    void ResetRollbackInfo(RollbackInfo& rollbackInfo)
     {
-      _rollbackInfo.isUsingPredictedInputs = false;
-      _rollbackInfo.beginFrame = 0;
-      _rollbackInfo.endFrame = 0;
-      _rollbackInfo.predictedInputs = FrameData();
-      _rollbackInfo.pastFrameDataPopulated = false;
-      memset(_rollbackInfo.pastFrameDatas, 0, sizeof(FrameData) * MAX_ROLLBACK_FRAMES);
-      _rollbackInfo.hasPreserveBlocks = false;
+      rollbackInfo.isUsingPredictedInputs = false;
+      rollbackInfo.beginFrame = 0;
+      rollbackInfo.endFrame = 0;
+      rollbackInfo.predictedInputs = FrameData();
+      rollbackInfo.pastFrameDataPopulated = false;
+      memset(rollbackInfo.pastFrameDatas, 0, sizeof(FrameData) * MAX_ROLLBACK_FRAMES);
+      rollbackInfo.hasPreserveBlocks = false;
     }
+
     bool isButtonPressed(u16 buttonBits, PADButtonBits button)
     {
         return (buttonBits & (PADButtonBits::Z << 8)) != 0;
     }
+    /*
+     * Simple checksum function stolen from wikipedia:
+     *
+     *   http://en.wikipedia.org/wiki/Fletcher%27s_checksum
+     */
 
-    PlayerFrameData* findInPlayerFrameDataQueue(const PlayerFrameDataQueue& queue, u32 frame) {
-        for (const auto& x : queue) {
-            if (x->frame == frame) {
-                return x.get();
+    int fletcher32_checksum(short* data, size_t len)
+    {
+      int sum1 = 0xffff, sum2 = 0xffff;
+
+      while (len)
+      {
+        size_t tlen = len > 360 ? 360 : len;
+        len -= tlen;
+        do
+        {
+          sum1 += *data++;
+          sum2 += sum1;
+        } while (--tlen);
+        sum1 = (sum1 & 0xffff) + (sum1 >> 16);
+        sum2 = (sum2 & 0xffff) + (sum2 >> 16);
+      }
+
+      /* Second reduction step to reduce sums to 16 bits */
+      sum1 = (sum1 & 0xffff) + (sum1 >> 16);
+      sum2 = (sum2 & 0xffff) + (sum2 >> 16);
+      return sum2 << 16 | sum1;
+    }
+
+    // super slow
+    int SavestateChecksum(std::vector<ssBackupLoc>* backupLocs)
+    {
+      if (backupLocs->empty())
+        return -1;
+      std::vector<int> sums = {};
+      for (ssBackupLoc backupLoc : *backupLocs)
+      {
+        short* data = (short*)Memory::GetPointer(backupLoc.startAddress);
+        size_t size = backupLoc.endAddress - backupLoc.startAddress;
+        if (data && size)
+          sums.push_back(fletcher32_checksum(data, backupLoc.endAddress - backupLoc.startAddress));
+        else
+          ERROR_LOG(BRAWLBACK, "Invalid data or size of savestate when computing checksum!\n");
+      }
+      return fletcher32_checksum((short*)sums.data(), sizeof(int) * sums.size());
+    }
+
+    PlayerFrameData* findInPlayerFrameDataQueue(const PlayerFrameDataQueue& queue, u32 frame)
+    {
+      PlayerFrameData* ret = nullptr;
+#if 0
+        if (!queue.empty()) {
+            // this works under the assumption that the framedata queue is ordered sequentially by frame
+            u32 begin = queue.front()->frame;
+            u32 end = queue.back()->frame;
+            if (frame >= begin && frame <= end) {
+                int idx = frame - begin;
+                ASSERT(idx >= 0 && idx < queue.size());
+                Match::PlayerFrameData* framedata = queue[idx].get();
+                ASSERT(framedata->frame == frame);
+                ret = framedata;
             }
         }
-        return nullptr;
+#else
+      for (int i = ((int)queue.size()) - 1; i >= 0; i--)
+      {
+        if (queue[i]->frame == frame)
+        {
+          ret = queue[i].get();
+          break;
+        }
+      }
+#endif
+      return ret;
     }
 
     namespace Match {
@@ -116,10 +184,12 @@ namespace Brawlback
         }
 
         void Sync::SyncLog(const std::string& msg) {
-            std::fstream synclogFile;
-            File::OpenFStream(synclogFile, getSyncLogFilePath(), std::ios_base::out | std::ios_base::app);
-            synclogFile << msg;
-            synclogFile.close();
+            if (!msg.empty()) {
+                std::fstream synclogFile;
+                File::OpenFStream(synclogFile, getSyncLogFilePath(), std::ios_base::out | std::ios_base::app);
+                synclogFile << "[Sync] " << msg << "[/Sync]\n";
+                synclogFile.close();
+            }
         }
 
         std::string Sync::stringifyFramedata(const PlayerFrameData& pfd) {
@@ -156,6 +226,19 @@ namespace Brawlback
             ret.append(inputs);
             return ret;
         }
+
+        std::string Sync::stringifyFramedata(const FrameData& fd, int numPlayers)
+        {
+          std::string ret;
+          for (int i = 0; i < numPlayers; i++)
+          {
+            const auto& pfd = fd.playerFrameDatas[i];
+            if (pfd.frame != 0)
+              ret.append(Sync::stringifyFramedata(pfd));
+          }
+          return ret;
+        }
+
 
     }
 

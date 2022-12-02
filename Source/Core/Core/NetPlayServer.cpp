@@ -242,7 +242,7 @@ void NetPlayServer::ThreadFunc()
   while (m_do_loop)
   {
     // update pings every so many seconds
-    if ((m_ping_timer.ElapsedMs() > 1000) || m_update_pings)
+    if ((m_ping_timer.GetTimeElapsed() > 250) || m_update_pings)
     {
       // only used as an identifier, not time value, so truncation is fine
       m_ping_key = static_cast<u32>(Common::Timer::NowMs());

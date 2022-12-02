@@ -44,36 +44,45 @@
       <Project>{41279555-f94f-4ebc-99de-af863c10c5c4}</Project>
     </ProjectReference>
   </ItemGroup>
-  <Import Project="$(ExternalsDir)Bochs_disasm\exports.props" />
-  <Import Project="$(ExternalsDir)bzip2\exports.props" />
-  <Import Project="$(ExternalsDir)cpp-optparse\exports.props" />
-  <Import Project="$(ExternalsDir)cubeb\exports.props" />
-  <Import Project="$(ExternalsDir)curl\exports.props" />
-  <Import Project="$(ExternalsDir)discord-rpc\exports.props" />
-  <Import Project="$(ExternalsDir)ed25519\exports.props" />
-  <Import Project="$(ExternalsDir)enet\exports.props" />
-  <Import Project="$(ExternalsDir)FatFs\exports.props" />
-  <Import Project="$(ExternalsDir)fmt\exports.props" />
-  <Import Project="$(ExternalsDir)FreeSurround\exports.props" />
-  <Import Project="$(ExternalsDir)glslang\exports.props" />
-  <Import Project="$(ExternalsDir)imgui\exports.props" />
-  <Import Project="$(ExternalsDir)liblzma\exports.props" />
-  <Import Project="$(ExternalsDir)libspng\exports.props" />
-  <Import Project="$(ExternalsDir)libusb\exports.props" />
-  <Import Project="$(ExternalsDir)LZO\exports.props" />
-  <Import Project="$(ExternalsDir)mbedtls\exports.props" />
-  <Import Project="$(ExternalsDir)mGBA\exports.props" />
-  <Import Project="$(ExternalsDir)miniupnpc\exports.props" />
-  <Import Project="$(ExternalsDir)minizip\exports.props" />
-  <Import Project="$(ExternalsDir)picojson\exports.props" />
-  <Import Project="$(ExternalsDir)pugixml\exports.props" />
-  <Import Project="$(ExternalsDir)SDL\exports.props" />
-  <Import Project="$(ExternalsDir)SFML\exports.props" />
-  <Import Project="$(ExternalsDir)soundtouch\exports.props" />
-  <Import Project="$(ExternalsDir)spirv_cross\exports.props" />
-  <Import Project="$(ExternalsDir)xxhash\exports.props" />
-  <Import Project="$(ExternalsDir)zlib-ng\exports.props" />
-  <Import Project="$(ExternalsDir)zstd\exports.props" />
+  <ItemGroup>
+    <ClCompile Include="Core\Brawlback\BrawlbackUtility.cpp" />
+    <ClCompile Include="Core\Brawlback\Netplay\Matchmaking.cpp" />
+    <ClCompile Include="Core\Brawlback\Savestate.cpp" />
+    <ClCompile Include="Core\Brawlback\TimeSync.cpp" />
+    <ClCompile Include="Core\Brawlback\SlippiUtility.cpp" />
+    <ClCompile Include="Core\Brawlback\Netplay\Netplay.cpp" />
+    <ClCompile Include="Core\HW\EXI\EXIBrawlback.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Core\Brawlback\include\brawlback-exi-structures\InputsReplay.h" />
+    <ClInclude Include="Core\Brawlback\include\brawlback-exi-structures\BrawlbackPad.h" />
+    <ClInclude Include="Core\Brawlback\include\brawlback-exi-structures\exi-structures.h" />
+    <ClInclude Include="Core\Brawlback\BrawlbackUtility.h" />
+    <ClInclude Include="Core\Brawlback\include\brawlback-exi-structures\ExiStructures.h" />
+    <ClInclude Include="Core\Brawlback\include\brawlback-exi-structures\FrameData.h" />
+    <ClInclude Include="Core\Brawlback\include\brawlback-exi-structures\GameSettings.h" />
+    <ClInclude Include="Core\Brawlback\include\brawlback-exi-structures\ItemIdName.h" />
+    <ClInclude Include="Core\Brawlback\include\brawlback-exi-structures\ItemReplay.h" />
+    <ClInclude Include="Core\Brawlback\include\brawlback-exi-structures\PlayerFrameData.h" />
+    <ClInclude Include="Core\Brawlback\include\brawlback-exi-structures\PlayerReplay.h" />
+    <ClInclude Include="Core\Brawlback\include\brawlback-exi-structures\PlayerSettings.h" />
+    <ClInclude Include="Core\Brawlback\include\brawlback-exi-structures\PlayerType.h" />
+    <ClInclude Include="Core\Brawlback\include\brawlback-exi-structures\PreserveBlock.h" />
+    <ClInclude Include="Core\Brawlback\include\brawlback-exi-structures\Replay.h" />
+    <ClInclude Include="Core\Brawlback\include\brawlback-exi-structures\StartReplay.h" />
+    <ClInclude Include="Core\Brawlback\include\brawlback-exi-structures\RollbackInfo.h" />
+    <ClInclude Include="Core\Brawlback\include\brawlback-exi-structures\PlayerPosition.h" />
+    <ClInclude Include="Core\Brawlback\include\brawlback-exi-structures\StartReplayPlayer.h" />
+    <ClInclude Include="Core\Brawlback\include\json.hpp" />
+    <ClInclude Include="Core\Brawlback\MemRegions.h" />
+    <ClInclude Include="Core\Brawlback\Netplay\Matchmaking.h" />
+    <ClInclude Include="Core\Brawlback\Brawltypes.h" />
+    <ClInclude Include="Core\Brawlback\Savestate.h" />
+    <ClInclude Include="Core\Brawlback\TimeSync.h" />
+    <ClInclude Include="Core\Brawlback\SlippiUtility.h" />
+    <ClInclude Include="Core\Brawlback\Netplay\Netplay.h" />
+    <ClInclude Include="Core\HW\EXI\EXIBrawlback.h" />
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets" />
   <PropertyGroup>
