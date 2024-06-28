@@ -14,6 +14,7 @@
 #include "Core/HW/Memmap.h"
 #include "VideoCommon/OnScreenDisplay.h"
 #include <regex>
+#include "Core/ConfigManager.h"
 
 namespace fs = std::filesystem;
 // --- Mutexes
@@ -289,6 +290,9 @@ void CEXIBrawlback::handleLocalPadData(u8* data)
   PlayerFrameData playerFramedata;
   std::memcpy(&playerFramedata, data, sizeof(PlayerFrameData));
 
+  const SConfig& settings = SConfig::GetInstance();
+  int frame_delay = settings.m_delayFrames;
+
   // first 4 bytes are current game frame
   SwapPlayerFrameDataEndianness(playerFramedata);
   auto frame = playerFramedata.frame;
@@ -297,7 +301,7 @@ void CEXIBrawlback::handleLocalPadData(u8* data)
   if (frame == GAME_START_FRAME && !this->hasGameStarted)
   {
     // push framedatas for first few delay frames
-    for (int i = GAME_START_FRAME; i < FRAME_DELAY; i++)
+    for (int i = GAME_START_FRAME; i < frame_delay; i++)
     {
       auto pfd = CreateBlankPlayerFrameData(i, playerIdx);
       this->remotePlayerFrameData[playerIdx].push_back(std::make_unique<PlayerFrameData>(pfd));
@@ -558,23 +562,26 @@ void CEXIBrawlback::handleFrameAdvanceRequest(u8* data)
 
 void CEXIBrawlback::storeLocalInputs(PlayerFrameData* localPlayerFramedata)
 {
+  const SConfig& settings = SConfig::GetInstance();
+  int frame_delay = settings.m_delayFrames;
+
 #ifdef RANDOM_INPUTS
   if (this->localPlayerIdx == 0)
     *localPlayerFramedata =
         generateRandomInput(localPlayerFramedata->frame, localPlayerFramedata->playerIdx);
 #endif
-  // local inputs offset by FRAME_DELAY to mask latency
+  // local inputs offset by frame_delay to mask latency
   // Once we hit frame X, we send inputs for that frame, but pretend they're from frame X+2
   // so those inputs now have an extra 2 frames to get to the opponent before the opponent's
   // client hits frame X+2.
-  localPlayerFramedata->frame += FRAME_DELAY;
+  localPlayerFramedata->frame += frame_delay;
 
   /*std::fstream synclogFile;
   File::OpenFStream(synclogFile, File::GetExeDirectory() + "/local_inputs.txt", std::ios_base::out |
   std::ios_base::app); synclogFile << Sync::stringifyFramedata(*localPlayerFramedata) << "\n";
   synclogFile.close();*/
 
-  // pFD->frame += FRAME_DELAY;
+  // pFD->frame += frame_delay;
   std::unique_ptr<PlayerFrameData> pFD = std::make_unique<PlayerFrameData>(*localPlayerFramedata);
   // INFO_LOG_FMT(BRAWLBACK, "Frame %u PlayerIdx: %u numPlayers %u\n", localPlayerFramedata->frame,
   // localPlayerFramedata->playerIdx, this->numPlayers);

@@ -1,6 +1,7 @@
 
 #include "TimeSync.h"
 #include "VideoCommon/OnScreenDisplay.h"
+#include "Core/ConfigManager.h"
 
 // pretty much all of this time sync stuff was taken from slippi
 // Huge thanks to them <3
@@ -20,6 +21,9 @@ bool TimeSync::shouldStallFrame(s32 currentFrame, s32 latestRemoteFrame, u8 numP
 
     s32 frameDiff = currentFrame - latestRemoteFrame;
 
+    const SConfig& settings = SConfig::GetInstance();
+    int frame_delay = settings.m_delayFrames;
+
     std::stringstream dispStr;
     dispStr << "| Frame diff: " << frameDiff << " |\n";
     //OSD::AddTypedMessage(OSD::MessageType::NetPlayBuffer, dispStr.str(), OSD::Duration::NORMAL, OSD::Color::CYAN);
@@ -34,7 +38,7 @@ bool TimeSync::shouldStallFrame(s32 currentFrame, s32 latestRemoteFrame, u8 numP
     else
     {
       INFO_LOG_FMT(BRAWLBACK, "ROLLBACK IS NOT ENABLED! FRAMEDIFF: {}", dispStr.str());
-      frameDiffCheck = frameDiff > FRAME_DELAY;
+      frameDiffCheck = frameDiff > frame_delay;
     }
 
     if (frameDiffCheck)
@@ -171,6 +175,9 @@ void TimeSync::ProcessFrameAck(FrameAck* frameAck) {
     u8 localPlayerIdx = frameAck->playerIdx; // local player idx
     int frame = frameAck->frame; // this is with frame delay
 
+    const SConfig& settings = SConfig::GetInstance();
+    int frame_delay = settings.m_delayFrames;
+
     // SLIPPI LOGIC
 
     // if this current acked frame is more recent than the last acked frame, set it
@@ -204,13 +211,13 @@ void TimeSync::ProcessFrameAck(FrameAck* frameAck) {
     double rtt_ms = (double)rtt / 1000.0;
 
     INFO_LOG_FMT(BRAWLBACK, "Received ack for frame {} (w/o delay: {})  [pIdx {} rtt {} ms]\n",
-                 frame, frame - FRAME_DELAY, (unsigned int)localPlayerIdx, rtt_ms);
+                 frame, frame - frame_delay, (unsigned int)localPlayerIdx, rtt_ms);
 
     if (frame % PING_DISPLAY_INTERVAL == 0) {
         std::stringstream dispStr;
         dispStr << "Ping (rtt): " << (int)rtt_ms << " ms\n";
         //dispStr << "Time offset: " << (double)this->calcTimeOffsetUs(2) / 1000 << " ms\n";
-        dispStr << "Frame delay: " << FRAME_DELAY << "\n";
+        dispStr << "Frame delay: " << frame_delay << "\n";
         OSD::AddTypedMessage(OSD::MessageType::NetPlayPing, dispStr.str(), OSD::Duration::NORMAL, OSD::Color::GREEN);
     }
 }
