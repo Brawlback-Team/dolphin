@@ -61,7 +61,7 @@ struct SConfig
   bool m_meleeUserIniBootstrapped = false;
   bool m_blockingPipes = false;
   bool m_coutEnabled = false;
-  int m_delayFrames = 2;
+  int m_delayFrames = 1;
   std::string m_details_game_id = "";
 
   // files
