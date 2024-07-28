@@ -73,20 +73,7 @@ namespace IncrementalRB
   static jobsystem::context jobctx;
 
   static IncrementalRBCallbacks cbs = {};
-  template <typename T>
-  inline T swap_endian(T val)
-  {
-    union U
-    {
-      T val;
-      std::array<std::uint8_t, sizeof(T)> raw;
-    } src, dst;
-
-    src.val = val;
-    std::reverse_copy(src.raw.begin(), src.raw.end(), dst.raw.begin());
-    val = dst.val;
-    return val;
-  }
+ 
   inline u8* GetRAM()
   {
     if (cbs.getRAM)
@@ -424,7 +411,7 @@ namespace IncrementalRB
           // first 4 bytes of game mem contains current frame
           if (orig == GetGameMemFrame())
           {
-            u32 nowFrame = swap_endian(*GetGameMemFrame());
+            u32 nowFrame = *GetGameMemFrame();
             INFO_LOG_FMT(BRAWLBACK, "rolling back {} -> {}\n", nowFrame, ((u32*)ssData)[0]);
           }
           #endif
@@ -455,7 +442,7 @@ namespace IncrementalRB
       // first 4 bytes of game mem contains current frame
       if (orig == GetGameMemFrame())
       {
-        u32 nowFrame = swap_endian(*GetGameMemFrame());
+        u32 nowFrame = *GetGameMemFrame();
         INFO_LOG_FMT(BRAWLBACK, "rolling back {} -> {}\n", nowFrame, ((u32*)ssData)[0]);
       }
   #endif
@@ -484,7 +471,7 @@ namespace IncrementalRB
 #ifdef ENABLE_LOGGING
     INFO_LOG_FMT(BRAWLBACK, "Starting at game mem frame {}\n", currentFrame);
     INFO_LOG_FMT(BRAWLBACK, "Rolling back {} frames from idx {} -> {} | frame {} -> {}\n",
-                 savestateOffset, currentSavestateIdx, endingSavestateIdx, swap_endian(*GetGameMemFrame()),
+                 savestateOffset, currentSavestateIdx, endingSavestateIdx, *GetGameMemFrame(),
                  rollbackFrame);
     INFO_LOG_FMT(BRAWLBACK, "Savestate frames stored:\n");
     for (u32 i = 0; i < MAX_SAVESTATES; i++)
@@ -515,8 +502,8 @@ namespace IncrementalRB
     INFO_LOG_FMT(BRAWLBACK, "ASSERT CHECK 1: {} == {}?\n", savestateInfo.savestates[currentSavestateIdx].frame, rollbackFrame - 1);
     assert(savestateInfo.savestates[currentSavestateIdx].frame == rollbackFrame - 1);
     RollbackSavestate(savestateInfo.savestates[currentSavestateIdx]);
-    INFO_LOG_FMT(BRAWLBACK, "ASSERT CHECK 2: {} == {}?\n", swap_endian(*GetGameMemFrame()), rollbackFrame);
-    assert(swap_endian(*GetGameMemFrame()) == rollbackFrame);
+    INFO_LOG_FMT(BRAWLBACK, "ASSERT CHECK 2: {} == {}?\n", *GetGameMemFrame(), rollbackFrame);
+    assert(*GetGameMemFrame() == rollbackFrame);
   }
 
   void EvictSavestate(Savestate& savestate)
@@ -592,7 +579,7 @@ namespace IncrementalRB
       if ((u32*)savestate.changedPages[i] == GetGameMemFrame())
       {
         INFO_LOG_FMT(BRAWLBACK, "[head page] internal frames: current = {}\twritten = {}\n",
-                     swap_endian(*GetGameMemFrame()),
+                     *GetGameMemFrame(),
                *(u32*)changedGameMemPage);
       }
   #endif

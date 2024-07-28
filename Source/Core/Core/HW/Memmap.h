@@ -97,6 +97,7 @@ void SetPageDirtyBit(uintptr_t address, size_t size, bool dirty);
 void ResetDirtyPages();
 bool HandleFault(uintptr_t fault_address);
 u64 GetDirtyPageIndexFromAddress(u64 address);
+u64 GetDirtyPageOffsetFromAddress(u64 address);
 void WriteProtectPhysicalMemoryRegions();
 void InitDirtyPages();
 bool IsAddressInEmulatedMemory(const u8* address);

@@ -5,6 +5,7 @@
 
 #include <Common/Logging/Log.h>
 #include <Common/MemoryUtil.h>
+#include <Core/HW/Memmap.h>
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -105,6 +106,28 @@ void ResetWrittenPages()
     }
 }
 
+bool GetWrittenPages(char* base, u64 baseSize, void** writtenToPages, u64* pageCount)
+{
+  int writtenToPagesIndex = 0;
+  int i = 0;
+  while (i < baseSize)
+  {
+    uintptr_t addr = reinterpret_cast<uintptr_t>(base + i);
+    if (Memory::IsPageDirty(addr))
+    {
+      if (writtenToPagesIndex > *pageCount)
+      {
+        return 1;
+      }
+      Memory::SetPageDirtyBit(addr, 0x1, false);
+      writtenToPages[writtenToPagesIndex] = reinterpret_cast<void*>(Memory::GetDirtyPageIndexFromAddress(addr));
+      writtenToPagesIndex++;
+    }
+    i += Common::PageSize() - Memory::GetDirtyPageOffsetFromAddress(addr);
+  }
+  *pageCount = writtenToPagesIndex;
+  return 0;
+}
 
 bool GetAndResetWrittenPages(void** changedPageAddresses, u64* numChangedPages, u64 maxEntries)
 {
@@ -114,8 +137,7 @@ bool GetAndResetWrittenPages(void** changedPageAddresses, u64* numChangedPages, 
     {
         // on input to GetWriteWatch this is the maximum number of possible changed pages in this allocation
         // on output, this is the number of page addresses that have been changed
-        u64 pageCount = buf.changedPages.Count; 
-        DWORD PageSize = 0;
+        u64 pageCount = buf.changedPages.Count;
         UINT result;
         // move forward by the number of changed pages. 
         void** addressesBase = (void**)((u64**)changedPageAddresses + *numChangedPages);
@@ -123,8 +145,7 @@ bool GetAndResetWrittenPages(void** changedPageAddresses, u64* numChangedPages, 
           //PROFILE_SCOPE("GetWriteWatch");
             // get changed pages for specified buffer (buffer.data, buffer.size)
             // NOTE: addresses returned here are sorted (ascending)
-            result = GetWriteWatch(WRITE_WATCH_FLAG_RESET, buf.buffer.data, buf.buffer.size, addressesBase,
-                            &pageCount, &PageSize);
+            result = GetWrittenPages(buf.buffer.data, buf.buffer.size, addressesBase, &pageCount);
         }
         *numChangedPages += pageCount;
         if (result != 0 || pageCount > maxEntries || *numChangedPages > maxEntries)

@@ -38,6 +38,7 @@
 #include "Core/System.h"
 #include "VideoCommon/CommandProcessor.h"
 #include "VideoCommon/PixelEngine.h"
+#include <incremental-rollback/incremental_rb.h>
 
 namespace Memory
 {
@@ -59,9 +60,24 @@ static Common::MemArena g_arena;
 static bool m_IsInitialized = false;  // Save the Init(), Shutdown() state
 // END STATE_TO_SAVE
 
+u32 f = 0;
+static u32* GetGameMemFrame()
+{
+  f = Read_U32(0x901812b4);
+  return &f;
+}
+
 u8* m_pRAM;
+static u8* getRAM()
+{
+  return m_pRAM;
+}
 u8* m_pL1Cache;
 u8* m_pEXRAM;
+static u8* getEXRAM()
+{
+  return m_pEXRAM;
+}
 u8* m_pFakeVMEM;
 
 // s_ram_size is the amount allocated by the emulator, whereas s_ram_size_real
@@ -239,6 +255,13 @@ u64 GetDirtyPageIndexFromAddress(u64 address)
   return address & ~page_mask;
 }
 
+u64 GetDirtyPageOffsetFromAddress(u64 address)
+{
+  const size_t page_size = Common::PageSize();
+  const size_t page_mask = page_size - 1;
+  return address & page_mask;
+}
+
 bool HandleFault(uintptr_t fault_address)
 {
   u8* fault_address_bytes = reinterpret_cast<u8*>(fault_address);
@@ -373,6 +396,15 @@ void Init()
   Clear();
 
   INFO_LOG_FMT(MEMMAP, "Memory system initialized. RAM at {}", fmt::ptr(m_pRAM));
+  IncrementalRB::IncrementalRBCallbacks cbs;
+  cbs.getEXRAM = getEXRAM;
+  cbs.getEXRAMMask = GetExRamMask;
+  cbs.getEXRAMSize = GetExRamSize;
+  cbs.getGameMemFrame = GetGameMemFrame;
+  cbs.getPointer = GetPointer;
+  cbs.getRAM = getRAM;
+  cbs.getRAMSize = GetRamSize;
+  IncrementalRB::InitState(cbs);
   m_IsInitialized = true;
 }
 
@@ -542,6 +574,7 @@ void Shutdown()
   ShutdownFastmemArena();
 
   m_IsInitialized = false;
+  s_dirty_pages.clear();
   for (const PhysicalMemoryRegion& region : s_physical_regions)
   {
     if (!region.active)

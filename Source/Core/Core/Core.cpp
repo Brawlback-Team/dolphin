@@ -59,6 +59,7 @@
 #include "Core/HW/SystemTimers.h"
 #include "Core/HW/VideoInterface.h"
 #include "Core/HW/Wiimote.h"
+#include "Core/HW/Memmap.h"
 #include "Core/Host.h"
 #include "Core/IOS/IOS.h"
 #include "Core/MemTools.h"
@@ -675,6 +676,9 @@ static void EmuThread(std::unique_ptr<BootParameters> boot, WindowSystemInfo wsi
     // Become the CPU thread
     cpuThreadFunc(savestate_path, delete_savestate);
   }
+
+  if (cpuThreadFunc == CpuThread)
+    Memory::InitDirtyPages();
 
   INFO_LOG_FMT(CONSOLE, "{}", StopMessage(true, "Stopping GDB ..."));
   GDBStub::Deinit();

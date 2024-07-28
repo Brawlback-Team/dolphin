@@ -118,7 +118,6 @@ private:
   std::vector<SavestateMemRegionInfo> deallocRegions = {};
   void updateSync(bu32& localFrame, u8 playerIdx);
   bool shouldRollback(bu32 localFrame);
-  void LoadState(bu32 rollbackFrame);
   void SaveState(bu32 frame);
   std::vector<SlippiUtility::Savestate::ssBackupLoc> staticRegions = {
       {0x80A471A0, 0x80b8db60, nullptr, "OverlayCommon 4/4"},
@@ -184,14 +183,6 @@ private:
   };
   std::vector<SlippiUtility::Savestate::ssBackupLoc> dynamicRegions = {};
   u32 lastStatedFrame = 0;
-  // -------------------------------
-
-  // --- Savestates
-  std::deque<std::unique_ptr<BrawlbackSavestate>> savestates = {};
-  std::unordered_map<u32, BrawlbackSavestate*> savestatesMap = {};
-
-  std::map<s32, std::unique_ptr<BrawlbackSavestate>> activeSavestates = {};
-  std::deque<std::unique_ptr<BrawlbackSavestate>> availableSavestates = {};
   // -------------------------------
 
   // --- Framedata (player inputs)
