@@ -13,7 +13,9 @@
 #include "Common/CommonTypes.h"
 #include "Common/MsgHandler.h"
 #include "Common/Thread.h"
+#include <Common/MemoryUtil.h>
 
+#include "Core/HW/Memmap.h"
 #include "Core/MachineContext.h"
 #include "Core/PowerPC/JitInterface.h"
 
@@ -60,7 +62,11 @@ static LONG NTAPI Handler(PEXCEPTION_POINTERS pPtrs)
     uintptr_t fault_address = (uintptr_t)pPtrs->ExceptionRecord->ExceptionInformation[1];
     SContext* ctx = pPtrs->ContextRecord;
 
-    if (JitInterface::HandleFault(fault_address, ctx))
+    if (Memory::HandleFault(fault_address))
+    {
+      return EXCEPTION_CONTINUE_EXECUTION;
+    }
+    else if (JitInterface::HandleFault(fault_address, ctx))
     {
       return EXCEPTION_CONTINUE_EXECUTION;
     }

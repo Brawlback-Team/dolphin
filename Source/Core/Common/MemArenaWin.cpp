@@ -33,6 +33,9 @@ using PUnmapViewOfFileEx = BOOL(WINAPI*)(PVOID BaseAddress, ULONG UnmapFlags);
 
 using PIsApiSetImplemented = BOOL(APIENTRY*)(PCSTR Contract);
 
+using PVirtualProtect = BOOL(WINAPI*)(LPVOID lpAddress, SIZE_T dwSize, DWORD flNewProtect,
+                                      PDWORD lpflOldProtect);
+
 namespace Common
 {
 struct WindowsMemoryRegion
@@ -77,11 +80,13 @@ MemArena::MemArena()
   void* const address_MapViewOfFile3 =
       m_api_ms_win_core_memory_l1_1_6_handle.GetSymbolAddress("MapViewOfFile3FromApp");
   void* const address_UnmapViewOfFileEx = m_kernel32_handle.GetSymbolAddress("UnmapViewOfFileEx");
-  if (address_VirtualAlloc2 && address_MapViewOfFile3 && address_UnmapViewOfFileEx)
+  void* const address_VirtualProtect = m_kernel32_handle.GetSymbolAddress("VirtualProtect");
+  if (address_VirtualAlloc2 && address_MapViewOfFile3 && address_UnmapViewOfFileEx && address_VirtualProtect)
   {
     m_address_VirtualAlloc2 = address_VirtualAlloc2;
     m_address_MapViewOfFile3 = address_MapViewOfFile3;
     m_address_UnmapViewOfFileEx = address_UnmapViewOfFileEx;
+    m_address_VirtualProtect = address_VirtualProtect;
   }
   else
   {
@@ -185,6 +190,12 @@ void MemArena::ReleaseMemoryRegion()
     m_reserved_region = nullptr;
     m_regions.clear();
   }
+}
+
+bool MemArena::VirtualProtectMemoryRegion(u8* data, size_t size, u64 flag)
+{
+  DWORD lpflOldProtect = 0;
+  return static_cast<PVirtualProtect>(m_address_VirtualProtect)(data, size, flag, &lpflOldProtect);
 }
 
 WindowsMemoryRegion* MemArena::EnsureSplitRegionForMapping(void* start_address, size_t size)

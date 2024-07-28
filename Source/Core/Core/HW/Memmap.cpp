@@ -151,6 +151,11 @@ static void InitMMIO(bool is_wii)
   }
 }
 
+void InitDirtyPages()
+{
+  WriteProtectPhysicalMemoryRegions();
+}
+
 bool IsInitialized()
 {
   return m_IsInitialized;
@@ -169,6 +174,7 @@ struct PhysicalMemoryRegion
   } flags;
   u32 shm_position;
   bool active;
+  bool track;
 };
 
 struct LogicalMemoryView
@@ -224,6 +230,59 @@ static std::vector<LogicalMemoryView> logical_mapped_entries;
 static std::array<void*, PowerPC::BAT_PAGE_COUNT> s_physical_page_mappings;
 static std::array<void*, PowerPC::BAT_PAGE_COUNT> s_logical_page_mappings;
 
+static std::map<u64, u8> s_dirty_pages;
+
+u64 GetDirtyPageIndexFromAddress(u64 address)
+{
+  const size_t page_size = Common::PageSize();
+  const size_t page_mask = page_size - 1;
+  return address & ~page_mask;
+}
+
+bool HandleFault(uintptr_t fault_address)
+{
+  u8* fault_address_bytes = reinterpret_cast<u8*>(fault_address);
+  if (!IsAddressInEmulatedMemory(fault_address_bytes) || IsPageDirty(fault_address))
+  {
+    return false;
+  }
+  SetPageDirtyBit(fault_address, 0x1, true);
+  bool change_protection =
+      g_arena.VirtualProtectMemoryRegion(fault_address_bytes, 0x1, PAGE_READWRITE);
+
+  if (!change_protection)
+  {
+    return false;
+  }
+
+  return true;
+}
+
+void WriteProtectPhysicalMemoryRegions()
+{
+  for (const PhysicalMemoryRegion& region : s_physical_regions)
+  {
+    if (!region.active || !region.track)
+      continue;
+
+    bool change_protection =
+        g_arena.VirtualProtectMemoryRegion((*region.out_pointer), region.size, PAGE_READONLY);
+
+    if (!change_protection)
+    {
+      PanicAlertFmt("Memory::WriteProtectPhysicalMemoryRegions(): Failed to write protect for "
+                    "this block of memory at 0x{:08X}.",
+                    reinterpret_cast<u64>(*region.out_pointer));
+    }
+    const size_t page_size = Common::PageSize();
+    const intptr_t out_pointer = reinterpret_cast<intptr_t>(*region.out_pointer);
+    for (size_t i = out_pointer; i < region.size; i += page_size)
+    {
+      s_dirty_pages[i] = false;
+    }
+  }
+}
+
 void Init()
 {
   const auto get_mem1_size = [] {
@@ -248,13 +307,13 @@ void Init()
   s_exram_mask = GetExRamSize() - 1;
 
   s_physical_regions[0] = PhysicalMemoryRegion{
-      &m_pRAM, 0x00000000, GetRamSize(), PhysicalMemoryRegion::ALWAYS, 0, false};
+      &m_pRAM, 0x00000000, GetRamSize(), PhysicalMemoryRegion::ALWAYS, 0, false, true};
   s_physical_regions[1] = PhysicalMemoryRegion{
-      &m_pL1Cache, 0xE0000000, GetL1CacheSize(), PhysicalMemoryRegion::ALWAYS, 0, false};
+      &m_pL1Cache, 0xE0000000, GetL1CacheSize(), PhysicalMemoryRegion::ALWAYS, 0, false, false};
   s_physical_regions[2] = PhysicalMemoryRegion{
-      &m_pFakeVMEM, 0x7E000000, GetFakeVMemSize(), PhysicalMemoryRegion::FAKE_VMEM, 0, false};
+      &m_pFakeVMEM, 0x7E000000, GetFakeVMemSize(), PhysicalMemoryRegion::FAKE_VMEM, 0, false, false};
   s_physical_regions[3] = PhysicalMemoryRegion{
-      &m_pEXRAM, 0x10000000, GetExRamSize(), PhysicalMemoryRegion::WII_ONLY, 0, false};
+      &m_pEXRAM, 0x10000000, GetExRamSize(), PhysicalMemoryRegion::WII_ONLY, 0, false, true};
 
   const bool wii = SConfig::GetInstance().bWii;
   const bool mmu = Core::System::GetInstance().IsMMUMode();
@@ -315,6 +374,21 @@ void Init()
 
   INFO_LOG_FMT(MEMMAP, "Memory system initialized. RAM at {}", fmt::ptr(m_pRAM));
   m_IsInitialized = true;
+}
+
+bool IsAddressInEmulatedMemory(const u8* address)
+{
+  for (const PhysicalMemoryRegion& region : s_physical_regions)
+  {
+    if (!region.active || !region.track)
+      continue;
+
+    if (address >= *region.out_pointer && address < *region.out_pointer + region.size)
+    {
+      return true;
+    }
+  }
+  return false;
 }
 
 bool InitFastmemArena()
@@ -677,6 +751,24 @@ void Write_U32_Swap(u32 value, u32 address)
 void Write_U64_Swap(u64 value, u32 address)
 {
   CopyToEmu(address, &value, sizeof(value));
+}
+
+bool IsPageDirty(uintptr_t address)
+{
+  return s_dirty_pages[GetDirtyPageIndexFromAddress(address)];
+}
+
+void SetPageDirtyBit(uintptr_t address, size_t size, bool dirty)
+{
+  for (size_t i = 0; i < size; i++)
+  {
+    s_dirty_pages[GetDirtyPageIndexFromAddress(address + i)] = dirty;
+  }
+}
+
+void ResetDirtyPages()
+{
+  WriteProtectPhysicalMemoryRegions();
 }
 
 }  // namespace Memory

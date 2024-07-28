@@ -84,6 +84,10 @@
     <Text Include="$(BuildInfoTemplate)" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="Core\Brawlback\include\incremental-rollback\incremental_rb.cpp" />
+    <ClCompile Include="Core\Brawlback\include\incremental-rollback\job_system.cpp" />
+    <ClCompile Include="Core\Brawlback\include\incremental-rollback\mem.cpp" />
+    <ClCompile Include="Core\Brawlback\include\incremental-rollback\tiny_arena.cpp" />
     <ClCompile Include="Core\Brawlback\BrawlbackUtility.cpp" />
     <ClCompile Include="Core\Brawlback\Netplay\Matchmaking.cpp" />
     <ClCompile Include="Core\Brawlback\Netplay\Netplay.cpp" />
@@ -93,6 +97,11 @@
     <ClCompile Include="Core\HW\EXI\EXIBrawlback.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Core\Brawlback\include\incremental-rollback\incremental_rb.h" />
+    <ClInclude Include="Core\Brawlback\include\incremental-rollback\job_system.h" />
+    <ClInclude Include="Core\Brawlback\include\incremental-rollback\mem.h" />
+    <ClInclude Include="Core\Brawlback\include\incremental-rollback\tiny_arena.h" />
+    <ClInclude Include="Core\Brawlback\include\incremental-rollback\util.h" />
     <ClInclude Include="Core\Brawlback\BrawlbackUtility.h" />
     <ClInclude Include="Core\Brawlback\Brawltypes.h" />
     <ClInclude Include="Core\Brawlback\include\brawlback-common\BrawlbackConstants.h" />

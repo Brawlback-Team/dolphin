@@ -5,6 +5,7 @@
 
 #include <memory>
 #include <string>
+#include <map>
 
 #include "Common/CommonTypes.h"
 #include "Common/MathUtil.h"
@@ -89,6 +90,16 @@ void Write_U32(u32 var, u32 address);
 void Write_U64(u64 var, u32 address);
 void Write_U32_Swap(u32 var, u32 address);
 void Write_U64_Swap(u64 var, u32 address);
+
+// Dirty Page Handling
+bool IsPageDirty(uintptr_t address);
+void SetPageDirtyBit(uintptr_t address, size_t size, bool dirty);
+void ResetDirtyPages();
+bool HandleFault(uintptr_t fault_address);
+u64 GetDirtyPageIndexFromAddress(u64 address);
+void WriteProtectPhysicalMemoryRegions();
+void InitDirtyPages();
+bool IsAddressInEmulatedMemory(const u8* address);
 
 // Templated functions for byteswapped copies.
 template <typename T>
