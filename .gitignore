@@ -44,3 +44,7 @@ CMakeLists.txt.user
 
 # Local dev stuff to ignore
 build-rapito.sh
+/Source/Core/DolphinQt/Intel® VTune™ Profiler Results/Dolphin
+/Source/DawnCache
+/Source/GPUCache
+/Source/debug.log
