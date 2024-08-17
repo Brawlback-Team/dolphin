@@ -121,7 +121,7 @@ void CEXIBrawlback::handleCaptureSavestate(u8* data)
 
 void CEXIBrawlback::SaveState(bu32 frame)
 {
-  IncrementalRB::SaveWrittenPages(frame, framesToAdvance > 1);
+  IncrementalRB::SaveWrittenPages(frame - 1, framesToAdvance > 1);
 }
 
 void CEXIBrawlback::handleLoadSavestate(u8* data)
@@ -1079,6 +1079,7 @@ void CEXIBrawlback::handleFindMatch(u8* payload)
 void CEXIBrawlback::handleStartMatch(u8* payload)
 {
   // if (!payload) return;
+  Memory::ResetDirtyPages();
   std::memcpy(&gameSettings, payload, sizeof(GameSettings));
 }
 

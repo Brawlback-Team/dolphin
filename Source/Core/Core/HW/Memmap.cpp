@@ -80,6 +80,8 @@ static u8* getEXRAM()
 }
 u8* m_pFakeVMEM;
 
+std::map<u64, u8> m_dirty_pages;
+
 // s_ram_size is the amount allocated by the emulator, whereas s_ram_size_real
 // is what will be reported in lowmem, and thus used by emulated software.
 // Note: Writing to lowmem is done by IPL. If using retail IPL, it will
@@ -246,38 +248,25 @@ static std::vector<LogicalMemoryView> logical_mapped_entries;
 static std::array<void*, PowerPC::BAT_PAGE_COUNT> s_physical_page_mappings;
 static std::array<void*, PowerPC::BAT_PAGE_COUNT> s_logical_page_mappings;
 
-static std::map<u64, u8> s_dirty_pages;
-
 u64 GetDirtyPageIndexFromAddress(u64 address)
 {
-  const size_t page_size = Common::PageSize();
-  const size_t page_mask = page_size - 1;
+  size_t page_size = Common::PageSize();
+  size_t page_mask = page_size - 1;
   return address & ~page_mask;
 }
 
-u64 GetDirtyPageOffsetFromAddress(u64 address)
+bool HandleChangeProtection(void* address, size_t size, u64 flag)
 {
-  const size_t page_size = Common::PageSize();
-  const size_t page_mask = page_size - 1;
-  return address & page_mask;
+  return g_arena.VirtualProtectMemoryRegion(address, size, flag);
 }
 
 bool HandleFault(uintptr_t fault_address)
 {
-  u8* fault_address_bytes = reinterpret_cast<u8*>(fault_address);
-  if (!IsAddressInEmulatedMemory(fault_address_bytes) || IsPageDirty(fault_address))
+  if (!IsAddressInEmulatedMemory(fault_address) || IsAddressDirty(fault_address))
   {
     return false;
   }
-  SetPageDirtyBit(fault_address, 0x1, true);
-  bool change_protection =
-      g_arena.VirtualProtectMemoryRegion(fault_address_bytes, 0x1, PAGE_READWRITE);
-
-  if (!change_protection)
-  {
-    return false;
-  }
-
+  SetAddressDirtyBit(fault_address, 0x1, true);
   return true;
 }
 
@@ -288,20 +277,21 @@ void WriteProtectPhysicalMemoryRegions()
     if (!region.active || !region.track)
       continue;
 
-    bool change_protection =
-        g_arena.VirtualProtectMemoryRegion((*region.out_pointer), region.size, PAGE_READONLY);
+    bool change_protection = HandleChangeProtection((*region.out_pointer), region.size, PAGE_READWRITE | PAGE_GUARD);
 
     if (!change_protection)
     {
-      PanicAlertFmt("Memory::WriteProtectPhysicalMemoryRegions(): Failed to write protect for "
+      PanicAlertFmt("Memory::WriteProtectPhysicalMemoryRegions(): Failed to guard protect for "
                     "this block of memory at 0x{:08X}.",
                     reinterpret_cast<u64>(*region.out_pointer));
     }
-    const size_t page_size = Common::PageSize();
-    const intptr_t out_pointer = reinterpret_cast<intptr_t>(*region.out_pointer);
-    for (size_t i = out_pointer; i < region.size; i += page_size)
+    size_t page_size = Common::PageSize();
+    intptr_t out_pointer = reinterpret_cast<uintptr_t>(*region.out_pointer);
+    intptr_t out_pointer_pte = GetDirtyPageIndexFromAddress(out_pointer);
+    size_t size = region.size + (out_pointer_pte - out_pointer);
+    for (size_t i = out_pointer_pte; i < out_pointer_pte + size; i += page_size)
     {
-      s_dirty_pages[i] = false;
+      m_dirty_pages[i] = false;
     }
   }
 }
@@ -408,14 +398,15 @@ void Init()
   m_IsInitialized = true;
 }
 
-bool IsAddressInEmulatedMemory(const u8* address)
+bool IsAddressInEmulatedMemory(uintptr_t address)
 {
   for (const PhysicalMemoryRegion& region : s_physical_regions)
   {
     if (!region.active || !region.track)
       continue;
 
-    if (address >= *region.out_pointer && address < *region.out_pointer + region.size)
+    auto region_ptr = reinterpret_cast<uintptr_t>(*region.out_pointer);
+    if (address >= region_ptr && address < region_ptr + region.size)
     {
       return true;
     }
@@ -574,7 +565,7 @@ void Shutdown()
   ShutdownFastmemArena();
 
   m_IsInitialized = false;
-  s_dirty_pages.clear();
+  m_dirty_pages.clear();
   for (const PhysicalMemoryRegion& region : s_physical_regions)
   {
     if (!region.active)
@@ -786,22 +777,42 @@ void Write_U64_Swap(u64 value, u32 address)
   CopyToEmu(address, &value, sizeof(value));
 }
 
-bool IsPageDirty(uintptr_t address)
+bool IsAddressDirty(uintptr_t address)
 {
-  return s_dirty_pages[GetDirtyPageIndexFromAddress(address)];
+  return m_dirty_pages[GetDirtyPageIndexFromAddress(address)];
 }
 
-void SetPageDirtyBit(uintptr_t address, size_t size, bool dirty)
+bool IsPageDirty(uintptr_t page_address)
+{
+  return m_dirty_pages[page_address];
+}
+void SetPageDirtyBit(uintptr_t page_address, bool dirty)
+{
+  m_dirty_pages[page_address] = dirty;
+}
+
+void SetAddressDirtyBit(uintptr_t address, size_t size, bool dirty)
 {
   for (size_t i = 0; i < size; i++)
   {
-    s_dirty_pages[GetDirtyPageIndexFromAddress(address + i)] = dirty;
+    m_dirty_pages[GetDirtyPageIndexFromAddress(address + i)] = dirty;
   }
 }
 
 void ResetDirtyPages()
 {
   WriteProtectPhysicalMemoryRegions();
+}
+
+int AddressInReadOnlyMode(LPCVOID address)
+{
+  PMEMORY_BASIC_INFORMATION info = new MEMORY_BASIC_INFORMATION();
+  size_t returnVal = VirtualQuery(address, info, sizeof(MEMORY_BASIC_INFORMATION));
+  if (returnVal != 0)
+  {
+    return info->Protect == PAGE_GUARD;
+  }
+  return 2;
 }
 
 }  // namespace Memory

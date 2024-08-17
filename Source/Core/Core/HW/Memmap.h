@@ -39,6 +39,8 @@ extern u8* m_pEXRAM;
 extern u8* m_pL1Cache;
 extern u8* m_pFakeVMEM;
 
+extern std::map<u64, u8> m_dirty_pages;
+
 u32 GetRamSizeReal();
 u32 GetRamSize();
 u32 GetRamMask();
@@ -92,15 +94,18 @@ void Write_U32_Swap(u32 var, u32 address);
 void Write_U64_Swap(u64 var, u32 address);
 
 // Dirty Page Handling
-bool IsPageDirty(uintptr_t address);
-void SetPageDirtyBit(uintptr_t address, size_t size, bool dirty);
+bool IsAddressDirty(uintptr_t address);
+bool IsPageDirty(uintptr_t page_address);
+void SetPageDirtyBit(uintptr_t page_address, bool dirty);
+void SetAddressDirtyBit(uintptr_t address, size_t size, bool dirty);
 void ResetDirtyPages();
+bool HandleChangeProtection(void* address, size_t size, u64 flag);
 bool HandleFault(uintptr_t fault_address);
 u64 GetDirtyPageIndexFromAddress(u64 address);
-u64 GetDirtyPageOffsetFromAddress(u64 address);
 void WriteProtectPhysicalMemoryRegions();
 void InitDirtyPages();
-bool IsAddressInEmulatedMemory(const u8* address);
+bool IsAddressInEmulatedMemory(uintptr_t address);
+int AddressInReadOnlyMode(LPCVOID address);
 
 // Templated functions for byteswapped copies.
 template <typename T>

@@ -100,30 +100,35 @@ void PrintTrackedBuf(const TrackedBuffer& buf)
 
 void ResetWrittenPages()
 {
-    for (TrackedBuffer& buf : TrackedMemList)
-    {
-        ResetWriteWatch(buf.buffer.data, buf.buffer.size);
-    }
+  Memory::ResetDirtyPages();
 }
 
-bool GetWrittenPages(char* base, u64 baseSize, void** writtenToPages, u64* pageCount)
+int GetWrittenPages(char* base, u64 baseSize, void** writtenToPages, u64* pageCount)
 {
   int writtenToPagesIndex = 0;
-  int i = 0;
-  while (i < baseSize)
+  size_t pageSize = Common::PageSize();
+  uintptr_t base_ptr = reinterpret_cast<uintptr_t>(base);
+  uintptr_t base_pte = Memory::GetDirtyPageIndexFromAddress(base_ptr);
+  while (base_pte < base_ptr + baseSize)
   {
-    uintptr_t addr = reinterpret_cast<uintptr_t>(base + i);
-    if (Memory::IsPageDirty(addr))
+    if (Memory::IsPageDirty(base_pte))
     {
       if (writtenToPagesIndex > *pageCount)
       {
         return 1;
       }
-      Memory::SetPageDirtyBit(addr, 0x1, false);
-      writtenToPages[writtenToPagesIndex] = reinterpret_cast<void*>(Memory::GetDirtyPageIndexFromAddress(addr));
+      Memory::SetPageDirtyBit(base_pte, false);
+      void* addr_bytes = reinterpret_cast<void*>(base_pte);
+      bool change_protection =
+          Memory::HandleChangeProtection(addr_bytes, 0x1, PAGE_READWRITE | PAGE_GUARD);
+      if (!change_protection)
+      {
+        return 2;
+      }
+      *(writtenToPages + writtenToPagesIndex) = addr_bytes;
       writtenToPagesIndex++;
     }
-    i += Common::PageSize() - Memory::GetDirtyPageOffsetFromAddress(addr);
+    base_pte += pageSize;
   }
   *pageCount = writtenToPagesIndex;
   return 0;
@@ -138,7 +143,7 @@ bool GetAndResetWrittenPages(void** changedPageAddresses, u64* numChangedPages, 
         // on input to GetWriteWatch this is the maximum number of possible changed pages in this allocation
         // on output, this is the number of page addresses that have been changed
         u64 pageCount = buf.changedPages.Count;
-        UINT result;
+        int result;
         // move forward by the number of changed pages. 
         void** addressesBase = (void**)((u64**)changedPageAddresses + *numChangedPages);
         {
@@ -150,6 +155,12 @@ bool GetAndResetWrittenPages(void** changedPageAddresses, u64* numChangedPages, 
         *numChangedPages += pageCount;
         if (result != 0 || pageCount > maxEntries || *numChangedPages > maxEntries)
         {
+            ERROR_LOG_FMT(BRAWLBACK, "WRITTEN PAGE WRITE FAILED! RESULT CODE: {}\n", result);
+            if (result == 2)
+            {
+              DWORD dw = GetLastError();
+              ERROR_LOG_FMT(BRAWLBACK, "WRITTEN PAGE WRITE FAILED DUE TO A FAILURE TO WRITE PROTECT. THE REASON IS: {}\n", dw);
+            }
             return false;
         }
     }

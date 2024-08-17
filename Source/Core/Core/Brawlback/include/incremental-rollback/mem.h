@@ -31,6 +31,6 @@ void UntrackAlloc(void* ptr);
 void ResetAllocs();
 void PrintTrackedBuf(const TrackedBuffer& buf);
 void ResetWrittenPages();
-bool GetWrittenPages(char* base, u64 baseSize, void** writtenToPages, u64& pageCount);
+int GetWrittenPages(char* base, u64 baseSize, void** writtenToPages, u64* pageCount);
 bool GetAndResetWrittenPages(void** changedPageAddresses, u64* numChangedPages, u64 maxEntries);
 void fastMemcpy(void* pvDest, void* pvSrc, size_t nBytes);

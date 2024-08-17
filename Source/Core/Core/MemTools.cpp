@@ -62,11 +62,7 @@ static LONG NTAPI Handler(PEXCEPTION_POINTERS pPtrs)
     uintptr_t fault_address = (uintptr_t)pPtrs->ExceptionRecord->ExceptionInformation[1];
     SContext* ctx = pPtrs->ContextRecord;
 
-    if (Memory::HandleFault(fault_address))
-    {
-      return EXCEPTION_CONTINUE_EXECUTION;
-    }
-    else if (JitInterface::HandleFault(fault_address, ctx))
+    if (JitInterface::HandleFault(fault_address, ctx))
     {
       return EXCEPTION_CONTINUE_EXECUTION;
     }
@@ -76,7 +72,18 @@ static LONG NTAPI Handler(PEXCEPTION_POINTERS pPtrs)
       return EXCEPTION_CONTINUE_SEARCH;
     }
   }
-
+  case EXCEPTION_GUARD_PAGE:
+  {
+    uintptr_t fault_address = (uintptr_t)pPtrs->ExceptionRecord->ExceptionInformation[1];
+    if (Memory::HandleFault(fault_address))
+    {
+      return EXCEPTION_CONTINUE_EXECUTION;
+    }
+    else
+    {
+      return EXCEPTION_CONTINUE_SEARCH;
+    }
+  }
   case EXCEPTION_STACK_OVERFLOW:
     if (JitInterface::HandleStackFault())
       return EXCEPTION_CONTINUE_EXECUTION;

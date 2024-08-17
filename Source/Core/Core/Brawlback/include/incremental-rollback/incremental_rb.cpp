@@ -31,7 +31,6 @@
 #include <Core/Core.h>
 #include <Common/MemoryUtil.h>
 
-#define MULTITHREAD // to turn on/off multithreading for debugging
 #define ENABLE_LOGGING
 //#define SPECIFIC_TRACKING
 //#define HEAPS
@@ -367,7 +366,6 @@ namespace IncrementalRB
         1);  // -1 because when we do our async and join stuff, main thread also becomes a worker
     assert(IS_ALIGNED(GetRAM(), 32));  // for simd memcpy, need to be 32 byte aligned
     assert(IS_ALIGNED(GetEXRAM(), 32));  // for simd memcpy, need to be 32 byte aligned
-    ResetWrittenPages();  // reset written pages since this is supposed to be initial state
 
     // allocate mem for savestates
     u64 savestateMemSize = MAX_NUM_CHANGED_PAGES * Common::PageSize();
@@ -460,12 +458,12 @@ namespace IncrementalRB
     // -1 because all savestates are taken after a frame's simulation
     // this means if you want to rollback to frame 5, you'd actually need to restore the data
     // captured on frame 4
-    s32 savestateOffset = currentFrame - rollbackFrame - 1;
+    s32 savestateOffset = currentFrame - rollbackFrame;
     assert(rollbackFrame < currentFrame && savestateOffset < MAX_SAVESTATES);
     // -1 because we want to start rolling back on the index before the current frame
     // another -1 because our savestates are for the end of the frame, so need to go back another
-    s32 currentSavestateIdx = Wrap(currentFrame - 1 - 1, MAX_SAVESTATES);
-    s32 endingSavestateIdx = Wrap(currentSavestateIdx - savestateOffset, MAX_SAVESTATES);
+    s32 currentSavestateIdx = Wrap(currentFrame - 2, MAX_SAVESTATES);
+    s32 endingSavestateIdx = Wrap(currentSavestateIdx - savestateOffset + 1, MAX_SAVESTATES);
 
     assert(endingSavestateIdx < MAX_SAVESTATES);
 #ifdef ENABLE_LOGGING
@@ -500,10 +498,10 @@ namespace IncrementalRB
     // beginning of 10/end of 9 since that's where we need to reapply the new inputs and start
     // resimulating so we do one more at the end of this loop
     INFO_LOG_FMT(BRAWLBACK, "ASSERT CHECK 1: {} == {}?\n", savestateInfo.savestates[currentSavestateIdx].frame, rollbackFrame - 1);
-    assert(savestateInfo.savestates[currentSavestateIdx].frame == rollbackFrame - 1);
+    assert(savestateInfo.savestates[currentSavestateIdx].frame == (u32)(rollbackFrame - 1));
     RollbackSavestate(savestateInfo.savestates[currentSavestateIdx]);
     INFO_LOG_FMT(BRAWLBACK, "ASSERT CHECK 2: {} == {}?\n", *GetGameMemFrame(), rollbackFrame);
-    assert(*GetGameMemFrame() == rollbackFrame);
+    assert(*GetGameMemFrame() == (u32)rollbackFrame);
   }
 
   void EvictSavestate(Savestate& savestate)
@@ -599,6 +597,7 @@ namespace IncrementalRB
     }
     savestate.frame = frame;
     savestate.numChangedPages = 0;
+    INFO_LOG_FMT(BRAWLBACK, "IS FRAME PAGE DIRTY? {}\nSIZE OF PAGE TRACKER: {}\n", Memory::IsAddressDirty(reinterpret_cast<uintptr_t>(GetPointer(0x901812b4))), Memory::m_dirty_pages.size());
     savestate.valid = GetAndResetWrittenPages(savestate.changedPages, &savestate.numChangedPages,
                                               MAX_NUM_CHANGED_PAGES);
     

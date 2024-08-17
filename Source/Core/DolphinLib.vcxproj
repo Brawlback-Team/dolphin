@@ -42,6 +42,7 @@
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
       <AdditionalIncludeDirectories>$(CoreDir)Core\Brawlback\include;$(ExternalsDir)zstd\lib;%(AdditionalIncludeDirectories);$(ExternalsDir)nlohmann</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>_SILENCE_STDEXT_ARR_ITERS_DEPRECATION_WARNING;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
   </ItemDefinitionGroup>
   <Import Project="$(ExternalsDir)Bochs_disasm\exports.props" />

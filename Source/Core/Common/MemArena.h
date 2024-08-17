@@ -106,7 +106,7 @@ public:
   /// @param size Size of the protection.
   /// @param flag What new permission to protect with.
   ///
-  bool VirtualProtectMemoryRegion(u8* data, size_t size, u64 flag);
+  bool VirtualProtectMemoryRegion(void* data, size_t size, u64 flag);
 
 private:
 #ifdef _WIN32

@@ -192,7 +192,7 @@ void MemArena::ReleaseMemoryRegion()
   }
 }
 
-bool MemArena::VirtualProtectMemoryRegion(u8* data, size_t size, u64 flag)
+bool MemArena::VirtualProtectMemoryRegion(void* data, size_t size, u64 flag)
 {
   DWORD lpflOldProtect = 0;
   return static_cast<PVirtualProtect>(m_address_VirtualProtect)(data, size, flag, &lpflOldProtect);

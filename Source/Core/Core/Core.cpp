@@ -355,7 +355,9 @@ static void CpuThread(const std::optional<std::string>& savestate_path, bool del
 
   const bool fastmem_enabled = Config::Get(Config::MAIN_FASTMEM);
   if (fastmem_enabled)
+  {
     EMM::InstallExceptionHandler();  // Let's run under memory watch
+  }
 
 #ifdef USE_MEMORYWATCHER
   s_memory_watcher = std::make_unique<MemoryWatcher>();
@@ -393,6 +395,7 @@ static void CpuThread(const std::optional<std::string>& savestate_path, bool del
     }
   }
 
+  Memory::InitDirtyPages();
   // Enter CPU run loop. When we leave it - we are done.
   CPU::Run();
 
@@ -615,7 +618,9 @@ static void EmuThread(std::unique_ptr<BootParameters> boot, WindowSystemInfo wsi
   if (std::holds_alternative<BootParameters::DFF>(boot->parameters))
     cpuThreadFunc = FifoPlayerThread;
   else
+  {
     cpuThreadFunc = CpuThread;
+  }
 
   std::optional<DiscIO::Riivolution::SavegameRedirect> savegame_redirect = std::nullopt;
   if (SConfig::GetInstance().bWii)
@@ -676,9 +681,6 @@ static void EmuThread(std::unique_ptr<BootParameters> boot, WindowSystemInfo wsi
     // Become the CPU thread
     cpuThreadFunc(savestate_path, delete_savestate);
   }
-
-  if (cpuThreadFunc == CpuThread)
-    Memory::InitDirtyPages();
 
   INFO_LOG_FMT(CONSOLE, "{}", StopMessage(true, "Stopping GDB ..."));
   GDBStub::Deinit();

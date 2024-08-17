@@ -21,6 +21,7 @@
 #include "Core/HW/Memmap.h"
 #include "Core/IOS/IOS.h"
 #include "Core/IOS/VersionInfo.h"
+#include <winnt.h>
 
 namespace IOS::HLE
 {
@@ -282,7 +283,7 @@ s32 SDIOSlot0Device::ExecuteCommand(const Request& request, u32 buffer_in, u32 b
 
       if (!m_card.Seek(address, File::SeekOrigin::Begin))
         ERROR_LOG_FMT(IOS_SD, "Seek failed");
-
+      Memory::HandleChangeProtection(Memory::GetPointer(req.addr), size, PAGE_READWRITE);
       if (m_card.ReadBytes(Memory::GetPointer(req.addr), size))
       {
         DEBUG_LOG_FMT(IOS_SD, "Outbuffer size {} got {}", rw_buffer_size, size);
