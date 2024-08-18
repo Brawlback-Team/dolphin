@@ -105,7 +105,7 @@ u64 GetDirtyPageIndexFromAddress(u64 address);
 void WriteProtectPhysicalMemoryRegions();
 void InitDirtyPages();
 bool IsAddressInEmulatedMemory(uintptr_t address);
-int AddressInReadOnlyMode(LPCVOID address);
+bool IsAddressReadOnly(uintptr_t address);
 
 // Templated functions for byteswapped copies.
 template <typename T>

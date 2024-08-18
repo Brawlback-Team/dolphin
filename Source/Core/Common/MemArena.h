@@ -108,6 +108,13 @@ public:
   ///
   bool VirtualProtectMemoryRegion(void* data, size_t size, u64 flag);
 
+  ///
+  /// Virtual query a section from the memory region previously mapped by CreateView to retrieve the info struct.
+  ///
+  /// @param data Pointer to data to query.
+  ///
+  PMEMORY_BASIC_INFORMATION VirtualQueryMemoryRegion(void* data);
+
 private:
 #ifdef _WIN32
   WindowsMemoryRegion* EnsureSplitRegionForMapping(void* address, size_t size);
@@ -122,6 +129,7 @@ private:
   void* m_address_VirtualAlloc2 = nullptr;
   void* m_address_MapViewOfFile3 = nullptr;
   void* m_address_VirtualProtect = nullptr;
+  void* m_address_VirtualQuery = nullptr;
 #else
 #ifdef ANDROID
   int fd;

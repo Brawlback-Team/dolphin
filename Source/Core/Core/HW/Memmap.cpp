@@ -262,11 +262,17 @@ bool HandleChangeProtection(void* address, size_t size, u64 flag)
 
 bool HandleFault(uintptr_t fault_address)
 {
-  if (!IsAddressInEmulatedMemory(fault_address) || IsAddressDirty(fault_address))
+  uintptr_t page = GetDirtyPageIndexFromAddress(fault_address);
+  if (!IsAddressReadOnly(fault_address) || !IsAddressInEmulatedMemory(fault_address))
   {
     return false;
   }
-  SetAddressDirtyBit(fault_address, 0x1, true);
+  bool change_protection = HandleChangeProtection(reinterpret_cast<void*>(page), 0x1, PAGE_READWRITE);
+  if (!change_protection)
+  {
+    return false;
+  }
+  SetPageDirtyBit(page, true);
   return true;
 }
 
@@ -277,7 +283,7 @@ void WriteProtectPhysicalMemoryRegions()
     if (!region.active || !region.track)
       continue;
 
-    bool change_protection = HandleChangeProtection((*region.out_pointer), region.size, PAGE_READWRITE | PAGE_GUARD);
+    bool change_protection = HandleChangeProtection((*region.out_pointer), region.size, PAGE_READONLY);
 
     if (!change_protection)
     {
@@ -286,8 +292,9 @@ void WriteProtectPhysicalMemoryRegions()
                     reinterpret_cast<u64>(*region.out_pointer));
     }
     size_t page_size = Common::PageSize();
+    size_t page_mask = page_size - 1;
     intptr_t out_pointer = reinterpret_cast<uintptr_t>(*region.out_pointer);
-    intptr_t out_pointer_pte = GetDirtyPageIndexFromAddress(out_pointer);
+    intptr_t out_pointer_pte = out_pointer & ~page_mask;
     size_t size = region.size + (out_pointer_pte - out_pointer);
     for (size_t i = out_pointer_pte; i < out_pointer_pte + size; i += page_size)
     {
@@ -566,6 +573,7 @@ void Shutdown()
 
   m_IsInitialized = false;
   m_dirty_pages.clear();
+  IncrementalRB::Shutdown();
   for (const PhysicalMemoryRegion& region : s_physical_regions)
   {
     if (!region.active)
@@ -804,15 +812,14 @@ void ResetDirtyPages()
   WriteProtectPhysicalMemoryRegions();
 }
 
-int AddressInReadOnlyMode(LPCVOID address)
+bool IsAddressReadOnly(uintptr_t address)
 {
-  PMEMORY_BASIC_INFORMATION info = new MEMORY_BASIC_INFORMATION();
-  size_t returnVal = VirtualQuery(address, info, sizeof(MEMORY_BASIC_INFORMATION));
-  if (returnVal != 0)
+  auto query = g_arena.VirtualQueryMemoryRegion(reinterpret_cast<void*>(address));
+  if (query)
   {
-    return info->Protect == PAGE_GUARD;
+    return query->Protect == PAGE_READONLY;
   }
-  return 2;
+  return false;
 }
 
 }  // namespace Memory

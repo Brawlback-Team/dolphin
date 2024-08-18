@@ -107,8 +107,9 @@ int GetWrittenPages(char* base, u64 baseSize, void** writtenToPages, u64* pageCo
 {
   int writtenToPagesIndex = 0;
   size_t pageSize = Common::PageSize();
+  size_t pageMask = pageSize - 1;
   uintptr_t base_ptr = reinterpret_cast<uintptr_t>(base);
-  uintptr_t base_pte = Memory::GetDirtyPageIndexFromAddress(base_ptr);
+  uintptr_t base_pte = base_ptr & ~pageMask;
   while (base_pte < base_ptr + baseSize)
   {
     if (Memory::IsPageDirty(base_pte))
@@ -120,7 +121,7 @@ int GetWrittenPages(char* base, u64 baseSize, void** writtenToPages, u64* pageCo
       Memory::SetPageDirtyBit(base_pte, false);
       void* addr_bytes = reinterpret_cast<void*>(base_pte);
       bool change_protection =
-          Memory::HandleChangeProtection(addr_bytes, 0x1, PAGE_READWRITE | PAGE_GUARD);
+          Memory::HandleChangeProtection(addr_bytes, 0x1, PAGE_READONLY);
       if (!change_protection)
       {
         return 2;

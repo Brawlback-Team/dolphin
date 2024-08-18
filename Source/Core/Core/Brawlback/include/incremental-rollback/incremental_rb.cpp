@@ -597,7 +597,6 @@ namespace IncrementalRB
     }
     savestate.frame = frame;
     savestate.numChangedPages = 0;
-    INFO_LOG_FMT(BRAWLBACK, "IS FRAME PAGE DIRTY? {}\nSIZE OF PAGE TRACKER: {}\n", Memory::IsAddressDirty(reinterpret_cast<uintptr_t>(GetPointer(0x901812b4))), Memory::m_dirty_pages.size());
     savestate.valid = GetAndResetWrittenPages(savestate.changedPages, &savestate.numChangedPages,
                                               MAX_NUM_CHANGED_PAGES);
     
@@ -622,6 +621,10 @@ namespace IncrementalRB
 
   void Shutdown()
   {
+    for (auto savestate : savestateInfo.savestates)
+    {
+      _mm_free(savestate.arena.backing_mem);
+    }
     jobsystem::ShutDown();
   }
 }

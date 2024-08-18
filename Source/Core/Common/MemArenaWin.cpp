@@ -36,6 +36,8 @@ using PIsApiSetImplemented = BOOL(APIENTRY*)(PCSTR Contract);
 using PVirtualProtect = BOOL(WINAPI*)(LPVOID lpAddress, SIZE_T dwSize, DWORD flNewProtect,
                                       PDWORD lpflOldProtect);
 
+using PVirtualQuery = SIZE_T(WINAPI*)(LPCVOID lpAddress, PMEMORY_BASIC_INFORMATION lpBuffer, SIZE_T dwLength);
+
 namespace Common
 {
 struct WindowsMemoryRegion
@@ -81,12 +83,15 @@ MemArena::MemArena()
       m_api_ms_win_core_memory_l1_1_6_handle.GetSymbolAddress("MapViewOfFile3FromApp");
   void* const address_UnmapViewOfFileEx = m_kernel32_handle.GetSymbolAddress("UnmapViewOfFileEx");
   void* const address_VirtualProtect = m_kernel32_handle.GetSymbolAddress("VirtualProtect");
+  void* const address_VirtualQuery = m_kernel32_handle.GetSymbolAddress("VirtualQuery");
+
   if (address_VirtualAlloc2 && address_MapViewOfFile3 && address_UnmapViewOfFileEx && address_VirtualProtect)
   {
     m_address_VirtualAlloc2 = address_VirtualAlloc2;
     m_address_MapViewOfFile3 = address_MapViewOfFile3;
     m_address_UnmapViewOfFileEx = address_UnmapViewOfFileEx;
     m_address_VirtualProtect = address_VirtualProtect;
+    m_address_VirtualQuery = address_VirtualQuery;
   }
   else
   {
@@ -196,6 +201,20 @@ bool MemArena::VirtualProtectMemoryRegion(void* data, size_t size, u64 flag)
 {
   DWORD lpflOldProtect = 0;
   return static_cast<PVirtualProtect>(m_address_VirtualProtect)(data, size, flag, &lpflOldProtect);
+}
+
+PMEMORY_BASIC_INFORMATION MemArena::VirtualQueryMemoryRegion(void* data)
+{
+  PMEMORY_BASIC_INFORMATION info = new MEMORY_BASIC_INFORMATION();
+  SIZE_T bytes = static_cast<PVirtualQuery>(m_address_VirtualQuery)(data, info, sizeof(MEMORY_BASIC_INFORMATION));
+  if (bytes != 0)
+  {
+    return info;
+  }
+  else
+  {
+    return nullptr;
+  }
 }
 
 WindowsMemoryRegion* MemArena::EnsureSplitRegionForMapping(void* start_address, size_t size)
