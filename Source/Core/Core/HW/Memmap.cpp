@@ -192,7 +192,6 @@ struct PhysicalMemoryRegion
   } flags;
   u32 shm_position;
   bool active;
-  bool track;
 };
 
 struct LogicalMemoryView
@@ -255,7 +254,7 @@ u64 GetDirtyPageIndexFromAddress(u64 address)
   return address & ~page_mask;
 }
 
-bool HandleChangeProtection(void* address, size_t size, u64 flag)
+bool HandleChangeProtection(void* address, size_t size, u32 flag)
 {
   return g_arena.VirtualProtectMemoryRegion(address, size, flag);
 }
@@ -263,14 +262,19 @@ bool HandleChangeProtection(void* address, size_t size, u64 flag)
 bool HandleFault(uintptr_t fault_address)
 {
   uintptr_t page = GetDirtyPageIndexFromAddress(fault_address);
-  if (!IsAddressReadOnly(fault_address) || !IsAddressInEmulatedMemory(fault_address))
+  if (!IsAddressInEmulatedMemory(fault_address))
   {
     return false;
   }
-  bool change_protection = HandleChangeProtection(reinterpret_cast<void*>(page), 0x1, PAGE_READWRITE);
+  bool change_protection =
+      HandleChangeProtection(reinterpret_cast<void*>(page), 0x1, PAGE_READWRITE);
   if (!change_protection)
   {
     return false;
+  }
+  bool worked = VirtualUnlock((void*)page, Common::PageSize());
+  if (!worked)
+  {
   }
   SetPageDirtyBit(page, true);
   return true;
@@ -278,27 +282,26 @@ bool HandleFault(uintptr_t fault_address)
 
 void WriteProtectPhysicalMemoryRegions()
 {
-  for (const PhysicalMemoryRegion& region : s_physical_regions)
+  const size_t page_size = Common::PageSize();
+  const size_t page_mask = page_size - 1;
+  u8* memory[2] = {m_pRAM, m_pEXRAM};
+  u32 memory_size[2] = {0x817FFFFF - 0x80000000 + 1, 0x93FFFFFF - 0x90000000 + 1};
+  for (int i = 0; i < 2; i++)
   {
-    if (!region.active || !region.track)
-      continue;
-
-    bool change_protection = HandleChangeProtection((*region.out_pointer), region.size, PAGE_READONLY);
+    bool change_protection = HandleChangeProtection(memory[i], memory_size[i], PAGE_READONLY);
 
     if (!change_protection)
     {
       PanicAlertFmt("Memory::WriteProtectPhysicalMemoryRegions(): Failed to guard protect for "
                     "this block of memory at 0x{:08X}.",
-                    reinterpret_cast<u64>(*region.out_pointer));
+                    reinterpret_cast<uintptr_t>(memory[i]));
     }
-    size_t page_size = Common::PageSize();
-    size_t page_mask = page_size - 1;
-    intptr_t out_pointer = reinterpret_cast<uintptr_t>(*region.out_pointer);
+    intptr_t out_pointer = reinterpret_cast<uintptr_t>(memory[i]);
     intptr_t out_pointer_pte = out_pointer & ~page_mask;
-    size_t size = region.size + (out_pointer_pte - out_pointer);
-    for (size_t i = out_pointer_pte; i < out_pointer_pte + size; i += page_size)
+    size_t size = memory_size[i] + (out_pointer_pte - out_pointer);
+    for (size_t page = out_pointer_pte; page < out_pointer_pte + size; page += page_size)
     {
-      m_dirty_pages[i] = false;
+      m_dirty_pages[page] = false;
     }
   }
 }
@@ -327,13 +330,13 @@ void Init()
   s_exram_mask = GetExRamSize() - 1;
 
   s_physical_regions[0] = PhysicalMemoryRegion{
-      &m_pRAM, 0x00000000, GetRamSize(), PhysicalMemoryRegion::ALWAYS, 0, false, true};
+      &m_pRAM, 0x00000000, GetRamSize(), PhysicalMemoryRegion::ALWAYS, 0, false};
   s_physical_regions[1] = PhysicalMemoryRegion{
-      &m_pL1Cache, 0xE0000000, GetL1CacheSize(), PhysicalMemoryRegion::ALWAYS, 0, false, false};
+      &m_pL1Cache, 0xE0000000, GetL1CacheSize(), PhysicalMemoryRegion::ALWAYS, 0, false};
   s_physical_regions[2] = PhysicalMemoryRegion{
-      &m_pFakeVMEM, 0x7E000000, GetFakeVMemSize(), PhysicalMemoryRegion::FAKE_VMEM, 0, false, false};
+      &m_pFakeVMEM, 0x7E000000, GetFakeVMemSize(), PhysicalMemoryRegion::FAKE_VMEM, 0, false};
   s_physical_regions[3] = PhysicalMemoryRegion{
-      &m_pEXRAM, 0x10000000, GetExRamSize(), PhysicalMemoryRegion::WII_ONLY, 0, false, true};
+      &m_pEXRAM, 0x10000000, GetExRamSize(), PhysicalMemoryRegion::WII_ONLY, 0, false};
 
   const bool wii = SConfig::GetInstance().bWii;
   const bool mmu = Core::System::GetInstance().IsMMUMode();
@@ -407,18 +410,10 @@ void Init()
 
 bool IsAddressInEmulatedMemory(uintptr_t address)
 {
-  for (const PhysicalMemoryRegion& region : s_physical_regions)
-  {
-    if (!region.active || !region.track)
-      continue;
-
-    auto region_ptr = reinterpret_cast<uintptr_t>(*region.out_pointer);
-    if (address >= region_ptr && address < region_ptr + region.size)
-    {
-      return true;
-    }
-  }
-  return false;
+  return (address >= reinterpret_cast<uintptr_t>(Memory::GetPointer(0x80000000)) &&
+          address <= reinterpret_cast<uintptr_t>(Memory::GetPointer(0x817FFFFF))) ||
+         (address >= reinterpret_cast<uintptr_t>(Memory::GetPointer(0x90000000)) &&
+          address <= reinterpret_cast<uintptr_t>(Memory::GetPointer(0x93FFFFFF)));
 }
 
 bool InitFastmemArena()
@@ -810,16 +805,6 @@ void SetAddressDirtyBit(uintptr_t address, size_t size, bool dirty)
 void ResetDirtyPages()
 {
   WriteProtectPhysicalMemoryRegions();
-}
-
-bool IsAddressReadOnly(uintptr_t address)
-{
-  auto query = g_arena.VirtualQueryMemoryRegion(reinterpret_cast<void*>(address));
-  if (query)
-  {
-    return query->Protect == PAGE_READONLY;
-  }
-  return false;
 }
 
 }  // namespace Memory

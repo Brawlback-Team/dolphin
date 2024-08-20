@@ -99,13 +99,12 @@ bool IsPageDirty(uintptr_t page_address);
 void SetPageDirtyBit(uintptr_t page_address, bool dirty);
 void SetAddressDirtyBit(uintptr_t address, size_t size, bool dirty);
 void ResetDirtyPages();
-bool HandleChangeProtection(void* address, size_t size, u64 flag);
+bool HandleChangeProtection(void* address, size_t size, u32 flag);
 bool HandleFault(uintptr_t fault_address);
 u64 GetDirtyPageIndexFromAddress(u64 address);
 void WriteProtectPhysicalMemoryRegions();
 void InitDirtyPages();
 bool IsAddressInEmulatedMemory(uintptr_t address);
-bool IsAddressReadOnly(uintptr_t address);
 
 // Templated functions for byteswapped copies.
 template <typename T>

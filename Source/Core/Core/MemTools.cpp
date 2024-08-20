@@ -61,7 +61,7 @@ static LONG NTAPI Handler(PEXCEPTION_POINTERS pPtrs)
     // virtual address of the inaccessible data
     uintptr_t fault_address = (uintptr_t)pPtrs->ExceptionRecord->ExceptionInformation[1];
     SContext* ctx = pPtrs->ContextRecord;
-    if (Memory::HandleFault(fault_address))
+    if (access_type == 1 && Memory::HandleFault(fault_address))
     {
       return EXCEPTION_CONTINUE_EXECUTION;
     }
