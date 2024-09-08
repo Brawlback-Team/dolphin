@@ -261,6 +261,40 @@ bool HandleChangeProtection(void* address, size_t size, u32 flag)
 
 bool HandleFault(uintptr_t fault_address)
 {
+  uintptr_t logical_base_ptr = reinterpret_cast<uintptr_t>(logical_base);
+  uintptr_t physical_base_ptr = reinterpret_cast<uintptr_t>(physical_base);
+  if (fault_address >= logical_base_ptr && fault_address < logical_base_ptr + 0x200000000)
+  {
+    uintptr_t index = fault_address - logical_base_ptr;
+    u8* ptr = GetPointer(index);
+    if (ptr == 0x0)
+    {
+      return false;
+    }
+    bool change_protection =
+        HandleChangeProtection(reinterpret_cast<void*>(fault_address), 0x1, PAGE_READWRITE);
+    if (!change_protection)
+    {
+      return false;
+    }
+    fault_address = reinterpret_cast<uintptr_t>(ptr);
+  }
+  else if (fault_address >= physical_base_ptr && fault_address < physical_base_ptr + 0x200000000)
+  {
+    uintptr_t index = fault_address - physical_base_ptr;
+    u8* ptr = GetPointer(index);
+    if (ptr == 0x0)
+    {
+      return false;
+    }
+    bool change_protection =
+        HandleChangeProtection(reinterpret_cast<void*>(fault_address), 0x1, PAGE_READWRITE);
+    if (!change_protection)
+    {
+      return false;
+    }
+    fault_address = reinterpret_cast<uintptr_t>(ptr);
+  }
   uintptr_t page = GetDirtyPageIndexFromAddress(fault_address);
   if (!IsAddressInEmulatedMemory(fault_address))
   {
@@ -272,10 +306,6 @@ bool HandleFault(uintptr_t fault_address)
   {
     return false;
   }
-  bool worked = VirtualUnlock((void*)page, Common::PageSize());
-  if (!worked)
-  {
-  }
   SetPageDirtyBit(page, true);
   return true;
 }
@@ -285,7 +315,7 @@ void WriteProtectPhysicalMemoryRegions()
   const size_t page_size = Common::PageSize();
   const size_t page_mask = page_size - 1;
   u8* memory[2] = {m_pRAM, m_pEXRAM};
-  u32 memory_size[2] = {0x817FFFFF - 0x80000000 + 1, 0x93FFFFFF - 0x90000000 + 1};
+  u64 memory_size[2] = {0x817FFFFF - 0x80000000 + 1, 0x93FFFFFF - 0x90000000 + 1};
   for (int i = 0; i < 2; i++)
   {
     bool change_protection = HandleChangeProtection(memory[i], memory_size[i], PAGE_READONLY);
@@ -296,6 +326,7 @@ void WriteProtectPhysicalMemoryRegions()
                     "this block of memory at 0x{:08X}.",
                     reinterpret_cast<uintptr_t>(memory[i]));
     }
+
     intptr_t out_pointer = reinterpret_cast<uintptr_t>(memory[i]);
     intptr_t out_pointer_pte = out_pointer & ~page_mask;
     size_t size = memory_size[i] + (out_pointer_pte - out_pointer);
@@ -442,6 +473,14 @@ bool InitFastmemArena()
     if (base != view)
     {
       PanicAlertFmt("Memory::InitFastmemArena(): Failed to map memory region at 0x{:08X} "
+                    "(size 0x{:08X}) into physical fastmem region.",
+                    region.physical_address, region.size);
+      return false;
+    }
+
+    if ((*region.out_pointer == m_pRAM || *region.out_pointer == m_pEXRAM) && !g_arena.VirtualProtectMemoryRegion(view + 0x200000000, region.size, PAGE_READONLY))
+    {
+      PanicAlertFmt("Memory::InitFastmemArena(): Failed to write protect memory region at 0x{:08X} "
                     "(size 0x{:08X}) into physical fastmem region.",
                     region.physical_address, region.size);
       return false;
