@@ -531,22 +531,3 @@ void WiiPane::SetSDSyncFolder(const QString& path)
   Config::SetBase(Config::MAIN_WII_SD_CARD_SYNC_FOLDER_PATH, path.toStdString());
   SignalBlocking(m_sd_sync_folder_edit)->setText(path);
 }
-
-void WiiPane::BrowseSDSyncTimeFile()
-{
-  const auto file = QDir::toNativeSeparators(DolphinFileDialog::getSaveFileName(
-      this, tr("Select a File to track timestamp for syncing SD image"), {}, {}, nullptr,
-      QFileDialog::Option::DontConfirmOverwrite));
-
-  if (!file.isEmpty())
-  {
-    SetSDSyncTimeFile(file);
-  }
-}
-
-void WiiPane::SetSDSyncTimeFile(const QString& path)
-{
-  Config::SetBase(Config::MAIN_WII_SD_SYNC_TIME_FILE, path.toStdString());
-  SignalBlocking(m_sd_sync_file_edit)->setText(path);
-}
-

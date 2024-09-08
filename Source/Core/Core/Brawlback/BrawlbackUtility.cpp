@@ -5,6 +5,7 @@
 #include "VideoCommon/OnScreenDisplay.h"
 #include <Core/HW/Memmap.h>
 #include <fmt/format.h>
+#include <Core/System.h>
 namespace Brawlback
 {
     
@@ -44,15 +45,17 @@ namespace Brawlback
     // super slow
     int SavestateChecksum(std::vector<ssBackupLoc>* backupLocs)
     {
+      auto& system = Core::System::GetInstance();
+      auto& memory = system.GetMemory();
       if (backupLocs->empty())
         return -1;
       std::vector<int> sums = {};
       for (ssBackupLoc backupLoc : *backupLocs)
       {
-        short* data = (short*)Memory::GetPointer(backupLoc.startAddress);
         size_t size = backupLoc.endAddress - backupLoc.startAddress;
+        auto data = memory.GetPointerForRange(backupLoc.startAddress, size);
         if (data && size)
-          sums.push_back(fletcher32_checksum(data, backupLoc.endAddress - backupLoc.startAddress));
+          sums.push_back(fletcher32_checksum((short*)data, backupLoc.endAddress - backupLoc.startAddress));
         else
           ERROR_LOG_FMT(BRAWLBACK,
                                "Invalid data or size of savestate when computing checksum!\n");

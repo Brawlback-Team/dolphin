@@ -5,7 +5,7 @@
 #include <memory>
 #include <thread>
 #include "Common/CommonTypes.h"
-#include "Common/ENetUtil.h"
+#include "Common/ENet.h"
 #include "Common/MsgHandler.h"
 #include "Core/ConfigManager.h"
 #include "Core/Core.h"
@@ -26,7 +26,7 @@ void BrawlbackNetplay::SendAsync(std::unique_ptr<BrawlbackNetPacket> packet, ENe
         std::lock_guard<std::recursive_mutex> lock(async_send_packet_mutex);
         async_queue.push_back(std::move(packet));
     }
-    ENetUtil::WakeupThread(host);
+    Common::ENet::WakeupThread(host);
 }
 
 void BrawlbackNetplay::BroadcastPacket(const sf::Packet& packet, int enet_flag, ENetHost* server) {

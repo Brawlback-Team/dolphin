@@ -3,6 +3,7 @@
 #include <Common/MemoryUtil.h>
 #include <Core/HW/EXI/EXI.h>
 #include <Core/HW/Memmap.h>
+#include <Core/System.h>
 #include <thread>
 #include "Common/Thread.h"
 #include "Common/Timer.h"
@@ -33,6 +34,8 @@ BrawlbackSavestate::~BrawlbackSavestate()
 
 void BrawlbackSavestate::getDolphinState(PointerWrap& p)
 {
+  auto& system = Core::System::GetInstance();
+  auto& EXI = system.GetExpansionInterface();
   // p.DoArray(Memory::m_pRAM, Memory::RAM_SIZE);
   // p.DoMarker("Memory");
   // VideoInterface::DoState(p);
@@ -47,7 +50,8 @@ void BrawlbackSavestate::getDolphinState(PointerWrap& p)
   // p.DoMarker("DVDInterface");
   // GPFifo::DoState(p);
   // p.DoMarker("GPFifo");
-  ExpansionInterface::DoState(p);
+
+  EXI.DoState(p);
   p.DoMarker("ExpansionInterface");
   // AudioInterface::DoState(p);
   // p.DoMarker("AudioInterface");
@@ -85,9 +89,11 @@ void BrawlbackSavestate::initDynamicLocs(std::vector<SlippiUtility::Savestate::s
 typedef std::vector<SlippiUtility::Savestate::ssBackupLoc>::iterator backupLocIterator;
 
 void captureMemRegions(backupLocIterator start, backupLocIterator end) {
+    auto& system = Core::System::GetInstance();
+    auto& memory = system.GetMemory();
     for (auto it = start; it != end; ++it) {
         auto size = it->endAddress - it->startAddress;
-        Memory::CopyFromEmu(it->data, it->startAddress, size);  // game -> emu
+        memory.CopyFromEmu(it->data, it->startAddress, size);  // game -> emu
     }
 }
 
@@ -111,15 +117,17 @@ void BrawlbackSavestate::Capture(std::vector<SlippiUtility::Savestate::ssBackupL
 
 void BrawlbackSavestate::Load(std::vector<PreserveBlock> blocks)
 {
+    auto& system = Core::System::GetInstance();
+    auto& memory = system.GetMemory();
     // Restore memory blocks
     for (auto it = staticLocs.begin(); it != staticLocs.end(); ++it)
     {
       auto size = it->endAddress - it->startAddress;
-      Memory::CopyToEmu(it->startAddress, it->data, size);
+      memory.CopyToEmu(it->startAddress, it->data, size);
     }
     for (auto it = dynamicLocs.begin(); it != dynamicLocs.end(); ++it)
     {
       auto size = it->endAddress - it->startAddress;
-      Memory::CopyToEmu(it->startAddress, it->data, size);
+      memory.CopyToEmu(it->startAddress, it->data, size);
     }
 }

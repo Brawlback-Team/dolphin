@@ -1,6 +1,6 @@
 #include "Core/Brawlback/Netplay/Matchmaking.h"
 #include "Common/Common.h"
-#include "Common/ENetUtil.h"
+#include "Common/ENet.h"
 #include "Common/Logging/Log.h"
 #include "Common/StringUtil.h"
 #include "Core/ConfigManager.h"
@@ -376,7 +376,7 @@ void Matchmaking::startMatchmaking()
 		}
 
 		netEvent.peer->data = &userInfo.displayName;
-		m_client->intercept = ENetUtil::InterceptCallback;
+		m_client->intercept = Common::ENet::InterceptCallback;
 		isMmConnected = true;
 		ERROR_LOG_FMT(BRAWLBACK, "[Matchmaking] Connected to mm server...");
 	}

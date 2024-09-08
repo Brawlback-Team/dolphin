@@ -63,6 +63,12 @@
 
 SConfig* SConfig::m_Instance;
 
+#ifdef _WIN32
+#define CROSS_PLAT_DIR_SEP "\\"
+#else
+#define CROSS_PLAT_DIR_SEP "/"
+#endif
+
 SConfig::SConfig()
 {
   LoadDefaults();
@@ -221,6 +227,7 @@ void SConfig::OnNewTitleLoad(const Core::CPUThreadGuard& guard)
 
 void SConfig::LoadDefaults()
 {
+  auto& system = Core::System::GetInstance();
   bBootToPause = false;
   const auto default_replay_dir = File::GetHomeDirectory() + CROSS_PLAT_DIR_SEP + "Brawlback";
   m_brawlbackReplayDir = default_replay_dir;

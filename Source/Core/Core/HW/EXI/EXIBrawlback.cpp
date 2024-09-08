@@ -14,6 +14,7 @@
 #include "Core/HW/Memmap.h"
 #include "VideoCommon/OnScreenDisplay.h"
 #include <regex>
+#include <Core/System.h>
 
 namespace fs = std::filesystem;
 // --- Mutexes
@@ -33,7 +34,7 @@ std::vector<u8> read_vector_from_disk(std::string file_path)
                        std::istreambuf_iterator<char>());
   return data;
 }
-CEXIBrawlback::CEXIBrawlback()
+CEXIBrawlback::CEXIBrawlback(Core::System& system) : ExpansionInterface::IEXIDevice(system)
 {
   INFO_LOG_FMT(BRAWLBACK, "------- {}\n", SConfig::GetInstance().GetGameID());
 #ifdef _WIN32
@@ -1347,6 +1348,8 @@ void SwapEndianSavestateMemRegionInfo(SavestateMemRegionInfo& memRegion)
 
 void CEXIBrawlback::handleDumpAll(u8* payload)
 {
+  auto& system = Core::System::GetInstance();
+  auto& memory = system.GetMemory();
   SavestateMemRegionInfo dumpAll;
   memcpy(&dumpAll, payload, sizeof(SavestateMemRegionInfo));
   SwapEndianSavestateMemRegionInfo(dumpAll);
@@ -1360,7 +1363,7 @@ void CEXIBrawlback::handleDumpAll(u8* payload)
   if (addDumpAll.regionName == "Fighter1Resoruce" || addDumpAll.regionName == "Fighter2Resoruce" || addDumpAll.regionName == "IteamResource")
   {
     u8* data = static_cast<u8*>(Common::AllocateAlignedMemory(3, 64));
-    Memory::CopyFromEmuSwapped(data, addDumpAll.startAddress, 3);
+    memory.CopyFromEmuSwapped(data, addDumpAll.startAddress, 3);
     if (std::string((char*)data, 3) != "ARC")
     {
       dynamicRegions.push_back(addDumpAll);
@@ -1374,6 +1377,8 @@ void CEXIBrawlback::handleDumpAll(u8* payload)
 
 void CEXIBrawlback::handleAlloc(u8* payload)
 {
+  auto& system = Core::System::GetInstance();
+  auto& memory = system.GetMemory();
   SavestateMemRegionInfo alloc;
   memcpy(&alloc, payload, sizeof(SavestateMemRegionInfo));
   SwapEndianSavestateMemRegionInfo(alloc);
@@ -1386,7 +1391,7 @@ void CEXIBrawlback::handleAlloc(u8* payload)
   if (addAlloc.regionName == "Fighter1Resoruce" || addAlloc.regionName == "Fighter2Resoruce" || addAlloc.regionName == "IteamResource")
   {
     u8* data = static_cast<u8*>(Common::AllocateAlignedMemory(3, 64));
-    Memory::CopyFromEmuSwapped(data, addAlloc.startAddress, 3);
+    memory.CopyFromEmuSwapped(data, addAlloc.startAddress, 3);
     if (std::string((char*)data, 3) != "ARC")
     {
       dynamicRegions.push_back(addAlloc);
@@ -1429,8 +1434,10 @@ void CEXIBrawlback::handleCancelMatchmaking()
     // recieve data from game into emulator
 void CEXIBrawlback::DMAWrite(u32 address, u32 size)
 {
+  auto& system = Core::System::GetInstance();
+  auto& memory = system.GetMemory();
   // INFO_LOG_FMT(BRAWLBACK, "DMAWrite size: %u\n", size);
-  u8* mem = Memory::GetPointer(address);
+  u8* mem = memory.GetSpanForAddress(address).data();
 
   if (!mem)
   {
@@ -1527,6 +1534,8 @@ void CEXIBrawlback::DMAWrite(u32 address, u32 size)
 // send data from emulator to game
 void CEXIBrawlback::DMARead(u32 address, u32 size)
 {
+  auto& system = Core::System::GetInstance();
+  auto& memory = system.GetMemory();
   std::lock_guard<std::mutex> lock(read_queue_mutex);
 
   if (this->read_queue.empty())
@@ -1537,14 +1546,14 @@ void CEXIBrawlback::DMARead(u32 address, u32 size)
   // game is trying to get cmd byte (don't clear read_queue)
   if (size == 1)
   {
-    Memory::CopyToEmu(address, &this->read_queue[0], size);
+    memory.CopyToEmu(address, &this->read_queue[0], size);
     this->read_queue.erase(this->read_queue.begin());
     return;
   }
 
   this->read_queue.resize(size, 0);
   auto qAddr = &this->read_queue[0];
-  Memory::CopyToEmu(address, qAddr, size);
+  memory.CopyToEmu(address, qAddr, size);
   this->read_queue.clear();
 }
 

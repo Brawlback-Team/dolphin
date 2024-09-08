@@ -163,7 +163,7 @@ std::unique_ptr<IEXIDevice> EXIDevice_Create(Core::System& system, const EXIDevi
     result = std::make_unique<CEXIAgp>(system, slot);
     break;
   case EXIDeviceType::Brawlback:
-    result = std::make_unique<CEXIBrawlback>();
+    result = std::make_unique<CEXIBrawlback>(system);
     break;
   case EXIDeviceType::AMBaseboard:
   case EXIDeviceType::None:

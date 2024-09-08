@@ -15,7 +15,7 @@ using namespace Brawlback;
 class CEXIBrawlback : public ExpansionInterface::IEXIDevice
 {
 public:
-  CEXIBrawlback();
+  CEXIBrawlback(Core::System& system);
   ~CEXIBrawlback() override;
 
   void DMAWrite(u32 address, u32 size) override;

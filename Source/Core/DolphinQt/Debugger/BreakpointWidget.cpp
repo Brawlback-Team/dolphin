@@ -747,9 +747,6 @@ void BreakpointWidget::EditMBP(u32 address, int edit, std::optional<QString> str
   else if (old_mbp->condition.has_value() && edit != CONDITION_COLUMN)
     mbp.condition = Expression::TryParse(old_mbp->condition.value().GetText());
 
-  check.condition =
-      !condition.isEmpty() ? Expression::TryParse(condition.toUtf8().constData()) : std::nullopt;
-
   {
     const QSignalBlocker blocker(Settings::Instance());
     m_system.GetPowerPC().GetMemChecks().Add(std::move(mbp));
