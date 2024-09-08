@@ -91,8 +91,8 @@ static const char* to_string(MTLCompareFunction compare)
 
 // clang-format on
 
-static void SetupDepthStencil(
-    MRCOwned<id<MTLDepthStencilState>> (&dss)[Metal::DepthStencilSelector::N_VALUES])
+static void
+SetupDepthStencil(MRCOwned<id<MTLDepthStencilState>> (&dss)[Metal::DepthStencilSelector::N_VALUES])
 {
   auto desc = MRCTransfer([MTLDepthStencilDescriptor new]);
   Metal::DepthStencilSelector sel;
@@ -313,6 +313,8 @@ public:
       framebuffer.color_texture_format = cfg.framebuffer_state.color_texture_format.Value();
       framebuffer.depth_texture_format = cfg.framebuffer_state.depth_texture_format.Value();
       framebuffer.samples = cfg.framebuffer_state.samples.Value();
+      framebuffer.additional_color_attachment_count =
+          cfg.framebuffer_state.additional_color_attachment_count.Value();
       blend.colorupdate = cfg.blending_state.colorupdate.Value();
       blend.alphaupdate = cfg.blending_state.alphaupdate.Value();
       if (cfg.blending_state.blendenable)
@@ -418,8 +420,19 @@ public:
         // clang-format on
       }
       FramebufferState fs = config.framebuffer_state;
+      if (fs.color_texture_format == AbstractTextureFormat::Undefined &&
+          fs.depth_texture_format == AbstractTextureFormat::Undefined)
+      {
+        // Intel HD 4000's Metal driver asserts if you try to make one of these
+        PanicAlertFmt("Attempted to create pipeline with no render targets!");
+      }
       [desc setRasterSampleCount:fs.samples];
       [color0 setPixelFormat:Util::FromAbstract(fs.color_texture_format)];
+      if (u32 cnt = fs.additional_color_attachment_count)
+      {
+        for (u32 i = 0; i < cnt; i++)
+          [[desc colorAttachments] setObject:color0 atIndexedSubscript:i + 1];
+      }
       [desc setDepthAttachmentPixelFormat:Util::FromAbstract(fs.depth_texture_format)];
       if (Util::HasStencil(fs.depth_texture_format))
         [desc setStencilAttachmentPixelFormat:Util::FromAbstract(fs.depth_texture_format)];
@@ -490,9 +503,10 @@ Metal::ObjectCache::CreatePipeline(const AbstractPipelineConfig& config)
   Internal::StoredPipeline pipeline = m_internal->GetOrCreatePipeline(config);
   if (!pipeline.first)
     return nullptr;
-  return std::make_unique<Pipeline>(
-      std::move(pipeline.first), pipeline.second, Convert(config.rasterization_state.primitive),
-      Convert(config.rasterization_state.cullmode), config.depth_state, config.usage);
+  return std::make_unique<Pipeline>(config, std::move(pipeline.first), pipeline.second,
+                                    Convert(config.rasterization_state.primitive),
+                                    Convert(config.rasterization_state.cullmode),
+                                    config.depth_state, config.usage);
 }
 
 void Metal::ObjectCache::ShaderDestroyed(const Shader* shader)

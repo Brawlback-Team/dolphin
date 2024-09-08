@@ -32,6 +32,7 @@
 #include "Core/ConfigManager.h"
 #include "Core/Core.h"
 #include "Core/HW/AddressSpace.h"
+#include "Core/System.h"
 #include "DolphinQt/Debugger/MemoryViewWidget.h"
 #include "DolphinQt/Host.h"
 #include "DolphinQt/QtUtils/ModalMessageBox.h"
@@ -39,7 +40,8 @@
 
 using Type = MemoryViewWidget::Type;
 
-MemoryWidget::MemoryWidget(QWidget* parent) : QDockWidget(parent)
+MemoryWidget::MemoryWidget(Core::System& system, QWidget* parent)
+    : QDockWidget(parent), m_system(system)
 {
   setWindowTitle(tr("Memory"));
   setObjectName(QStringLiteral("memory"));
@@ -162,13 +164,14 @@ void MemoryWidget::CreateWidgets()
   auto* address_space_layout = new QVBoxLayout;
   address_space_group->setLayout(address_space_layout);
 
-  // i18n: "Effective" addresses are the addresses used directly by the CPU and may be subject to
-  // translation via the MMU to physical addresses.
+  // i18n: One of the options shown below "Address Space". "Effective" addresses are the addresses
+  // used directly by the CPU and may be subject to translation via the MMU to physical addresses.
   m_address_space_effective = new QRadioButton(tr("Effective"));
-  // i18n: The "Auxiliary" address space is the address space of ARAM (Auxiliary RAM).
+  // i18n: One of the options shown below "Address Space". "Auxiliary" is the address space of ARAM
+  // (Auxiliary RAM).
   m_address_space_auxiliary = new QRadioButton(tr("Auxiliary"));
-  // i18n: The "Physical" address space is the address space that reflects how devices (e.g. RAM) is
-  // physically wired up.
+  // i18n: One of the options shown below "Address Space". "Physical" is the address space that
+  // reflects how devices (e.g. RAM) is physically wired up.
   m_address_space_physical = new QRadioButton(tr("Physical"));
 
   address_space_layout->addWidget(m_address_space_effective);
@@ -197,6 +200,7 @@ void MemoryWidget::CreateWidgets()
   m_display_combo->addItem(tr("Double"), int(Type::Double));
 
   m_align_combo = new QComboBox;
+  // i18n: "Fixed" here means that the alignment is always the same
   m_align_combo->addItem(tr("Fixed Alignment"));
   m_align_combo->addItem(tr("Type-based Alignment"), 0);
   m_align_combo->addItem(tr("No Alignment"), 1);
@@ -247,12 +251,12 @@ void MemoryWidget::CreateWidgets()
   QMenuBar* menubar = new QMenuBar(sidebar);
   menubar->setNativeMenuBar(false);
 
-  QMenu* menu_import = new QMenu(tr("&Import"));
+  QMenu* menu_import = new QMenu(tr("&Import"), menubar);
   menu_import->addAction(tr("&Load file to current address"), this,
                          &MemoryWidget::OnSetValueFromFile);
   menubar->addMenu(menu_import);
 
-  QMenu* menu_export = new QMenu(tr("&Export"));
+  QMenu* menu_export = new QMenu(tr("&Export"), menubar);
   menu_export->addAction(tr("Dump &MRAM"), this, &MemoryWidget::OnDumpMRAM);
   menu_export->addAction(tr("Dump &ExRAM"), this, &MemoryWidget::OnDumpExRAM);
   menu_export->addAction(tr("Dump &ARAM"), this, &MemoryWidget::OnDumpARAM);
@@ -285,7 +289,7 @@ void MemoryWidget::CreateWidgets()
   sidebar_scroll->setWidget(sidebar);
   sidebar_scroll->setWidgetResizable(true);
 
-  m_memory_view = new MemoryViewWidget(this);
+  m_memory_view = new MemoryViewWidget(m_system, this);
 
   m_splitter->addWidget(m_memory_view);
   m_splitter->addWidget(sidebar_scroll);
@@ -305,7 +309,7 @@ void MemoryWidget::ConnectWidgets()
   connect(m_search_offset, &QLineEdit::textChanged, this, &MemoryWidget::OnSearchAddress);
   connect(m_data_edit, &QLineEdit::textChanged, this, &MemoryWidget::ValidateAndPreviewInputValue);
 
-  connect(m_input_combo, qOverload<int>(&QComboBox::currentIndexChanged), this,
+  connect(m_input_combo, &QComboBox::currentIndexChanged, this,
           &MemoryWidget::ValidateAndPreviewInputValue);
   connect(m_set_value, &QPushButton::clicked, this, &MemoryWidget::OnSetValue);
 
@@ -319,8 +323,7 @@ void MemoryWidget::ConnectWidgets()
   }
   for (auto* combo : {m_display_combo, m_align_combo, m_row_length_combo})
   {
-    connect(combo, qOverload<int>(&QComboBox::currentIndexChanged), this,
-            &MemoryWidget::OnDisplayChanged);
+    connect(combo, &QComboBox::currentIndexChanged, this, &MemoryWidget::OnDisplayChanged);
   }
 
   connect(m_dual_check, &QCheckBox::toggled, this, &MemoryWidget::OnDisplayChanged);
@@ -494,7 +497,9 @@ void MemoryWidget::SetAddress(u32 address)
   {
     AddressSpace::Accessors* accessors =
         AddressSpace::GetAccessors(m_memory_view->GetAddressSpace());
-    good = accessors->IsValidAddress(current_addr);
+
+    const Core::CPUThreadGuard guard(m_system);
+    good = accessors->IsValidAddress(guard, current_addr);
   }
 
   if (m_search_address->findText(current_text) == -1 && good)
@@ -624,7 +629,7 @@ QByteArray MemoryWidget::GetInputData() const
 
 void MemoryWidget::OnSetValue()
 {
-  if (!Core::IsRunning())
+  if (!Core::IsRunning(m_system))
     return;
 
   auto target_addr = GetTargetAddress();
@@ -650,24 +655,27 @@ void MemoryWidget::OnSetValue()
     return;
   }
 
+  const Core::CPUThreadGuard guard(m_system);
+
   AddressSpace::Accessors* accessors = AddressSpace::GetAccessors(m_memory_view->GetAddressSpace());
   u32 end_address = target_addr.address + static_cast<u32>(bytes.size()) - 1;
 
-  if (!accessors->IsValidAddress(target_addr.address) || !accessors->IsValidAddress(end_address))
+  if (!accessors->IsValidAddress(guard, target_addr.address) ||
+      !accessors->IsValidAddress(guard, end_address))
   {
     ModalMessageBox::critical(this, tr("Error"), tr("Target address range is invalid."));
     return;
   }
 
   for (const char c : bytes)
-    accessors->WriteU8(target_addr.address++, static_cast<u8>(c));
+    accessors->WriteU8(guard, target_addr.address++, static_cast<u8>(c));
 
   Update();
 }
 
 void MemoryWidget::OnSetValueFromFile()
 {
-  if (!Core::IsRunning())
+  if (!Core::IsRunning(m_system))
     return;
 
   auto target_addr = GetTargetAddress();
@@ -709,8 +717,10 @@ void MemoryWidget::OnSetValueFromFile()
 
   AddressSpace::Accessors* accessors = AddressSpace::GetAccessors(m_memory_view->GetAddressSpace());
 
+  const Core::CPUThreadGuard guard(m_system);
+
   for (u8 b : file_contents)
-    accessors->WriteU8(target_addr.address++, b);
+    accessors->WriteU8(guard, target_addr.address++, b);
 
   Update();
 }
@@ -821,11 +831,15 @@ void MemoryWidget::FindValue(bool next)
     target_addr.address += next ? 1 : -1;
   }
 
-  AddressSpace::Accessors* accessors = AddressSpace::GetAccessors(m_memory_view->GetAddressSpace());
+  const std::optional<u32> found_addr = [&] {
+    AddressSpace::Accessors* accessors =
+        AddressSpace::GetAccessors(m_memory_view->GetAddressSpace());
 
-  const auto found_addr =
-      accessors->Search(target_addr.address, reinterpret_cast<const u8*>(search_for.data()),
-                        static_cast<u32>(search_for.size()), next);
+    const Core::CPUThreadGuard guard(m_system);
+    return accessors->Search(guard, target_addr.address,
+                             reinterpret_cast<const u8*>(search_for.data()),
+                             static_cast<u32>(search_for.size()), next);
+  }();
 
   if (found_addr.has_value())
   {

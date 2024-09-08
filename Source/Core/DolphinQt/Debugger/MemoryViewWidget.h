@@ -7,6 +7,7 @@
 
 #include "Common/CommonTypes.h"
 
+class QFont;
 class QPoint;
 class QScrollBar;
 
@@ -14,6 +15,12 @@ namespace AddressSpace
 {
 enum class Type;
 }
+
+namespace Core
+{
+class CPUThreadGuard;
+class System;
+}  // namespace Core
 
 class MemoryViewTable;
 
@@ -47,19 +54,20 @@ public:
     WriteOnly
   };
 
-  explicit MemoryViewWidget(QWidget* parent = nullptr);
+  explicit MemoryViewWidget(Core::System& system, QWidget* parent = nullptr);
 
   void CreateTable();
   void Update();
-  void UpdateFont();
+  void UpdateFont(const QFont& font);
   void ToggleBreakpoint(u32 addr, bool row);
 
-  std::vector<u8> ConvertTextToBytes(Type type, QString input_text);
+  std::vector<u8> ConvertTextToBytes(Type type, QStringView input_text) const;
   void SetAddressSpace(AddressSpace::Type address_space);
   AddressSpace::Type GetAddressSpace() const;
   void SetDisplay(Type type, int bytes_per_row, int alignment, bool dual_view);
   void SetBPType(BPType type);
   void SetAddress(u32 address);
+  void SetFocus() const;
 
   void SetBPLoggingEnabled(bool enabled);
 
@@ -74,9 +82,12 @@ private:
   void OnCopyHex(u32 addr);
   void UpdateBreakpointTags();
   void UpdateColumns();
+  void UpdateColumns(const Core::CPUThreadGuard* guard);
   void ScrollbarActionTriggered(int action);
   void ScrollbarSliderReleased();
-  QString ValueToString(u32 address, Type type);
+  QString ValueToString(const Core::CPUThreadGuard& guard, u32 address, Type type);
+
+  Core::System& m_system;
 
   MemoryViewTable* m_table;
   QScrollBar* m_scrollbar;
@@ -85,6 +96,7 @@ private:
   BPType m_bp_type = BPType::ReadWrite;
   bool m_do_log = true;
   u32 m_address = 0x80000000;
+  u32 m_address_highlight = 0;
   int m_font_width = 0;
   int m_font_vspace = 0;
   int m_bytes_per_row = 16;

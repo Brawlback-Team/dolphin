@@ -18,9 +18,17 @@ namespace Core
 {
 class System;
 }
+namespace CoreTiming
+{
+class CoreTimingManager;
+}
 namespace Memcard
 {
 struct HeaderData;
+}
+namespace Movie
+{
+class MovieManager;
 }
 
 namespace ExpansionInterface
@@ -36,7 +44,8 @@ enum class AllowMovieFolder
 class CEXIMemoryCard : public IEXIDevice
 {
 public:
-  CEXIMemoryCard(Slot slot, bool gci_folder, const Memcard::HeaderData& header_data);
+  CEXIMemoryCard(Core::System& system, Slot slot, bool gci_folder,
+                 const Memcard::HeaderData& header_data);
   ~CEXIMemoryCard() override;
   void SetCS(int cs) override;
   bool IsInterruptSet() override;
@@ -49,16 +58,16 @@ public:
   // CoreTiming events need to be registered during boot since CoreTiming is DoState()-ed
   // before ExpansionInterface so we'll lose the save stated events if the callbacks are
   // not already registered first.
-  static void Init();
+  static void Init(CoreTiming::CoreTimingManager& core_timing);
   static void Shutdown();
 
   static std::pair<std::string /* path */, bool /* migrate */>
-  GetGCIFolderPath(Slot card_slot, AllowMovieFolder allow_movie_folder);
+  GetGCIFolderPath(Slot card_slot, AllowMovieFolder allow_movie_folder, Movie::MovieManager& movie);
 
 private:
   void SetupGciFolder(const Memcard::HeaderData& header_data);
   void SetupRawMemcard(u16 size_mb);
-  static void EventCompleteFindInstance(u64 userdata,
+  static void EventCompleteFindInstance(Core::System& system, u64 userdata,
                                         std::function<void(CEXIMemoryCard*)> callback);
 
   // Scheduled when a command that required delayed end signaling is done.

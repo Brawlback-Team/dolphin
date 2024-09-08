@@ -54,6 +54,7 @@ private:
   QCheckBox* m_screensaver_checkbox;
   QCheckBox* m_pal60_mode_checkbox;
   QCheckBox* m_connect_keyboard_checkbox;
+  QCheckBox* m_wiilink_checkbox;
   QComboBox* m_system_language_choice;
   QLabel* m_system_language_choice_label;
   QComboBox* m_aspect_ratio_choice;
@@ -65,6 +66,7 @@ private:
   QCheckBox* m_sd_card_checkbox;
   QCheckBox* m_allow_sd_writes_checkbox;
   QCheckBox* m_sync_sd_folder_checkbox;
+  QComboBox* m_sd_card_size_combo;
   QLineEdit* m_sd_raw_edit;
   QLineEdit* m_sd_sync_folder_edit;
   QLineEdit* m_sd_sync_file_edit;

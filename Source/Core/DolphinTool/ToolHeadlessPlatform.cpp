@@ -15,14 +15,13 @@
 #include "Core/Host.h"
 
 // Begin stubs needed to satisfy Core dependencies
-#include "VideoCommon/RenderBase.h"
 
 std::vector<std::string> Host_GetPreferredLocales()
 {
   return {};
 }
 
-void Host_NotifyMapLoaded()
+void Host_PPCSymbolsChanged()
 {
 }
 
@@ -81,6 +80,11 @@ bool Host_RendererHasFullFocus()
 }
 
 bool Host_RendererIsFullscreen()
+{
+  return false;
+}
+
+bool Host_TASInputHasFocus()
 {
   return false;
 }

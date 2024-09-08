@@ -62,13 +62,13 @@ QVariant GameListModel::data(const QModelIndex& index, int role) const
   {
   case Column::Platform:
     if (role == Qt::DecorationRole)
-      return Resources::GetPlatform(game.GetPlatform());
+      return Resources::GetPlatform(game.GetPlatform()).pixmap(32, 32);
     if (role == SORT_ROLE)
       return static_cast<int>(game.GetPlatform());
     break;
   case Column::Country:
     if (role == Qt::DecorationRole)
-      return Resources::GetCountry(game.GetCountry());
+      return Resources::GetCountry(game.GetCountry()).pixmap(32, 22);
     if (role == SORT_ROLE)
       return static_cast<int>(game.GetCountry());
     break;
@@ -78,7 +78,7 @@ QVariant GameListModel::data(const QModelIndex& index, int role) const
       // GameCube banners are 96x32, but Wii banners are 192x64.
       QPixmap banner = ToQPixmap(game.GetBannerImage());
       if (banner.isNull())
-        banner = Resources::GetMisc(Resources::MiscID::BannerMissing);
+        banner = Resources::GetMisc(Resources::MiscID::BannerMissing).pixmap(GAMECUBE_BANNER_SIZE);
 
       banner.setDevicePixelRatio(
           std::max(static_cast<qreal>(banner.width()) / GAMECUBE_BANNER_SIZE.width(),
@@ -92,14 +92,14 @@ QVariant GameListModel::data(const QModelIndex& index, int role) const
     {
       QString name = QString::fromStdString(game.GetName(m_title_database));
 
-      // Add disc numbers > 1 to title if not present.
-      const int disc_nr = game.GetDiscNumber() + 1;
-      if (disc_nr > 1)
+      const int disc_number = game.GetDiscNumber() + 1;
+      if (disc_number > 1 || game.IsTwoDiscGame())
       {
-        if (!name.contains(QRegularExpression(QStringLiteral("disc ?%1").arg(disc_nr),
+        // Add disc number to title if not present.
+        if (!name.contains(QRegularExpression(QStringLiteral("disc ?%1").arg(disc_number),
                                               QRegularExpression::CaseInsensitiveOption)))
         {
-          name.append(tr(" (Disc %1)").arg(disc_nr));
+          name.append(tr(" (Disc %1)").arg(disc_number));
         }
       }
 
@@ -195,6 +195,7 @@ QVariant GameListModel::data(const QModelIndex& index, int role) const
 
       return tags.join(QStringLiteral(", "));
     }
+    break;
   default:
     break;
   }
@@ -257,10 +258,19 @@ bool GameListModel::ShouldDisplayGameListItem(int index) const
 {
   const UICommon::GameFile& game = *m_games[index];
 
-  if (!m_term.isEmpty() &&
-      !QString::fromStdString(game.GetName(m_title_database)).contains(m_term, Qt::CaseInsensitive))
+  if (!m_term.isEmpty())
   {
-    return false;
+    const bool matches_title = QString::fromStdString(game.GetName(m_title_database))
+                                   .contains(m_term, Qt::CaseInsensitive);
+    const bool filename_visible = Config::Get(Config::MAIN_GAMELIST_COLUMN_FILE_NAME);
+    const bool list_view_selected = Settings::Instance().GetPreferredView();
+    const bool matches_filename =
+        filename_visible && list_view_selected &&
+        QString::fromStdString(game.GetFileName()).contains(m_term, Qt::CaseInsensitive);
+    if (!(matches_title || matches_filename))
+    {
+      return false;
+    }
   }
 
   const bool show_platform = [&game] {

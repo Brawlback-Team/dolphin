@@ -27,8 +27,8 @@
 #include "VideoCommon/Statistics.h"
 #include "VideoCommon/VertexLoaderBase.h"
 #include "VideoCommon/VertexLoaderManager.h"
-#include "VideoCommon/VertexShaderManager.h"
 #include "VideoCommon/XFMemory.h"
+#include "VideoCommon/XFStateManager.h"
 #include "VideoCommon/XFStructs.h"
 
 namespace OpcodeDecoder
@@ -59,12 +59,14 @@ public:
       if (sub_command == MATINDEX_A)
       {
         VertexLoaderManager::g_needs_cp_xf_consistency_check = true;
-        VertexShaderManager::SetTexMatrixChangedA(value);
+        auto& system = Core::System::GetInstance();
+        system.GetXFStateManager().SetTexMatrixChangedA(value);
       }
       else if (sub_command == MATINDEX_B)
       {
         VertexLoaderManager::g_needs_cp_xf_consistency_check = true;
-        VertexShaderManager::SetTexMatrixChangedB(value);
+        auto& system = Core::System::GetInstance();
+        system.GetXFStateManager().SetTexMatrixChangedB(value);
       }
       else if (sub_command == VCD_LO || sub_command == VCD_HI)
       {
@@ -151,11 +153,14 @@ public:
     {
       m_in_display_list = true;
 
+      auto& system = Core::System::GetInstance();
+
       if constexpr (is_preprocess)
       {
-        const u8* const start_address = Memory::GetPointer(address);
+        auto& memory = system.GetMemory();
+        const u8* const start_address = memory.GetPointerForRange(address, size);
 
-        Fifo::PushFifoAuxBuffer(start_address, size);
+        system.GetFifo().PushFifoAuxBuffer(start_address, size);
 
         if (start_address != nullptr)
         {
@@ -166,12 +171,18 @@ public:
       {
         const u8* start_address;
 
-        if (Fifo::UseDeterministicGPUThread())
-          start_address = static_cast<u8*>(Fifo::PopFifoAuxBuffer(size));
+        auto& fifo = system.GetFifo();
+        if (fifo.UseDeterministicGPUThread())
+        {
+          start_address = static_cast<u8*>(fifo.PopFifoAuxBuffer(size));
+        }
         else
-          start_address = Memory::GetPointer(address);
+        {
+          auto& memory = system.GetMemory();
+          start_address = memory.GetPointerForRange(address, size);
+        }
 
-        // Avoid the crash if Memory::GetPointer failed ..
+        // Avoid the crash if memory.GetPointerForRange failed ..
         if (start_address != nullptr)
         {
           // temporarily swap dl and non-dl (small "hack" for the stats)
@@ -208,8 +219,8 @@ public:
     }
     else
     {
-      Core::System::GetInstance().GetCommandProcessor().HandleUnknownOpcode(opcode, data,
-                                                                            is_preprocess);
+      auto& system = Core::System::GetInstance();
+      system.GetCommandProcessor().HandleUnknownOpcode(opcode, data, is_preprocess);
       m_cycles += 1;
     }
   }
@@ -223,7 +234,7 @@ public:
       // process them.
       if (g_record_fifo_data && static_cast<Opcode>(data[0]) != Opcode::GX_CMD_CALL_DL)
       {
-        FifoRecorder::GetInstance().WriteGPCommand(data, size);
+        Core::System::GetInstance().GetFifoRecorder().WriteGPCommand(data, size);
       }
     }
   }

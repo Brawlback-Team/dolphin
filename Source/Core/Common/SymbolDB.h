@@ -15,6 +15,11 @@
 
 #include "Common/CommonTypes.h"
 
+namespace Core
+{
+class CPUThreadGuard;
+}
+
 namespace Common
 {
 struct SCall
@@ -31,6 +36,9 @@ struct Symbol
     Function,
     Data,
   };
+
+  Symbol() = default;
+  explicit Symbol(const std::string& symbol_name) { Rename(symbol_name); }
 
   void Rename(const std::string& symbol_name);
 
@@ -68,7 +76,7 @@ public:
   virtual ~SymbolDB();
 
   virtual Symbol* GetSymbolFromAddr(u32 addr) { return nullptr; }
-  virtual Symbol* AddFunction(u32 start_addr) { return nullptr; }
+  virtual Symbol* AddFunction(const Core::CPUThreadGuard& guard, u32 start_addr) { return nullptr; }
   void AddCompleteSymbol(const Symbol& symbol);
 
   Symbol* GetSymbolFromName(std::string_view name);

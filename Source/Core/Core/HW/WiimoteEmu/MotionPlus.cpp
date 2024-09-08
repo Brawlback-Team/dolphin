@@ -30,7 +30,7 @@ struct MPI : mbedtls_mpi
   MPI() { mbedtls_mpi_init(this); }
   ~MPI() { mbedtls_mpi_free(this); }
 
-  mbedtls_mpi* Data() { return this; };
+  mbedtls_mpi* Data() { return this; }
 
   template <std::size_t N>
   bool ReadBinary(const u8 (&in_data)[N])
@@ -530,20 +530,6 @@ void MotionPlus::Update(const DesiredExtensionState& target_state)
 
 MotionPlus::DataFormat::Data MotionPlus::GetGyroscopeData(const Common::Vec3& angular_velocity)
 {
-  // Conversion from radians to the calibrated values in degrees.
-  constexpr float VALUE_SCALE =
-      (CALIBRATION_SCALE_OFFSET >> (CALIBRATION_BITS - BITS_OF_PRECISION)) / float(MathUtil::TAU) *
-      360;
-
-  constexpr float SLOW_SCALE = VALUE_SCALE / CALIBRATION_SLOW_SCALE_DEGREES;
-  constexpr float FAST_SCALE = VALUE_SCALE / CALIBRATION_FAST_SCALE_DEGREES;
-
-  static_assert(ZERO_VALUE == 1 << (BITS_OF_PRECISION - 1),
-                "SLOW_MAX_RAD_PER_SEC assumes calibrated zero is at center of sensor values.");
-
-  constexpr u16 SENSOR_RANGE = 1 << (BITS_OF_PRECISION - 1);
-  constexpr float SLOW_MAX_RAD_PER_SEC = SENSOR_RANGE / SLOW_SCALE;
-
   // Slow (high precision) scaling can be used if it fits in the sensor range.
   const float yaw = angular_velocity.z;
   const bool yaw_slow = (std::abs(yaw) < SLOW_MAX_RAD_PER_SEC);
@@ -557,9 +543,11 @@ MotionPlus::DataFormat::Data MotionPlus::GetGyroscopeData(const Common::Vec3& an
   const bool pitch_slow = (std::abs(pitch) < SLOW_MAX_RAD_PER_SEC);
   const s32 pitch_value = pitch * (pitch_slow ? SLOW_SCALE : FAST_SCALE);
 
-  const u16 clamped_yaw_value = u16(std::clamp(yaw_value + ZERO_VALUE, 0, MAX_VALUE));
-  const u16 clamped_roll_value = u16(std::clamp(roll_value + ZERO_VALUE, 0, MAX_VALUE));
-  const u16 clamped_pitch_value = u16(std::clamp(pitch_value + ZERO_VALUE, 0, MAX_VALUE));
+  const u16 clamped_yaw_value = u16(std::llround(std::clamp(yaw_value + ZERO_VALUE, 0, MAX_VALUE)));
+  const u16 clamped_roll_value =
+      u16(std::llround(std::clamp(roll_value + ZERO_VALUE, 0, MAX_VALUE)));
+  const u16 clamped_pitch_value =
+      u16(std::llround(std::clamp(pitch_value + ZERO_VALUE, 0, MAX_VALUE)));
 
   return MotionPlus::DataFormat::Data{
       MotionPlus::DataFormat::GyroRawValue{MotionPlus::DataFormat::GyroType(
@@ -731,7 +719,7 @@ void MotionPlus::ReversePassthroughModifications(PassthroughMode mode, u8* data)
 
     // This is an overwritten unused button bit on the Classic Controller.
     // Note it's a significant bit on the DJ Hero Turntable. (passthrough not feasible)
-    Common::SetBit<0>(data[4], 1);
+    Common::SetBit<0>(data[4], true);
   }
 }
 

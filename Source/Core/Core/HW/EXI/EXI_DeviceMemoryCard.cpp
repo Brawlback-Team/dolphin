@@ -56,11 +56,11 @@ static Common::EnumMap<char, MAX_MEMCARD_SLOT> s_card_short_names{'A', 'B'};
 
 // Takes care of the nasty recovery of the 'this' pointer from card_slot,
 // stored in the userdata parameter of the CoreTiming event.
-void CEXIMemoryCard::EventCompleteFindInstance(u64 userdata,
+void CEXIMemoryCard::EventCompleteFindInstance(Core::System& system, u64 userdata,
                                                std::function<void(CEXIMemoryCard*)> callback)
 {
   Slot card_slot = static_cast<Slot>(userdata);
-  IEXIDevice* self = ExpansionInterface::GetDevice(card_slot);
+  IEXIDevice* self = system.GetExpansionInterface().GetDevice(card_slot);
   if (self != nullptr)
   {
     if (self->m_device_type == EXIDeviceType::MemoryCard ||
@@ -73,21 +73,21 @@ void CEXIMemoryCard::EventCompleteFindInstance(u64 userdata,
 
 void CEXIMemoryCard::CmdDoneCallback(Core::System& system, u64 userdata, s64)
 {
-  EventCompleteFindInstance(userdata, [](CEXIMemoryCard* instance) { instance->CmdDone(); });
+  EventCompleteFindInstance(system, userdata,
+                            [](CEXIMemoryCard* instance) { instance->CmdDone(); });
 }
 
 void CEXIMemoryCard::TransferCompleteCallback(Core::System& system, u64 userdata, s64)
 {
-  EventCompleteFindInstance(userdata,
+  EventCompleteFindInstance(system, userdata,
                             [](CEXIMemoryCard* instance) { instance->TransferComplete(); });
 }
 
-void CEXIMemoryCard::Init()
+void CEXIMemoryCard::Init(CoreTiming::CoreTimingManager& core_timing)
 {
   static_assert(s_et_cmd_done.size() == s_et_transfer_complete.size(), "Event array size differs");
   static_assert(s_et_cmd_done.size() == MEMCARD_SLOTS.size(), "Event array size differs");
-  auto& system = Core::System::GetInstance();
-  auto& core_timing = system.GetCoreTiming();
+
   for (Slot slot : MEMCARD_SLOTS)
   {
     s_et_cmd_done[slot] = core_timing.RegisterEvent(
@@ -104,9 +104,9 @@ void CEXIMemoryCard::Shutdown()
   s_et_transfer_complete.fill(nullptr);
 }
 
-CEXIMemoryCard::CEXIMemoryCard(const Slot slot, bool gci_folder,
+CEXIMemoryCard::CEXIMemoryCard(Core::System& system, const Slot slot, bool gci_folder,
                                const Memcard::HeaderData& header_data)
-    : m_card_slot(slot)
+    : IEXIDevice(system), m_card_slot(slot)
 {
   ASSERT_MSG(EXPANSIONINTERFACE, IsMemcardSlot(slot), "Trying to create invalid memory card in {}.",
              slot);
@@ -144,12 +144,13 @@ CEXIMemoryCard::CEXIMemoryCard(const Slot slot, bool gci_folder,
   m_memory_card_size = m_memory_card->GetCardId() * SIZE_TO_Mb;
   std::array<u8, 20> header{};
   m_memory_card->Read(0, static_cast<s32>(header.size()), header.data());
-  auto& sram = Core::System::GetInstance().GetSRAM();
+  auto& sram = system.GetSRAM();
   SetCardFlashID(&sram, header.data(), m_card_slot);
 }
 
 std::pair<std::string /* path */, bool /* migrate */>
-CEXIMemoryCard::GetGCIFolderPath(Slot card_slot, AllowMovieFolder allow_movie_folder)
+CEXIMemoryCard::GetGCIFolderPath(Slot card_slot, AllowMovieFolder allow_movie_folder,
+                                 Movie::MovieManager& movie)
 {
   std::string path_override = Config::Get(Config::GetInfoForGCIPathOverride(card_slot));
 
@@ -157,9 +158,8 @@ CEXIMemoryCard::GetGCIFolderPath(Slot card_slot, AllowMovieFolder allow_movie_fo
     return {std::move(path_override), false};
 
   const bool use_movie_folder = allow_movie_folder == AllowMovieFolder::Yes &&
-                                Movie::IsPlayingInput() && Movie::IsConfigSaved() &&
-                                Movie::IsUsingMemcard(card_slot) &&
-                                Movie::IsStartingFromClearSave();
+                                movie.IsPlayingInput() && movie.IsConfigSaved() &&
+                                movie.IsUsingMemcard(card_slot) && movie.IsStartingFromClearSave();
 
   const DiscIO::Region region = Config::ToGameCubeRegion(SConfig::GetInstance().m_region);
   if (use_movie_folder)
@@ -182,7 +182,8 @@ void CEXIMemoryCard::SetupGciFolder(const Memcard::HeaderData& header_data)
     current_game_id = Common::swap32(reinterpret_cast<const u8*>(game_id.c_str()));
   }
 
-  const auto [dir_path, migrate] = GetGCIFolderPath(m_card_slot, AllowMovieFolder::Yes);
+  const auto [dir_path, migrate] =
+      GetGCIFolderPath(m_card_slot, AllowMovieFolder::Yes, m_system.GetMovie());
 
   const File::FileInfo file_info(dir_path);
   if (!file_info.Exists())
@@ -219,8 +220,9 @@ void CEXIMemoryCard::SetupGciFolder(const Memcard::HeaderData& header_data)
 void CEXIMemoryCard::SetupRawMemcard(u16 size_mb)
 {
   std::string filename;
-  if (Movie::IsPlayingInput() && Movie::IsConfigSaved() && Movie::IsUsingMemcard(m_card_slot) &&
-      Movie::IsStartingFromClearSave())
+  auto& movie = m_system.GetMovie();
+  if (movie.IsPlayingInput() && movie.IsConfigSaved() && movie.IsUsingMemcard(m_card_slot) &&
+      movie.IsStartingFromClearSave())
   {
     filename = File::GetUserPath(D_GCUSER_IDX) +
                fmt::format("Movie{}.raw", s_card_short_names[m_card_slot]);
@@ -235,8 +237,7 @@ void CEXIMemoryCard::SetupRawMemcard(u16 size_mb)
 
 CEXIMemoryCard::~CEXIMemoryCard()
 {
-  auto& system = Core::System::GetInstance();
-  auto& core_timing = system.GetCoreTiming();
+  auto& core_timing = m_system.GetCoreTiming();
   core_timing.RemoveEvent(s_et_cmd_done[m_card_slot]);
   core_timing.RemoveEvent(s_et_transfer_complete[m_card_slot]);
 }
@@ -257,20 +258,20 @@ void CEXIMemoryCard::CmdDone()
   m_status &= ~MC_STATUS_BUSY;
 
   m_interrupt_set = true;
-  ExpansionInterface::UpdateInterrupts();
+  m_system.GetExpansionInterface().UpdateInterrupts();
 }
 
 void CEXIMemoryCard::TransferComplete()
 {
   // Transfer complete, send interrupt
-  ExpansionInterface::GetChannel(ExpansionInterface::SlotToEXIChannel(m_card_slot))
+  m_system.GetExpansionInterface()
+      .GetChannel(ExpansionInterface::SlotToEXIChannel(m_card_slot))
       ->SendTransferComplete();
 }
 
 void CEXIMemoryCard::CmdDoneLater(u64 cycles)
 {
-  auto& system = Core::System::GetInstance();
-  auto& core_timing = system.GetCoreTiming();
+  auto& core_timing = m_system.GetCoreTiming();
   core_timing.RemoveEvent(s_et_cmd_done[m_card_slot]);
   core_timing.ScheduleEvent(cycles, s_et_cmd_done[m_card_slot], static_cast<u64>(m_card_slot));
 }
@@ -502,7 +503,7 @@ void CEXIMemoryCard::DoState(PointerWrap& p)
   // otherwise, we'll assume the user wants to keep their memcards and saves separate,
   // unless we're loading (in which case we let the savestate contents decide, in order to stay
   // aligned with them).
-  bool storeContents = (Movie::IsMovieActive());
+  bool storeContents = m_system.GetMovie().IsMovieActive();
   p.Do(storeContents);
 
   if (storeContents)
@@ -523,7 +524,8 @@ void CEXIMemoryCard::DoState(PointerWrap& p)
 // read all at once instead of single byte at a time as done by IEXIDevice::DMARead
 void CEXIMemoryCard::DMARead(u32 addr, u32 size)
 {
-  m_memory_card->Read(m_address, size, Memory::GetPointer(addr));
+  auto& memory = m_system.GetMemory();
+  m_memory_card->Read(m_address, size, memory.GetPointerForRange(addr, size));
 
   if ((m_address + size) % Memcard::BLOCK_SIZE == 0)
   {
@@ -531,8 +533,8 @@ void CEXIMemoryCard::DMARead(u32 addr, u32 size)
   }
 
   // Schedule transfer complete later based on read speed
-  Core::System::GetInstance().GetCoreTiming().ScheduleEvent(
-      size * (SystemTimers::GetTicksPerSecond() / MC_TRANSFER_RATE_READ),
+  m_system.GetCoreTiming().ScheduleEvent(
+      size * (m_system.GetSystemTimers().GetTicksPerSecond() / MC_TRANSFER_RATE_READ),
       s_et_transfer_complete[m_card_slot], static_cast<u64>(m_card_slot));
 }
 
@@ -540,7 +542,8 @@ void CEXIMemoryCard::DMARead(u32 addr, u32 size)
 // write all at once instead of single byte at a time as done by IEXIDevice::DMAWrite
 void CEXIMemoryCard::DMAWrite(u32 addr, u32 size)
 {
-  m_memory_card->Write(m_address, size, Memory::GetPointer(addr));
+  auto& memory = m_system.GetMemory();
+  m_memory_card->Write(m_address, size, memory.GetPointerForRange(addr, size));
 
   if (((m_address + size) % Memcard::BLOCK_SIZE) == 0)
   {
@@ -548,8 +551,8 @@ void CEXIMemoryCard::DMAWrite(u32 addr, u32 size)
   }
 
   // Schedule transfer complete later based on write speed
-  Core::System::GetInstance().GetCoreTiming().ScheduleEvent(
-      size * (SystemTimers::GetTicksPerSecond() / MC_TRANSFER_RATE_WRITE),
+  m_system.GetCoreTiming().ScheduleEvent(
+      size * (m_system.GetSystemTimers().GetTicksPerSecond() / MC_TRANSFER_RATE_WRITE),
       s_et_transfer_complete[m_card_slot], static_cast<u64>(m_card_slot));
 }
 }  // namespace ExpansionInterface

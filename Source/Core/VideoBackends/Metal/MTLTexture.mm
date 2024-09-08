@@ -6,7 +6,7 @@
 #include "Common/Align.h"
 #include "Common/Assert.h"
 
-#include "VideoBackends/Metal/MTLRenderer.h"
+#include "VideoBackends/Metal/MTLGfx.h"
 #include "VideoBackends/Metal/MTLStateTracker.h"
 
 Metal::Texture::Texture(MRCOwned<id<MTLTexture>> tex, const TextureConfig& config)
@@ -56,7 +56,7 @@ void Metal::Texture::ResolveFromTexture(const AbstractTexture* src,
 static constexpr u32 STAGING_TEXTURE_UPLOAD_THRESHOLD = 1024 * 1024 * 4;
 
 void Metal::Texture::Load(u32 level, u32 width, u32 height, u32 row_length,  //
-                          const u8* buffer, size_t buffer_size)
+                          const u8* buffer, size_t buffer_size, u32 layer)
 {
   @autoreleasepool
   {
@@ -89,7 +89,7 @@ void Metal::Texture::Load(u32 level, u32 width, u32 height, u32 row_length,  //
         sourceBytesPerImage:upload_size
                  sourceSize:MTLSizeMake(width, height, 1)
                   toTexture:m_tex
-           destinationSlice:0
+           destinationSlice:layer
            destinationLevel:level
           destinationOrigin:MTLOriginMake(0, 0, 0)];
   }
@@ -189,13 +189,56 @@ void Metal::StagingTexture::Flush()
   m_wait_buffer = nullptr;
 }
 
-Metal::Framebuffer::Framebuffer(AbstractTexture* color, AbstractTexture* depth,  //
+static void InitDesc(id desc, AbstractTexture* tex)
+{
+  [desc setTexture:static_cast<Metal::Texture*>(tex)->GetMTLTexture()];
+  [desc setLoadAction:MTLLoadActionLoad];
+  [desc setStoreAction:MTLStoreActionStore];
+}
+
+static void InitStencilDesc(MTLRenderPassStencilAttachmentDescriptor* desc, AbstractTexture* tex)
+{
+  InitDesc(desc, tex);
+  [desc setClearStencil:0];
+}
+
+Metal::Framebuffer::Framebuffer(AbstractTexture* color, AbstractTexture* depth,
+                                std::vector<AbstractTexture*> additonal_color_textures,  //
                                 u32 width, u32 height, u32 layers, u32 samples)
-    : AbstractFramebuffer(color, depth,
+    : AbstractFramebuffer(color, depth, {},
                           color ? color->GetFormat() : AbstractTextureFormat::Undefined,  //
                           depth ? depth->GetFormat() : AbstractTextureFormat::Undefined,  //
-                          width, height, layers, samples)
+                          width, height, layers, samples),
+      m_additional_color_textures(std::move(additonal_color_textures))
 {
+  m_pass_descriptor = MRCTransfer([MTLRenderPassDescriptor new]);
+  MTLRenderPassDescriptor* desc = m_pass_descriptor;
+  if (color)
+    InitDesc(desc.colorAttachments[0], color);
+  if (depth)
+  {
+    InitDesc(desc.depthAttachment, depth);
+    if (Util::HasStencil(depth->GetFormat()))
+      InitStencilDesc(desc.stencilAttachment, depth);
+  }
+  for (size_t i = 0; i < m_additional_color_textures.size(); i++)
+    InitDesc(desc.colorAttachments[i + 1], m_additional_color_textures[i]);
 }
 
 Metal::Framebuffer::~Framebuffer() = default;
+
+void Metal::Framebuffer::ActualSetLoadAction(MTLLoadAction action)
+{
+  m_current_load_action = action;
+  AbstractTextureFormat depth_fmt = GetDepthFormat();
+  MTLRenderPassDescriptor* desc = m_pass_descriptor;
+  desc.colorAttachments[0].loadAction = action;
+  if (depth_fmt != AbstractTextureFormat::Undefined)
+  {
+    desc.depthAttachment.loadAction = action;
+    if (Util::HasStencil(depth_fmt))
+      desc.stencilAttachment.loadAction = action;
+  }
+  for (size_t i = 0; i < NumAdditionalColorTextures(); i++)
+    desc.colorAttachments[i + 1].loadAction = action;
+}

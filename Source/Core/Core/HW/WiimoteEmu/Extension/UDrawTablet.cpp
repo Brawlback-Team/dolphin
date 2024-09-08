@@ -34,11 +34,13 @@ constexpr std::array<const char*, 2> udraw_tablet_button_names{{
 
 UDrawTablet::UDrawTablet() : Extension3rdParty("uDraw", _trans("uDraw GameTablet"))
 {
+  using Translatability = ControllerEmu::Translatability;
+
   // Buttons
   groups.emplace_back(m_buttons = new ControllerEmu::Buttons(_trans("Buttons")));
   for (auto& button_name : udraw_tablet_button_names)
   {
-    m_buttons->AddInput(ControllerEmu::Translate, button_name);
+    m_buttons->AddInput(Translatability::Translate, button_name);
   }
 
   // Stylus
@@ -47,7 +49,8 @@ UDrawTablet::UDrawTablet() : Extension3rdParty("uDraw", _trans("uDraw GameTablet
 
   // Touch
   groups.emplace_back(m_touch = new ControllerEmu::Triggers(_trans("Touch")));
-  m_touch->AddInput(ControllerEmu::Translate, _trans("Pressure"));
+  m_touch->AddInput(Translatability::Translate, _trans("Pressure"));
+  m_touch->AddInput(Translatability::Translate, _trans("Lift"));
 }
 
 void UDrawTablet::BuildDesiredExtensionState(DesiredExtensionState* target_state)
@@ -78,11 +81,10 @@ void UDrawTablet::BuildDesiredExtensionState(DesiredExtensionState* target_state
   constexpr double center_y = (max_y + min_y) / 2.0;
 
   // Neutral (lifted) stylus state:
-  u16 stylus_x = 0x7ff;
-  u16 stylus_y = 0x7ff;
+  u16 stylus_x = 0xfff;
+  u16 stylus_y = 0xfff;
 
-  // TODO: Expose the lifted stylus state in the UI.
-  bool is_stylus_lifted = false;
+  const bool is_stylus_lifted = std::lround(touch_state.data[1]) != 0;
 
   const auto stylus_state = m_stylus->GetState();
 

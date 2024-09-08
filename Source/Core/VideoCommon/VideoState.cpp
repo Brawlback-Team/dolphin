@@ -8,21 +8,26 @@
 #include "Common/ChunkFile.h"
 #include "Core/System.h"
 #include "VideoCommon/BPMemory.h"
+#include "VideoCommon/BPStructs.h"
+#include "VideoCommon/BoundingBox.h"
 #include "VideoCommon/CPMemory.h"
 #include "VideoCommon/CommandProcessor.h"
 #include "VideoCommon/Fifo.h"
+#include "VideoCommon/FrameDumper.h"
 #include "VideoCommon/FramebufferManager.h"
 #include "VideoCommon/GeometryShaderManager.h"
 #include "VideoCommon/PixelEngine.h"
 #include "VideoCommon/PixelShaderManager.h"
-#include "VideoCommon/RenderBase.h"
+#include "VideoCommon/Present.h"
 #include "VideoCommon/TMEM.h"
 #include "VideoCommon/TextureCacheBase.h"
 #include "VideoCommon/TextureDecoder.h"
 #include "VideoCommon/VertexLoaderManager.h"
 #include "VideoCommon/VertexManagerBase.h"
 #include "VideoCommon/VertexShaderManager.h"
+#include "VideoCommon/Widescreen.h"
 #include "VideoCommon/XFMemory.h"
+#include "VideoCommon/XFStateManager.h"
 
 void VideoCommon_DoState(PointerWrap& p)
 {
@@ -52,7 +57,7 @@ void VideoCommon_DoState(PointerWrap& p)
   p.DoMarker("XF Memory");
 
   // Texture decoder
-  p.DoArray(texMem);
+  p.DoArray(s_tex_mem);
   p.DoMarker("texMem");
 
   // TMEM
@@ -60,26 +65,26 @@ void VideoCommon_DoState(PointerWrap& p)
   p.DoMarker("TMEM");
 
   // FIFO
-  Fifo::DoState(p);
+  auto& system = Core::System::GetInstance();
+  system.GetFifo().DoState(p);
   p.DoMarker("Fifo");
 
-  auto& system = Core::System::GetInstance();
   auto& command_processor = system.GetCommandProcessor();
   command_processor.DoState(p);
   p.DoMarker("CommandProcessor");
 
-  PixelEngine::DoState(p);
+  system.GetPixelEngine().DoState(p);
   p.DoMarker("PixelEngine");
 
   // the old way of replaying current bpmem as writes to push side effects to pixel shader manager
   // doesn't really work.
-  PixelShaderManager::DoState(p);
+  system.GetPixelShaderManager().DoState(p);
   p.DoMarker("PixelShaderManager");
 
-  VertexShaderManager::DoState(p);
+  system.GetVertexShaderManager().DoState(p);
   p.DoMarker("VertexShaderManager");
 
-  GeometryShaderManager::DoState(p);
+  system.GetGeometryShaderManager().DoState(p);
   p.DoMarker("GeometryShaderManager");
 
   g_vertex_manager->DoState(p);
@@ -91,8 +96,18 @@ void VideoCommon_DoState(PointerWrap& p)
   g_texture_cache->DoState(p);
   p.DoMarker("TextureCache");
 
-  g_renderer->DoState(p);
-  p.DoMarker("Renderer");
+  g_presenter->DoState(p);
+  g_frame_dumper->DoState(p);
+  p.DoMarker("Presenter");
+
+  g_bounding_box->DoState(p);
+  p.DoMarker("Bounding Box");
+
+  g_widescreen->DoState(p);
+  p.DoMarker("Widescreen");
+
+  system.GetXFStateManager().DoState(p);
+  p.DoMarker("XFStateManager");
 
   // Refresh state.
   if (p.IsReadMode())

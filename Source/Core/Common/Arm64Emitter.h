@@ -3,9 +3,12 @@
 
 #pragma once
 
+#include <array>
+#include <bit>
 #include <cstring>
 #include <functional>
 #include <optional>
+#include <type_traits>
 #include <utility>
 
 #include "Common/ArmCommon.h"
@@ -16,6 +19,7 @@
 #include "Common/Common.h"
 #include "Common/CommonTypes.h"
 #include "Common/MathUtil.h"
+#include "Common/SmallVector.h"
 
 namespace Arm64Gen
 {
@@ -346,6 +350,12 @@ enum class RoundingMode
   Z,  // round towards zero
 };
 
+enum class GPRSize
+{
+  B32,
+  B64,
+};
+
 struct FixupBranch
 {
   enum class Type : u32
@@ -483,12 +493,14 @@ public:
       m_width = WidthSpecifier::Width64Bit;
       if (shift == 64)
         m_shift = 0;
+      m_extend = ExtendSpecifier::UXTX;
     }
     else
     {
       m_width = WidthSpecifier::Width32Bit;
       if (shift == 32)
         m_shift = 0;
+      m_extend = ExtendSpecifier::UXTW;
     }
   }
   ARM64Reg GetReg() const { return m_destReg; }
@@ -516,7 +528,7 @@ struct LogicalImm
 
   constexpr LogicalImm(u8 r_, u8 s_, bool n_) : r(r_), s(s_), n(n_), valid(true) {}
 
-  constexpr LogicalImm(u64 value, u32 width)
+  constexpr LogicalImm(u64 value, GPRSize size)
   {
     // Logical immediates are encoded using parameters n, imm_s and imm_r using
     // the following table:
@@ -534,17 +546,14 @@ struct LogicalImm
     // are set. The pattern is rotated right by R, and repeated across a 32 or
     // 64-bit value, depending on destination register width.
 
-    constexpr int kWRegSizeInBits = 32;
-
-    if (width == kWRegSizeInBits)
+    if (size == GPRSize::B32)
     {
       // To handle 32-bit logical immediates, the very easiest thing is to repeat
       // the input value twice to make a 64-bit word. The correct encoding of that
       // as a logical immediate will also be the correct encoding of the 32-bit
       // value.
 
-      value <<= kWRegSizeInBits;
-      value |= value >> kWRegSizeInBits;
+      value = (value << 32) | (value & 0xFFFFFFFF);
     }
 
     if (value == 0 || (~value) == 0)
@@ -558,15 +567,15 @@ struct LogicalImm
     // pick the next sequence of ones. This ensures we get a complete element
     // that has not been cut-in-half due to rotation across the word boundary.
 
-    const size_t rotation = Common::CountTrailingZeros(value & (value + 1));
-    const u64 normalized = Common::RotateRight(value, rotation);
+    const int rotation = std::countr_zero(value & (value + 1));
+    const u64 normalized = std::rotr(value, rotation);
 
-    const size_t element_size = Common::CountTrailingZeros(normalized & (normalized + 1));
-    const size_t ones = Common::CountTrailingZeros(~normalized);
+    const int element_size = std::countr_zero(normalized & (normalized + 1));
+    const int ones = std::countr_one(normalized);
 
     // Check the value is repeating; also ensures element size is a power of two.
 
-    if (Common::RotateRight(value, element_size) != value)
+    if (std::rotr(value, element_size) != value)
     {
       valid = false;
       return;
@@ -577,8 +586,8 @@ struct LogicalImm
     // segment.
 
     r = static_cast<u8>((element_size - rotation) & (element_size - 1));
-    s = (((~element_size + 1) << 1) | (ones - 1)) & 0x3f;
-    n = (element_size >> 6) & 1;
+    s = static_cast<u8>((((~element_size + 1) << 1) | (ones - 1)) & 0x3f);
+    n = Common::ExtractBit<6>(element_size);
 
     valid = true;
   }
@@ -596,6 +605,12 @@ class ARM64XEmitter
   friend class ARM64FloatEmitter;
 
 private:
+  struct RegisterMove
+  {
+    ARM64Reg dst;
+    ARM64Reg src;
+  };
+
   // Pointer to memory where code will be emitted to.
   u8* m_code = nullptr;
 
@@ -641,7 +656,11 @@ private:
   void EncodeAddressInst(u32 op, ARM64Reg Rd, s32 imm);
   void EncodeLoadStoreUnscaled(u32 size, u32 op, ARM64Reg Rt, ARM64Reg Rn, s32 imm);
 
-  FixupBranch WriteFixupBranch();
+  [[nodiscard]] FixupBranch WriteFixupBranch();
+
+  // This function solves the "parallel moves" problem common in compilers.
+  // The arguments are mutated!
+  void ParallelMoves(RegisterMove* begin, RegisterMove* end, std::array<u8, 32>* source_gpr_usages);
 
   template <typename T>
   void MOVI2RImpl(ARM64Reg Rd, T imm);
@@ -661,10 +680,10 @@ public:
   void SetCodePtr(u8* ptr, u8* end, bool write_failed = false);
 
   void SetCodePtrUnsafe(u8* ptr, u8* end, bool write_failed = false);
-  const u8* GetCodePtr() const;
-  u8* GetWritableCodePtr();
-  const u8* GetCodeEnd() const;
-  u8* GetWritableCodeEnd();
+  const u8* GetCodePtr() const { return m_code; }
+  u8* GetWritableCodePtr() { return m_code; }
+  const u8* GetCodeEnd() const { return m_code_end; }
+  u8* GetWritableCodeEnd() { return m_code_end; }
   void ReserveCodeSpace(u32 bytes);
   u8* AlignCode16();
   u8* AlignCodePage();
@@ -677,13 +696,13 @@ public:
 
   // FixupBranch branching
   void SetJumpTarget(FixupBranch const& branch);
-  FixupBranch CBZ(ARM64Reg Rt);
-  FixupBranch CBNZ(ARM64Reg Rt);
-  FixupBranch B(CCFlags cond);
-  FixupBranch TBZ(ARM64Reg Rt, u8 bit);
-  FixupBranch TBNZ(ARM64Reg Rt, u8 bit);
-  FixupBranch B();
-  FixupBranch BL();
+  [[nodiscard]] FixupBranch CBZ(ARM64Reg Rt);
+  [[nodiscard]] FixupBranch CBNZ(ARM64Reg Rt);
+  [[nodiscard]] FixupBranch B(CCFlags cond);
+  [[nodiscard]] FixupBranch TBZ(ARM64Reg Rt, u8 bit);
+  [[nodiscard]] FixupBranch TBNZ(ARM64Reg Rt, u8 bit);
+  [[nodiscard]] FixupBranch B();
+  [[nodiscard]] FixupBranch BL();
 
   // Compare and Branch
   void CBZ(ARM64Reg Rt, const void* ptr);
@@ -1055,6 +1074,114 @@ public:
   void ABI_PushRegisters(BitSet32 registers);
   void ABI_PopRegisters(BitSet32 registers, BitSet32 ignore_mask = BitSet32(0));
 
+  // Plain function call
+  void QuickCallFunction(ARM64Reg scratchreg, const void* func);
+  template <typename T>
+  void QuickCallFunction(ARM64Reg scratchreg, T func)
+  {
+    QuickCallFunction(scratchreg, (const void*)func);
+  }
+
+  template <typename FuncRet, typename... FuncArgs, typename... Args>
+  void ABI_CallFunction(FuncRet (*func)(FuncArgs...), Args... args)
+  {
+    static_assert(sizeof...(FuncArgs) == sizeof...(Args), "Wrong number of arguments");
+    static_assert(sizeof...(FuncArgs) <= 8, "Passing arguments on the stack is not supported");
+
+    if constexpr (!std::is_void_v<FuncRet>)
+      static_assert(sizeof(FuncRet) <= 16, "Large return types are not supported");
+
+    std::array<u8, 32> source_gpr_uses{};
+
+    auto check_argument = [&](auto& arg) {
+      using Arg = std::decay_t<decltype(arg)>;
+
+      if constexpr (std::is_same_v<Arg, ARM64Reg>)
+      {
+        ASSERT(IsGPR(arg));
+        source_gpr_uses[DecodeReg(arg)]++;
+      }
+      else
+      {
+        // To be more correct, we should be checking FuncArgs here rather than Args, but that's a
+        // lot more effort to implement. Let's just do these best-effort checks for now.
+        static_assert(!std::is_floating_point_v<Arg>, "Floating-point arguments are not supported");
+        static_assert(sizeof(Arg) <= 8, "Arguments bigger than a register are not supported");
+      }
+    };
+
+    (check_argument(args), ...);
+
+    {
+      Common::SmallVector<RegisterMove, sizeof...(Args)> pending_moves;
+
+      size_t i = 0;
+
+      auto handle_register_argument = [&](auto& arg) {
+        using Arg = std::decay_t<decltype(arg)>;
+
+        if constexpr (std::is_same_v<Arg, ARM64Reg>)
+        {
+          const ARM64Reg dst_reg =
+              (Is64Bit(arg) ? EncodeRegTo64 : EncodeRegTo32)(static_cast<ARM64Reg>(i));
+
+          if (dst_reg == arg)
+          {
+            // The value is already in the right register.
+            source_gpr_uses[DecodeReg(arg)]--;
+          }
+          else if (source_gpr_uses[i] == 0)
+          {
+            // The destination register isn't used as the source of another move.
+            // We can go ahead and do the move right away.
+            MOV(dst_reg, arg);
+            source_gpr_uses[DecodeReg(arg)]--;
+          }
+          else
+          {
+            // The destination register is used as the source of a move we haven't gotten to yet.
+            // Let's record that we need to deal with this move later.
+            pending_moves.emplace_back(dst_reg, arg);
+          }
+        }
+
+        ++i;
+      };
+
+      (handle_register_argument(args), ...);
+
+      if (!pending_moves.empty())
+      {
+        ParallelMoves(pending_moves.data(), pending_moves.data() + pending_moves.size(),
+                      &source_gpr_uses);
+      }
+    }
+
+    {
+      size_t i = 0;
+
+      auto handle_immediate_argument = [&](auto& arg) {
+        using Arg = std::decay_t<decltype(arg)>;
+
+        if constexpr (!std::is_same_v<Arg, ARM64Reg>)
+        {
+          const ARM64Reg dst_reg =
+              (sizeof(arg) == 8 ? EncodeRegTo64 : EncodeRegTo32)(static_cast<ARM64Reg>(i));
+          if constexpr (std::is_pointer_v<Arg>)
+            MOVP2R(dst_reg, arg);
+          else
+            MOVI2R(dst_reg, arg);
+        }
+
+        ++i;
+      };
+
+      (handle_immediate_argument(args), ...);
+    }
+
+    QuickCallFunction(ARM64Reg::X8, func);
+  }
+
   // Utility to generate a call to a std::function object.
   //
   // Unfortunately, calling operator() directly is undefined behavior in C++
@@ -1066,23 +1193,11 @@ public:
     return (*f)(args...);
   }
 
-  // This function expects you to have set up the state.
-  // Overwrites X0 and X8
-  template <typename T, typename... Args>
-  ARM64Reg ABI_SetupLambda(const std::function<T(Args...)>* f)
+  template <typename FuncRet, typename... FuncArgs, typename... Args>
+  void ABI_CallLambdaFunction(const std::function<FuncRet(FuncArgs...)>* f, Args... args)
   {
-    auto trampoline = &ARM64XEmitter::CallLambdaTrampoline<T, Args...>;
-    MOVP2R(ARM64Reg::X8, trampoline);
-    MOVP2R(ARM64Reg::X0, const_cast<void*>((const void*)f));
-    return ARM64Reg::X8;
-  }
-
-  // Plain function call
-  void QuickCallFunction(ARM64Reg scratchreg, const void* func);
-  template <typename T>
-  void QuickCallFunction(ARM64Reg scratchreg, T func)
-  {
-    QuickCallFunction(scratchreg, (const void*)func);
+    auto trampoline = &ARM64XEmitter::CallLambdaTrampoline<FuncRet, FuncArgs...>;
+    ABI_CallFunction(trampoline, f, args...);
   }
 };
 
@@ -1129,6 +1244,13 @@ public:
   void FMOV(ARM64Reg Rd, ARM64Reg Rn, bool top = false);  // Also generalized move between GPR/FP
   void FRECPE(ARM64Reg Rd, ARM64Reg Rn);
   void FRSQRTE(ARM64Reg Rd, ARM64Reg Rn);
+
+  // Scalar - pairwise
+  void FADDP(ARM64Reg Rd, ARM64Reg Rn);
+  void FMAXP(ARM64Reg Rd, ARM64Reg Rn);
+  void FMINP(ARM64Reg Rd, ARM64Reg Rn);
+  void FMAXNMP(ARM64Reg Rd, ARM64Reg Rn);
+  void FMINNMP(ARM64Reg Rd, ARM64Reg Rn);
 
   // Scalar - 2 Source
   void ADD(ARM64Reg Rd, ARM64Reg Rn, ARM64Reg Rm);
@@ -1296,6 +1418,7 @@ private:
   void EmitThreeSame(bool U, u32 size, u32 opcode, ARM64Reg Rd, ARM64Reg Rn, ARM64Reg Rm);
   void EmitCopy(bool Q, u32 op, u32 imm5, u32 imm4, ARM64Reg Rd, ARM64Reg Rn);
   void EmitScalar2RegMisc(bool U, u32 size, u32 opcode, ARM64Reg Rd, ARM64Reg Rn);
+  void EmitScalarPairwise(bool U, u32 size, u32 opcode, ARM64Reg Rd, ARM64Reg Rn);
   void Emit2RegMisc(bool Q, bool U, u32 size, u32 opcode, ARM64Reg Rd, ARM64Reg Rn);
   void EmitLoadStoreSingleStructure(bool L, bool R, u32 opcode, bool S, u32 size, ARM64Reg Rt,
                                     ARM64Reg Rn);

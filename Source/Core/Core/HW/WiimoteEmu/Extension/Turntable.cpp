@@ -48,18 +48,20 @@ constexpr std::array<const char*, 6> turntable_button_names{{
 
 Turntable::Turntable() : Extension1stParty("Turntable", _trans("DJ Turntable"))
 {
+  using Translatability = ControllerEmu::Translatability;
+
   // buttons
   groups.emplace_back(m_buttons = new ControllerEmu::Buttons(_trans("Buttons")));
   for (auto& turntable_button_name : turntable_button_names)
   {
-    m_buttons->AddInput(ControllerEmu::Translate, turntable_button_name);
+    m_buttons->AddInput(Translatability::Translate, turntable_button_name);
   }
 
-  m_buttons->AddInput(ControllerEmu::DoNotTranslate, "-");
-  m_buttons->AddInput(ControllerEmu::DoNotTranslate, "+");
+  m_buttons->AddInput(Translatability::DoNotTranslate, "-");
+  m_buttons->AddInput(Translatability::DoNotTranslate, "+");
 
   // i18n: This button name refers to a gameplay element in DJ Hero
-  m_buttons->AddInput(ControllerEmu::Translate, _trans("Euphoria"));
+  m_buttons->AddInput(Translatability::Translate, _trans("Euphoria"));
 
   // turntables
   // i18n: "Table" refers to a turntable
@@ -96,7 +98,7 @@ void Turntable::BuildDesiredExtensionState(DesiredExtensionState* target_state)
   // left table
   {
     const ControllerEmu::Slider::StateData lt = m_left_table->GetState(m_input_override_function);
-    const s8 tt = MapFloat<u8>(lt.value, 0, 0, TABLE_RANGE);
+    const s8 tt = MapFloat<s8>(lt.value, 0, -TABLE_RANGE, TABLE_RANGE);
 
     tt_data.ltable1 = tt;
     tt_data.ltable2 = tt >> 5;
@@ -105,7 +107,7 @@ void Turntable::BuildDesiredExtensionState(DesiredExtensionState* target_state)
   // right table
   {
     const ControllerEmu::Slider::StateData rt = m_right_table->GetState(m_input_override_function);
-    const s8 tt = MapFloat<u8>(rt.value, 0, 0, TABLE_RANGE);
+    const s8 tt = MapFloat<s8>(rt.value, 0, -TABLE_RANGE, TABLE_RANGE);
 
     tt_data.rtable1 = tt;
     tt_data.rtable2 = tt >> 1;

@@ -87,7 +87,7 @@ public:
 
   ControlState GetDeadzonePercentage() const;
 
-  virtual ControlState GetVirtualNotchSize() const { return 0.0; };
+  virtual ControlState GetVirtualNotchSize() const { return 0.0; }
 
   virtual ControlState GetGateRadiusAtAngle(double angle) const = 0;
   virtual ReshapeData GetReshapableState(bool adjusted) const = 0;
@@ -117,8 +117,8 @@ protected:
   virtual Control* GetModifierInput() const;
 
 private:
-  void LoadConfig(IniFile::Section*, const std::string&, const std::string&) override;
-  void SaveConfig(IniFile::Section*, const std::string&, const std::string&) override;
+  void LoadConfig(Common::IniFile::Section*, const std::string&, const std::string&) override;
+  void SaveConfig(Common::IniFile::Section*, const std::string&, const std::string&) override;
 
   CalibrationData m_calibration;
   SettingValue<double> m_deadzone_setting;

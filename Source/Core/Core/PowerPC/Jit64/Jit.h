@@ -43,15 +43,18 @@ struct CodeOp;
 class Jit64 : public JitBase, public QuantizedMemoryRoutines
 {
 public:
-  Jit64();
+  explicit Jit64(Core::System& system);
+  Jit64(const Jit64&) = delete;
+  Jit64(Jit64&&) = delete;
+  Jit64& operator=(const Jit64&) = delete;
+  Jit64& operator=(Jit64&&) = delete;
   ~Jit64() override;
 
   void Init() override;
   void Shutdown() override;
 
   bool HandleFault(uintptr_t access_address, SContext* ctx) override;
-  bool HandleStackFault() override;
-  bool BackPatch(u32 emAddress, SContext* ctx);
+  bool BackPatch(SContext* ctx);
 
   void EnableOptimization();
   void EnableBlockLink();
@@ -84,6 +87,8 @@ public:
 
   // Utilities for use by opcodes
 
+  void EmitUpdateMembase();
+  void MSRUpdated(const Gen::OpArg& msr, Gen::X64Reg scratch_reg);
   void FakeBLCall(u32 after);
   void WriteExit(u32 destination, bool bl = false, u32 after = 0);
   void JustWriteExit(u32 destination, bool bl, u32 after);
@@ -93,6 +98,12 @@ public:
   void WriteExternalExceptionExit();
   void WriteRfiExitDestInRSCRATCH();
   void WriteIdleExit(u32 destination);
+  template <bool condition>
+  void WriteBranchWatch(u32 origin, u32 destination, UGeckoInstruction inst, Gen::X64Reg reg_a,
+                        Gen::X64Reg reg_b, BitSet32 caller_save);
+  void WriteBranchWatchDestInRSCRATCH(u32 origin, UGeckoInstruction inst, Gen::X64Reg reg_a,
+                                      Gen::X64Reg reg_b, BitSet32 caller_save);
+
   bool Cleanup();
 
   void GenerateConstantOverflow(bool overflow);
@@ -255,10 +266,9 @@ private:
 
   bool HandleFunctionHooking(u32 address);
 
-  void AllocStack();
-  void FreeStack();
-
   void ResetFreeMemoryRanges();
+
+  static void ImHere(Jit64& jit);
 
   JitBlockCache blocks{*this};
   TrampolineCache trampolines{*this};
@@ -268,12 +278,12 @@ private:
 
   Jit64AsmRoutineManager asm_routines{*this};
 
-  bool m_enable_blr_optimization = false;
-  bool m_cleanup_after_stackfault = false;
-  u8* m_stack = nullptr;
-
   HyoutaUtilities::RangeSizeSet<u8*> m_free_ranges_near;
   HyoutaUtilities::RangeSizeSet<u8*> m_free_ranges_far;
+
+  const bool m_im_here_debug = false;
+  const bool m_im_here_log = false;
+  std::map<u32, int> m_been_here;
 };
 
 void LogGeneratedX86(size_t size, const PPCAnalyst::CodeBuffer& code_buffer, const u8* normalEntry,

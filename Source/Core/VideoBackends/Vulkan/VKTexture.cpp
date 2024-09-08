@@ -17,7 +17,7 @@
 #include "VideoBackends/Vulkan/ObjectCache.h"
 #include "VideoBackends/Vulkan/StagingBuffer.h"
 #include "VideoBackends/Vulkan/StateTracker.h"
-#include "VideoBackends/Vulkan/VKRenderer.h"
+#include "VideoBackends/Vulkan/VKGfx.h"
 #include "VideoBackends/Vulkan/VKStreamBuffer.h"
 #include "VideoBackends/Vulkan/VulkanContext.h"
 
@@ -70,7 +70,9 @@ std::unique_ptr<VKTexture> VKTexture::Create(const TextureConfig& tex_config, st
 
   VkImageCreateInfo image_info = {VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
                                   nullptr,
-                                  0,
+                                  tex_config.type == AbstractTextureType::Texture_CubeMap ?
+                                      VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT :
+                                      static_cast<VkImageCreateFlags>(0),
                                   VK_IMAGE_TYPE_2D,
                                   GetVkFormatForHostTextureFormat(tex_config.format),
                                   {tex_config.width, tex_config.height, 1},
@@ -106,7 +108,26 @@ std::unique_ptr<VKTexture> VKTexture::Create(const TextureConfig& tex_config, st
 
   std::unique_ptr<VKTexture> texture = std::make_unique<VKTexture>(
       tex_config, alloc, image, name, VK_IMAGE_LAYOUT_UNDEFINED, ComputeImageLayout::Undefined);
-  if (!texture->CreateView(VK_IMAGE_VIEW_TYPE_2D_ARRAY))
+
+  VkImageViewType image_view_type = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
+  if (tex_config.type == AbstractTextureType::Texture_CubeMap)
+  {
+    image_view_type = VK_IMAGE_VIEW_TYPE_CUBE;
+  }
+  else if (tex_config.type == AbstractTextureType::Texture_2D)
+  {
+    image_view_type = VK_IMAGE_VIEW_TYPE_2D;
+  }
+  else if (tex_config.type == AbstractTextureType::Texture_2DArray)
+  {
+    image_view_type = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
+  }
+  else
+  {
+    PanicAlertFmt("Unhandled texture type.");
+    return nullptr;
+  }
+  if (!texture->CreateView(image_view_type))
     return nullptr;
 
   return texture;
@@ -189,6 +210,12 @@ VkFormat VKTexture::GetVkFormatForHostTextureFormat(AbstractTextureFormat format
   case AbstractTextureFormat::BGRA8:
     return VK_FORMAT_B8G8R8A8_UNORM;
 
+  case AbstractTextureFormat::RGB10_A2:
+    return VK_FORMAT_A2B10G10R10_UNORM_PACK32;
+
+  case AbstractTextureFormat::RGBA16F:
+    return VK_FORMAT_R16G16B16A16_SFLOAT;
+
   case AbstractTextureFormat::R16:
     return VK_FORMAT_R16_UNORM;
 
@@ -265,10 +292,12 @@ void VKTexture::CopyRectangleFromTexture(const AbstractTexture* src,
                  static_cast<u32>(dst_rect.GetHeight()) <= m_config.height,
              "Dest rect is too large for CopyRectangleFromTexture");
 
+  const u32 copy_layer_count = 1;
+
   VkImageCopy image_copy = {
-      {VK_IMAGE_ASPECT_COLOR_BIT, src_level, src_layer, src_texture->GetLayers()},
+      {VK_IMAGE_ASPECT_COLOR_BIT, src_level, src_layer, copy_layer_count},
       {src_rect.left, src_rect.top, 0},
-      {VK_IMAGE_ASPECT_COLOR_BIT, dst_level, dst_layer, m_config.layers},
+      {VK_IMAGE_ASPECT_COLOR_BIT, dst_level, dst_layer, copy_layer_count},
       {dst_rect.left, dst_rect.top, 0},
       {static_cast<uint32_t>(src_rect.GetWidth()), static_cast<uint32_t>(src_rect.GetHeight()), 1}};
 
@@ -320,7 +349,7 @@ void VKTexture::ResolveFromTexture(const AbstractTexture* src, const MathUtil::R
 }
 
 void VKTexture::Load(u32 level, u32 width, u32 height, u32 row_length, const u8* buffer,
-                     size_t buffer_size)
+                     size_t buffer_size, u32 layer)
 {
   // Can't copy data larger than the texture extents.
   width = std::max(1u, std::min(width, GetWidth() >> level));
@@ -365,7 +394,7 @@ void VKTexture::Load(u32 level, u32 width, u32 height, u32 row_length, const u8*
       // Execute the command buffer first.
       WARN_LOG_FMT(VIDEO,
                    "Executing command list while waiting for space in texture upload buffer");
-      Renderer::GetInstance()->ExecuteCommandBuffer(false);
+      VKGfx::GetInstance()->ExecuteCommandBuffer(false);
 
       // Try allocating again. This may cause a fence wait.
       if (!stream_buffer->ReserveMemory(upload_size, upload_alignment))
@@ -396,12 +425,12 @@ void VKTexture::Load(u32 level, u32 width, u32 height, u32 row_length, const u8*
 
   // Copy from the streaming buffer to the actual image.
   VkBufferImageCopy image_copy = {
-      upload_buffer_offset,                      // VkDeviceSize                bufferOffset
-      row_length,                                // uint32_t                    bufferRowLength
-      0,                                         // uint32_t                    bufferImageHeight
-      {VK_IMAGE_ASPECT_COLOR_BIT, level, 0, 1},  // VkImageSubresourceLayers    imageSubresource
-      {0, 0, 0},                                 // VkOffset3D                  imageOffset
-      {width, height, 1}                         // VkExtent3D                  imageExtent
+      upload_buffer_offset,                          // VkDeviceSize             bufferOffset
+      row_length,                                    // uint32_t                 bufferRowLength
+      0,                                             // uint32_t                 bufferImageHeight
+      {VK_IMAGE_ASPECT_COLOR_BIT, level, layer, 1},  // VkImageSubresourceLayers imageSubresource
+      {0, 0, 0},                                     // VkOffset3D               imageOffset
+      {width, height, 1}                             // VkExtent3D               imageExtent
   };
   vkCmdCopyBufferToImage(g_command_buffer_mgr->GetCurrentInitCommandBuffer(), upload_buffer,
                          m_image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &image_copy);
@@ -410,7 +439,7 @@ void VKTexture::Load(u32 level, u32 width, u32 height, u32 row_length, const u8*
   // likely finished with writes to this texture for now. We can't do this in common with a
   // FinishedRendering() call because the upload happens in the init command buffer, and we
   // don't want to interrupt the render pass with calls which were executed ages before.
-  if (level == (m_config.levels - 1))
+  if (level == (m_config.levels - 1) && layer == (m_config.layers - 1))
   {
     TransitionToLayout(g_command_buffer_mgr->GetCurrentInitCommandBuffer(),
                        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
@@ -778,7 +807,7 @@ std::pair<VkImage, VmaAllocation> VKStagingTexture::CreateLinearImage(StagingTex
   if (res != VK_SUCCESS)
   {
     LOG_VULKAN_ERROR(res, "Linear images are not supported for the staging texture: ");
-    return std::make_pair(VK_NULL_HANDLE, VK_NULL_HANDLE);
+    return std::make_pair<VkImage, VmaAllocation>(VK_NULL_HANDLE, VK_NULL_HANDLE);
   }
 
   VmaAllocationCreateInfo alloc_create_info = {};
@@ -797,7 +826,7 @@ std::pair<VkImage, VmaAllocation> VKStagingTexture::CreateLinearImage(StagingTex
   if (res != VK_SUCCESS)
   {
     LOG_VULKAN_ERROR(res, "vmaCreateImage failed: ");
-    return std::make_pair(VK_NULL_HANDLE, VK_NULL_HANDLE);
+    return std::make_pair<VkImage, VmaAllocation>(VK_NULL_HANDLE, VK_NULL_HANDLE);
   }
   return std::make_pair(image, alloc);
 }
@@ -965,7 +994,7 @@ void VKStagingTexture::Flush()
   if (g_command_buffer_mgr->GetCurrentFenceCounter() == m_flush_fence_counter)
   {
     // Execute the command buffer and wait for it to finish.
-    Renderer::GetInstance()->ExecuteCommandBuffer(false, true);
+    VKGfx::GetInstance()->ExecuteCommandBuffer(false, true);
   }
   else
   {
@@ -980,12 +1009,13 @@ void VKStagingTexture::Flush()
   m_needs_flush = false;
 }
 
-VKFramebuffer::VKFramebuffer(VKTexture* color_attachment, VKTexture* depth_attachment, u32 width,
+VKFramebuffer::VKFramebuffer(VKTexture* color_attachment, VKTexture* depth_attachment,
+                             std::vector<AbstractTexture*> additional_color_attachments, u32 width,
                              u32 height, u32 layers, u32 samples, VkFramebuffer fb,
                              VkRenderPass load_render_pass, VkRenderPass discard_render_pass,
                              VkRenderPass clear_render_pass)
     : AbstractFramebuffer(
-          color_attachment, depth_attachment,
+          color_attachment, depth_attachment, std::move(additional_color_attachments),
           color_attachment ? color_attachment->GetFormat() : AbstractTextureFormat::Undefined,
           depth_attachment ? depth_attachment->GetFormat() : AbstractTextureFormat::Undefined,
           width, height, layers, samples),
@@ -999,10 +1029,11 @@ VKFramebuffer::~VKFramebuffer()
   g_command_buffer_mgr->DeferFramebufferDestruction(m_fb);
 }
 
-std::unique_ptr<VKFramebuffer> VKFramebuffer::Create(VKTexture* color_attachment,
-                                                     VKTexture* depth_attachment)
+std::unique_ptr<VKFramebuffer>
+VKFramebuffer::Create(VKTexture* color_attachment, VKTexture* depth_attachment,
+                      std::vector<AbstractTexture*> additional_color_attachments)
 {
-  if (!ValidateConfig(color_attachment, depth_attachment))
+  if (!ValidateConfig(color_attachment, depth_attachment, additional_color_attachments))
     return nullptr;
 
   const VkFormat vk_color_format =
@@ -1015,21 +1046,27 @@ std::unique_ptr<VKFramebuffer> VKFramebuffer::Create(VKTexture* color_attachment
   const u32 layers = either_attachment->GetLayers();
   const u32 samples = either_attachment->GetSamples();
 
-  std::array<VkImageView, 2> attachment_views{};
-  u32 num_attachments = 0;
-
+  std::vector<VkImageView> attachment_views;
   if (color_attachment)
-    attachment_views[num_attachments++] = color_attachment->GetView();
+    attachment_views.push_back(color_attachment->GetView());
 
   if (depth_attachment)
-    attachment_views[num_attachments++] = depth_attachment->GetView();
+    attachment_views.push_back(depth_attachment->GetView());
+
+  for (auto* attachment : additional_color_attachments)
+  {
+    attachment_views.push_back(static_cast<VKTexture*>(attachment)->GetView());
+  }
 
   VkRenderPass load_render_pass = g_object_cache->GetRenderPass(
-      vk_color_format, vk_depth_format, samples, VK_ATTACHMENT_LOAD_OP_LOAD);
+      vk_color_format, vk_depth_format, samples, VK_ATTACHMENT_LOAD_OP_LOAD,
+      static_cast<u8>(additional_color_attachments.size()));
   VkRenderPass discard_render_pass = g_object_cache->GetRenderPass(
-      vk_color_format, vk_depth_format, samples, VK_ATTACHMENT_LOAD_OP_DONT_CARE);
+      vk_color_format, vk_depth_format, samples, VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+      static_cast<u8>(additional_color_attachments.size()));
   VkRenderPass clear_render_pass = g_object_cache->GetRenderPass(
-      vk_color_format, vk_depth_format, samples, VK_ATTACHMENT_LOAD_OP_CLEAR);
+      vk_color_format, vk_depth_format, samples, VK_ATTACHMENT_LOAD_OP_CLEAR,
+      static_cast<u8>(additional_color_attachments.size()));
   if (load_render_pass == VK_NULL_HANDLE || discard_render_pass == VK_NULL_HANDLE ||
       clear_render_pass == VK_NULL_HANDLE)
   {
@@ -1040,7 +1077,7 @@ std::unique_ptr<VKFramebuffer> VKFramebuffer::Create(VKTexture* color_attachment
                                               nullptr,
                                               0,
                                               load_render_pass,
-                                              num_attachments,
+                                              static_cast<uint32_t>(attachment_views.size()),
                                               attachment_views.data(),
                                               width,
                                               height,
@@ -1055,9 +1092,27 @@ std::unique_ptr<VKFramebuffer> VKFramebuffer::Create(VKTexture* color_attachment
     return nullptr;
   }
 
-  return std::make_unique<VKFramebuffer>(color_attachment, depth_attachment, width, height, layers,
-                                         samples, fb, load_render_pass, discard_render_pass,
-                                         clear_render_pass);
+  return std::make_unique<VKFramebuffer>(
+      color_attachment, depth_attachment, std::move(additional_color_attachments), width, height,
+      layers, samples, fb, load_render_pass, discard_render_pass, clear_render_pass);
+}
+
+void VKFramebuffer::Unbind()
+{
+  if (m_color_attachment)
+  {
+    StateTracker::GetInstance()->UnbindTexture(
+        static_cast<VKTexture*>(m_color_attachment)->GetView());
+  }
+  for (auto* attachment : m_additional_color_attachments)
+  {
+    StateTracker::GetInstance()->UnbindTexture(static_cast<VKTexture*>(attachment)->GetView());
+  }
+  if (m_depth_attachment)
+  {
+    StateTracker::GetInstance()->UnbindTexture(
+        static_cast<VKTexture*>(m_depth_attachment)->GetView());
+  }
 }
 
 void VKFramebuffer::TransitionForRender()
@@ -1068,6 +1123,12 @@ void VKFramebuffer::TransitionForRender()
         ->TransitionToLayout(g_command_buffer_mgr->GetCurrentCommandBuffer(),
                              VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
   }
+  for (auto* attachment : m_additional_color_attachments)
+  {
+    static_cast<VKTexture*>(attachment)
+        ->TransitionToLayout(g_command_buffer_mgr->GetCurrentCommandBuffer(),
+                             VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+  }
 
   if (m_depth_attachment)
   {
@@ -1075,5 +1136,25 @@ void VKFramebuffer::TransitionForRender()
         ->TransitionToLayout(g_command_buffer_mgr->GetCurrentCommandBuffer(),
                              VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
   }
+}
+
+void VKFramebuffer::SetAndClear(const VkRect2D& rect, const VkClearValue& color_value,
+                                const VkClearValue& depth_value)
+{
+  std::vector<VkClearValue> clear_values;
+  if (GetColorFormat() != AbstractTextureFormat::Undefined)
+  {
+    clear_values.push_back(color_value);
+  }
+  if (GetDepthFormat() != AbstractTextureFormat::Undefined)
+  {
+    clear_values.push_back(depth_value);
+  }
+  for (std::size_t i = 0; i < m_additional_color_attachments.size(); i++)
+  {
+    clear_values.push_back(color_value);
+  }
+  StateTracker::GetInstance()->BeginClearRenderPass(rect, clear_values.data(),
+                                                    static_cast<u32>(clear_values.size()));
 }
 }  // namespace Vulkan

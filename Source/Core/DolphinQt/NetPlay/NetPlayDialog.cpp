@@ -25,6 +25,8 @@
 #include <algorithm>
 #include <sstream>
 
+#include <fmt/ranges.h>
+
 #include "Common/CommonPaths.h"
 #include "Common/Config/Config.h"
 #include "Common/HttpRequest.h"
@@ -43,6 +45,7 @@
 #include "Core/IOS/FS/FileSystem.h"
 #include "Core/NetPlayServer.h"
 #include "Core/SyncIdentifier.h"
+#include "Core/System.h"
 
 #include "DolphinQt/NetPlay/ChunkedProgressDialog.h"
 #include "DolphinQt/NetPlay/GameDigestDialog.h"
@@ -51,6 +54,7 @@
 #include "DolphinQt/QtUtils/ModalMessageBox.h"
 #include "DolphinQt/QtUtils/QueueOnObject.h"
 #include "DolphinQt/QtUtils/RunOnObject.h"
+#include "DolphinQt/QtUtils/SetWindowDecorations.h"
 #include "DolphinQt/Resources.h"
 #include "DolphinQt/Settings.h"
 #include "DolphinQt/Settings/GameCubePane.h"
@@ -61,12 +65,11 @@
 
 #include "VideoCommon/NetPlayChatUI.h"
 #include "VideoCommon/NetPlayGolfUI.h"
-#include "VideoCommon/RenderBase.h"
 #include "VideoCommon/VideoConfig.h"
 
 namespace
 {
-QString InetAddressToString(const TraversalInetAddress& addr)
+QString InetAddressToString(const Common::TraversalInetAddress& addr)
 {
   QString ip;
 
@@ -214,6 +217,7 @@ void NetPlayDialog::CreateMainLayout()
   m_game_digest_menu->addAction(tr("Other game..."), this, [this] {
     GameListDialog gld(m_game_list_model, this);
 
+    SetQWidgetWindowDecorations(&gld);
     if (gld.exec() != QDialog::Accepted)
       return;
     Settings::Instance().GetNetPlayServer()->ComputeGameDigest(
@@ -318,11 +322,10 @@ void NetPlayDialog::CreatePlayersLayout()
 void NetPlayDialog::ConnectWidgets()
 {
   // Players
-  connect(m_room_box, qOverload<int>(&QComboBox::currentIndexChanged), this,
-          &NetPlayDialog::UpdateGUI);
+  connect(m_room_box, &QComboBox::currentIndexChanged, this, &NetPlayDialog::UpdateGUI);
   connect(m_hostcode_action_button, &QPushButton::clicked, [this] {
     if (m_is_copy_button_retry)
-      g_TraversalClient->ReconnectToServer();
+      Common::g_TraversalClient->ReconnectToServer();
     else
       QApplication::clipboard()->setText(m_hostcode_label->text());
   });
@@ -336,6 +339,7 @@ void NetPlayDialog::ConnectWidgets()
     Settings::Instance().GetNetPlayServer()->KickPlayer(id);
   });
   connect(m_assign_ports_button, &QPushButton::clicked, [this] {
+    SetQWidgetWindowDecorations(m_pad_mapping);
     m_pad_mapping->exec();
 
     Settings::Instance().GetNetPlayServer()->SetPadMapping(m_pad_mapping->GetGCPadArray());
@@ -350,7 +354,7 @@ void NetPlayDialog::ConnectWidgets()
           [this] { m_chat_send_button->setEnabled(!m_chat_type_edit->text().isEmpty()); });
 
   // Other
-  connect(m_buffer_size_box, qOverload<int>(&QSpinBox::valueChanged), [this](int value) {
+  connect(m_buffer_size_box, &QSpinBox::valueChanged, [this](int value) {
     if (value == m_buffer_size)
       return;
 
@@ -381,6 +385,7 @@ void NetPlayDialog::ConnectWidgets()
 
   connect(m_game_button, &QPushButton::clicked, [this] {
     GameListDialog gld(m_game_list_model, this);
+    SetQWidgetWindowDecorations(&gld);
     if (gld.exec() == QDialog::Accepted)
     {
       Settings& settings = Settings::Instance();
@@ -410,8 +415,7 @@ void NetPlayDialog::ConnectWidgets()
 
   // SaveSettings() - Save Hosting-Dialog Settings
 
-  connect(m_buffer_size_box, qOverload<int>(&QSpinBox::valueChanged), this,
-          &NetPlayDialog::SaveSettings);
+  connect(m_buffer_size_box, &QSpinBox::valueChanged, this, &NetPlayDialog::SaveSettings);
   connect(m_savedata_none_action, &QAction::toggled, this, &NetPlayDialog::SaveSettings);
   connect(m_savedata_load_only_action, &QAction::toggled, this, &NetPlayDialog::SaveSettings);
   connect(m_savedata_load_and_write_action, &QAction::toggled, this, &NetPlayDialog::SaveSettings);
@@ -577,14 +581,14 @@ void NetPlayDialog::UpdateDiscordPresence()
                                    m_current_game_name);
   };
 
-  if (Core::IsRunning())
+  if (Core::IsRunning(Core::System::GetInstance()))
     return use_default();
 
   if (IsHosting())
   {
-    if (g_TraversalClient)
+    if (Common::g_TraversalClient)
     {
-      const auto host_id = g_TraversalClient->GetHostID();
+      const auto host_id = Common::g_TraversalClient->GetHostID();
       if (host_id[0] == '\0')
         return use_default();
 
@@ -657,7 +661,7 @@ void NetPlayDialog::UpdateGUI()
 
     auto* name_item = new QTableWidgetItem(QString::fromStdString(p->name));
     name_item->setToolTip(name_item->text());
-    const auto& status_info = player_status.count(p->game_status) ?
+    const auto& status_info = player_status.contains(p->game_status) ?
                                   player_status.at(p->game_status) :
                                   std::make_pair(QStringLiteral("?"), QStringLiteral("?"));
     auto* status_item = new QTableWidgetItem(status_info.first);
@@ -707,26 +711,27 @@ void NetPlayDialog::UpdateGUI()
   }
   else if (m_use_traversal)
   {
-    switch (g_TraversalClient->GetState())
+    switch (Common::g_TraversalClient->GetState())
     {
-    case TraversalClient::State::Connecting:
+    case Common::TraversalClient::State::Connecting:
       m_hostcode_label->setText(tr("Connecting"));
       m_hostcode_action_button->setEnabled(false);
       m_hostcode_action_button->setText(tr("..."));
       break;
-    case TraversalClient::State::Connected:
+    case Common::TraversalClient::State::Connected:
     {
       if (m_room_box->currentIndex() == 0)
       {
         // Display Room ID.
-        const auto host_id = g_TraversalClient->GetHostID();
+        const auto host_id = Common::g_TraversalClient->GetHostID();
         m_hostcode_label->setText(
             QString::fromStdString(std::string(host_id.begin(), host_id.end())));
       }
       else
       {
         // Externally mapped IP and port are known when using the traversal server.
-        m_hostcode_label->setText(InetAddressToString(g_TraversalClient->GetExternalAddress()));
+        m_hostcode_label->setText(
+            InetAddressToString(Common::g_TraversalClient->GetExternalAddress()));
       }
 
       m_hostcode_action_button->setEnabled(true);
@@ -734,7 +739,7 @@ void NetPlayDialog::UpdateGUI()
       m_is_copy_button_retry = false;
       break;
     }
-    case TraversalClient::State::Failure:
+    case Common::TraversalClient::State::Failure:
       m_hostcode_label->setText(tr("Error"));
       m_hostcode_action_button->setText(tr("Retry"));
       m_hostcode_action_button->setEnabled(true);
@@ -800,7 +805,7 @@ void NetPlayDialog::DisplayMessage(const QString& msg, const std::string& color,
 
   QColor c(color.empty() ? QStringLiteral("white") : QString::fromStdString(color));
 
-  if (g_ActiveConfig.bShowNetPlayMessages && Core::IsRunning())
+  if (g_ActiveConfig.bShowNetPlayMessages && Core::IsRunning(Core::System::GetInstance()))
     g_netplay_chat_ui->AppendChat(msg.toStdString(),
                                   {static_cast<float>(c.redF()), static_cast<float>(c.greenF()),
                                    static_cast<float>(c.blueF())});
@@ -900,7 +905,7 @@ void NetPlayDialog::OnMsgStopGame()
 
 void NetPlayDialog::OnMsgPowerButton()
 {
-  if (!Core::IsRunning())
+  if (!Core::IsRunning(Core::System::GetInstance()))
     return;
   QueueOnObject(this, [] { UICommon::TriggerSTMPowerEvent(); });
 }
@@ -982,35 +987,35 @@ void NetPlayDialog::OnConnectionError(const std::string& message)
   });
 }
 
-void NetPlayDialog::OnTraversalError(TraversalClient::FailureReason error)
+void NetPlayDialog::OnTraversalError(Common::TraversalClient::FailureReason error)
 {
   QueueOnObject(this, [this, error] {
     switch (error)
     {
-    case TraversalClient::FailureReason::BadHost:
+    case Common::TraversalClient::FailureReason::BadHost:
       ModalMessageBox::critical(this, tr("Traversal Error"), tr("Couldn't look up central server"));
       QDialog::reject();
       break;
-    case TraversalClient::FailureReason::VersionTooOld:
+    case Common::TraversalClient::FailureReason::VersionTooOld:
       ModalMessageBox::critical(this, tr("Traversal Error"),
                                 tr("Dolphin is too old for traversal server"));
       QDialog::reject();
       break;
-    case TraversalClient::FailureReason::ServerForgotAboutUs:
-    case TraversalClient::FailureReason::SocketSendError:
-    case TraversalClient::FailureReason::ResendTimeout:
+    case Common::TraversalClient::FailureReason::ServerForgotAboutUs:
+    case Common::TraversalClient::FailureReason::SocketSendError:
+    case Common::TraversalClient::FailureReason::ResendTimeout:
       UpdateGUI();
       break;
     }
   });
 }
 
-void NetPlayDialog::OnTraversalStateChanged(TraversalClient::State state)
+void NetPlayDialog::OnTraversalStateChanged(Common::TraversalClient::State state)
 {
   switch (state)
   {
-  case TraversalClient::State::Connected:
-  case TraversalClient::State::Failure:
+  case Common::TraversalClient::State::Connected:
+  case Common::TraversalClient::State::Failure:
     UpdateDiscordPresence();
     break;
   default:
@@ -1035,6 +1040,11 @@ void NetPlayDialog::OnGolferChanged(const bool is_golfer, const std::string& gol
 
   if (!golfer_name.empty())
     DisplayMessage(tr("%1 is now golfing").arg(QString::fromStdString(golfer_name)), "");
+}
+
+void NetPlayDialog::OnTtlDetermined(u8 ttl)
+{
+  DisplayMessage(tr("Using TTL %1 for probe packet").arg(QString::number(ttl)), "");
 }
 
 bool NetPlayDialog::IsRecording()

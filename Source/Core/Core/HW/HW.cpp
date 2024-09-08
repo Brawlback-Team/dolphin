@@ -7,7 +7,6 @@
 #include "Common/CommonTypes.h"
 
 #include "Core/Config/MainSettings.h"
-#include "Core/ConfigManager.h"
 #include "Core/Core.h"
 #include "Core/CoreTiming.h"
 #include "Core/HW/AddressSpace.h"
@@ -31,88 +30,88 @@
 
 namespace HW
 {
-void Init(const Sram* override_sram)
+void Init(Core::System& system, const Sram* override_sram)
 {
-  Core::System::GetInstance().GetCoreTiming().Init();
-  SystemTimers::PreInit();
+  system.GetCoreTiming().Init();
+  system.GetSystemTimers().PreInit();
 
-  State::Init();
+  State::Init(system);
 
   // Init the whole Hardware
-  AudioInterface::Init();
-  VideoInterface::Init();
-  SerialInterface::Init();
-  ProcessorInterface::Init();
-  ExpansionInterface::Init(override_sram);  // Needs to be initialized before Memory
-  HSP::Init();
-  Memory::Init();  // Needs to be initialized before AddressSpace
+  system.GetAudioInterface().Init();
+  system.GetVideoInterface().Init();
+  system.GetSerialInterface().Init();
+  system.GetProcessorInterface().Init();
+  system.GetExpansionInterface().Init(override_sram);  // Needs to be initialized before Memory
+  system.GetHSP().Init();
+  system.GetMemory().Init();  // Needs to be initialized before AddressSpace
   AddressSpace::Init();
-  MemoryInterface::Init();
-  DSP::Init(Config::Get(Config::MAIN_DSP_HLE));
-  DVDInterface::Init();
-  GPFifo::Init();
-  CPU::Init(Config::Get(Config::MAIN_CPU_CORE));
-  SystemTimers::Init();
+  system.GetMemoryInterface().Init();
+  system.GetDSP().Init(Config::Get(Config::MAIN_DSP_HLE));
+  system.GetDVDInterface().Init();
+  system.GetGPFifo().Init();
+  system.GetCPU().Init(Config::Get(Config::MAIN_CPU_CORE));
+  system.GetSystemTimers().Init();
 
-  if (SConfig::GetInstance().bWii)
+  if (system.IsWii())
   {
-    IOS::Init();
-    IOS::HLE::Init();  // Depends on Memory
+    system.GetWiiIPC().Init();
+    IOS::HLE::Init(system);  // Depends on Memory
   }
 }
 
-void Shutdown()
+void Shutdown(Core::System& system)
 {
-  // IOS should always be shut down regardless of bWii because it can be running in GC mode (MIOS).
-  IOS::HLE::Shutdown();  // Depends on Memory
-  IOS::Shutdown();
+  // IOS should always be shut down regardless of IsWii because it can be running in GC mode (MIOS).
+  IOS::HLE::Shutdown(system);  // Depends on Memory
+  system.GetWiiIPC().Shutdown();
 
-  SystemTimers::Shutdown();
-  CPU::Shutdown();
-  DVDInterface::Shutdown();
-  DSP::Shutdown();
-  MemoryInterface::Shutdown();
+  system.GetSystemTimers().Shutdown();
+  system.GetCPU().Shutdown();
+  system.GetDVDInterface().Shutdown();
+  system.GetDSP().Shutdown();
+  system.GetMemoryInterface().Shutdown();
   AddressSpace::Shutdown();
-  Memory::Shutdown();
-  HSP::Shutdown();
-  ExpansionInterface::Shutdown();
-  SerialInterface::Shutdown();
-  AudioInterface::Shutdown();
+  system.GetMemory().Shutdown();
+  system.GetHSP().Shutdown();
+  system.GetExpansionInterface().Shutdown();
+  system.GetSerialInterface().Shutdown();
+  system.GetAudioInterface().Shutdown();
 
   State::Shutdown();
-  Core::System::GetInstance().GetCoreTiming().Shutdown();
+  system.GetCoreTiming().Shutdown();
 }
 
-void DoState(PointerWrap& p)
+void DoState(Core::System& system, PointerWrap& p)
 {
-  Memory::DoState(p);
+  system.GetMemory().DoState(p);
   p.DoMarker("Memory");
-  MemoryInterface::DoState(p);
+  system.GetMemoryInterface().DoState(p);
   p.DoMarker("MemoryInterface");
-  VideoInterface::DoState(p);
+  system.GetVideoInterface().DoState(p);
   p.DoMarker("VideoInterface");
-  SerialInterface::DoState(p);
+  system.GetSerialInterface().DoState(p);
   p.DoMarker("SerialInterface");
-  ProcessorInterface::DoState(p);
+  system.GetProcessorInterface().DoState(p);
   p.DoMarker("ProcessorInterface");
-  DSP::DoState(p);
+  system.GetDSP().DoState(p);
   p.DoMarker("DSP");
-  DVDInterface::DoState(p);
+  system.GetDVDInterface().DoState(p);
   p.DoMarker("DVDInterface");
-  GPFifo::DoState(p);
+  system.GetGPFifo().DoState(p);
   p.DoMarker("GPFifo");
-  ExpansionInterface::DoState(p);
+  system.GetExpansionInterface().DoState(p);
   p.DoMarker("ExpansionInterface");
-  AudioInterface::DoState(p);
+  system.GetAudioInterface().DoState(p);
   p.DoMarker("AudioInterface");
-  HSP::DoState(p);
+  system.GetHSP().DoState(p);
   p.DoMarker("HSP");
 
-  if (SConfig::GetInstance().bWii)
+  if (system.IsWii())
   {
-    IOS::DoState(p);
+    system.GetWiiIPC().DoState(p);
     p.DoMarker("IOS");
-    IOS::HLE::GetIOS()->DoState(p);
+    system.GetIOS()->DoState(p);
     p.DoMarker("IOS::HLE");
   }
 

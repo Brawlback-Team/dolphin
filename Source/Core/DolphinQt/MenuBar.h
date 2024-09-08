@@ -24,7 +24,7 @@ enum class State;
 namespace DiscIO
 {
 enum class Region;
-};
+}
 
 namespace UICommon
 {
@@ -54,8 +54,8 @@ signals:
   void Open();
   void Exit();
   void ChangeDisc();
-  void BootDVDBackup(const QString& backup);
   void EjectDisc();
+  void OpenUserFolder();
 
   // Emulation
   void Play();
@@ -89,7 +89,13 @@ signals:
   void ShowAboutDialog();
   void ShowCheatsManager();
   void ShowResourcePackManager();
+  void ShowSkylanderPortal();
+  void ShowInfinityBase();
   void ConnectWiiRemote(int id);
+
+#ifdef USE_RETRO_ACHIEVEMENTS
+  void ShowAchievementsWindow();
+#endif  // USE_RETRO_ACHIEVEMENTS
 
   // Options
   void Configure();
@@ -119,14 +125,10 @@ signals:
   void RecordingStatusChanged(bool recording);
   void ReadOnlyModeChanged(bool read_only);
 
-  // Synbols
-  void NotifySymbolsUpdated();
-
 private:
   void OnEmulationStateChanged(Core::State state);
 
   void AddFileMenu();
-  void AddDVDBackupMenu(QMenu* file_menu);
 
   void AddEmulationMenu();
   void AddStateLoadMenu(QMenu* emu_menu);
@@ -183,6 +185,7 @@ private:
   void OnRecordingStatusChanged(bool recording);
   void OnReadOnlyModeChanged(bool read_only);
   void OnDebugModeToggled(bool enabled);
+  void OnWriteJitBlockLogDump();
 
   QString GetSignatureSelector() const;
 
@@ -194,6 +197,7 @@ private:
   QAction* m_change_disc;
   QAction* m_eject_disc;
   QMenu* m_backup_menu;
+  QAction* m_open_user_folder;
 
   // Tools
   QAction* m_wad_install_action;
@@ -207,6 +211,8 @@ private:
   QAction* m_check_nand;
   QAction* m_extract_certificates;
   std::array<QAction*, 5> m_wii_remotes;
+  QAction* m_import_wii_save;
+  QAction* m_export_wii_saves;
 
   // Emulation
   QAction* m_play_action;
@@ -233,7 +239,6 @@ private:
 
   // Options
   QAction* m_boot_to_pause;
-  QAction* m_automatic_start;
   QAction* m_reset_ignore_panic_handler;
   QAction* m_change_font;
   QAction* m_controllers_action;
@@ -247,6 +252,7 @@ private:
   QAction* m_show_memory;
   QAction* m_show_network;
   QAction* m_show_jit;
+  QAction* m_show_assembler;
   QMenu* m_cols_menu;
 
   // JIT
@@ -258,9 +264,13 @@ private:
   QAction* m_jit_block_linking;
   QAction* m_jit_disable_cache;
   QAction* m_jit_disable_fastmem;
+  QAction* m_jit_disable_fastmem_arena;
+  QAction* m_jit_disable_large_entry_points_map;
   QAction* m_jit_clear_cache;
   QAction* m_jit_log_coverage;
   QAction* m_jit_search_instruction;
+  QAction* m_jit_profile_blocks;
+  QAction* m_jit_write_cache_log_dump;
   QAction* m_jit_off;
   QAction* m_jit_loadstore_off;
   QAction* m_jit_loadstore_lbzx_off;

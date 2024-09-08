@@ -40,7 +40,8 @@ AudioPane::AudioPane()
     OnEmulationStateChanged(state != Core::State::Uninitialized);
   });
 
-  OnEmulationStateChanged(Core::GetState() != Core::State::Uninitialized);
+  OnEmulationStateChanged(Core::GetState(Core::System::GetInstance()) !=
+                          Core::State::Uninitialized);
 }
 
 void AudioPane::CreateWidgets()
@@ -174,13 +175,11 @@ void AudioPane::CreateWidgets()
 
 void AudioPane::ConnectWidgets()
 {
-  connect(m_backend_combo, qOverload<int>(&QComboBox::currentIndexChanged), this,
-          &AudioPane::SaveSettings);
+  connect(m_backend_combo, &QComboBox::currentIndexChanged, this, &AudioPane::SaveSettings);
   connect(m_volume_slider, &QSlider::valueChanged, this, &AudioPane::SaveSettings);
   if (m_latency_control_supported)
   {
-    connect(m_latency_spin, qOverload<int>(&QSpinBox::valueChanged), this,
-            &AudioPane::SaveSettings);
+    connect(m_latency_spin, &QSpinBox::valueChanged, this, &AudioPane::SaveSettings);
   }
   connect(m_stretching_buffer_slider, &QSlider::valueChanged, this, &AudioPane::SaveSettings);
   connect(m_dolby_pro_logic, &QCheckBox::toggled, this, &AudioPane::SaveSettings);
@@ -191,8 +190,7 @@ void AudioPane::ConnectWidgets()
   connect(m_dsp_interpreter, &QRadioButton::toggled, this, &AudioPane::SaveSettings);
 
 #ifdef _WIN32
-  connect(m_wasapi_device_combo, qOverload<int>(&QComboBox::currentIndexChanged), this,
-          &AudioPane::SaveSettings);
+  connect(m_wasapi_device_combo, &QComboBox::currentIndexChanged, this, &AudioPane::SaveSettings);
 #endif
 }
 
@@ -247,8 +245,10 @@ void AudioPane::LoadSettings()
 
   // Stretch
   m_stretching_enable->setChecked(Config::Get(Config::MAIN_AUDIO_STRETCH));
+  m_stretching_buffer_label->setEnabled(m_stretching_enable->isChecked());
   m_stretching_buffer_slider->setValue(Config::Get(Config::MAIN_AUDIO_STRETCH_LATENCY));
   m_stretching_buffer_slider->setEnabled(m_stretching_enable->isChecked());
+  m_stretching_buffer_indicator->setEnabled(m_stretching_enable->isChecked());
   m_stretching_buffer_indicator->setText(tr("%1 ms").arg(m_stretching_buffer_slider->value()));
 
 #ifdef _WIN32

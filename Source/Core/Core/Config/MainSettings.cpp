@@ -10,6 +10,7 @@
 #include "AudioCommon/AudioCommon.h"
 #include "Common/Assert.h"
 #include "Common/CommonPaths.h"
+#include "Common/CommonTypes.h"
 #include "Common/Config/Config.h"
 #include "Common/EnumMap.h"
 #include "Common/FileUtil.h"
@@ -17,6 +18,7 @@
 #include "Common/MathUtil.h"
 #include "Common/StringUtil.h"
 #include "Common/Version.h"
+#include "Core/AchievementManager.h"
 #include "Core/Config/DefaultLocale.h"
 #include "Core/HW/EXI/EXI.h"
 #include "Core/HW/EXI/EXI_Device.h"
@@ -37,7 +39,11 @@ const Info<PowerPC::CPUCore> MAIN_CPU_CORE{{System::Main, "Core", "CPUCore"},
                                            PowerPC::DefaultCPUCore()};
 const Info<bool> MAIN_JIT_FOLLOW_BRANCH{{System::Main, "Core", "JITFollowBranch"}, true};
 const Info<bool> MAIN_FASTMEM{{System::Main, "Core", "Fastmem"}, true};
+const Info<bool> MAIN_FASTMEM_ARENA{{System::Main, "Core", "FastmemArena"}, true};
+const Info<bool> MAIN_LARGE_ENTRY_POINTS_MAP{{System::Main, "Core", "LargeEntryPointsMap"}, true};
+const Info<bool> MAIN_ACCURATE_CPU_CACHE{{System::Main, "Core", "AccurateCPUCache"}, false};
 const Info<bool> MAIN_DSP_HLE{{System::Main, "Core", "DSPHLE"}, true};
+const Info<int> MAIN_MAX_FALLBACK{{System::Main, "Core", "MaxFallback"}, 100};
 const Info<int> MAIN_TIMING_VARIANCE{{System::Main, "Core", "TimingVariance"}, 40};
 const Info<bool> MAIN_CPU_THREAD{{System::Main, "Core", "CPUThread"}, true};
 const Info<bool> MAIN_SYNC_ON_SKIP_IDLE{{System::Main, "Core", "SyncOnSkipIdle"}, true};
@@ -130,7 +136,11 @@ const Info<bool> MAIN_BBA_XLINK_CHAT_OSD{{System::Main, "Core", "BBA_XLINK_CHAT_
 
 // Schthack PSO Server - https://schtserv.com/
 const Info<std::string> MAIN_BBA_BUILTIN_DNS{{System::Main, "Core", "BBA_BUILTIN_DNS"},
-                                             "149.56.167.128"};
+                                             "3.18.217.27"};
+const Info<std::string> MAIN_BBA_TAPSERVER_DESTINATION{
+    {System::Main, "Core", "BBA_TAPSERVER_DESTINATION"}, "/tmp/dolphin-tap"};
+const Info<std::string> MAIN_MODEM_TAPSERVER_DESTINATION{
+    {System::Main, "Core", "MODEM_TAPSERVER_DESTINATION"}, "/tmp/dolphin-modem-tap"};
 const Info<std::string> MAIN_BBA_BUILTIN_IP{{System::Main, "Core", "BBA_BUILTIN_IP"}, ""};
 
 const Info<SerialInterface::SIDevices>& GetInfoForSIDevice(int channel)
@@ -173,10 +183,7 @@ const Info<bool>& GetInfoForSimulateKonga(int channel)
 const Info<bool> MAIN_WII_SD_CARD{{System::Main, "Core", "WiiSDCard"}, true};
 const Info<bool> MAIN_WII_SD_CARD_ENABLE_FOLDER_SYNC{
     {System::Main, "Core", "WiiSDCardEnableFolderSync"}, false};
-
-const Info<std::string> MAIN_WII_SD_SYNC_TIME_FILE{{System::Main, "Core", "WiiSDSyncTimeFile"}, ""};
-const Info<s64> MAIN_WII_SD_LAST_SYNC_TIME{{System::Main, "Core", "WiiSDLastSyncTime"}, 0};
-
+const Info<u64> MAIN_WII_SD_CARD_FILESIZE{{System::Main, "Core", "WiiSDCardFilesize"}, 0};
 const Info<bool> MAIN_WII_KEYBOARD{{System::Main, "Core", "WiiKeyboard"}, false};
 const Info<bool> MAIN_WIIMOTE_CONTINUOUS_SCANNING{
     {System::Main, "Core", "WiimoteContinuousScanning"}, false};
@@ -241,6 +248,7 @@ const Info<bool> MAIN_ALLOW_SD_WRITES{{System::Main, "Core", "WiiSDCardAllowWrit
 const Info<bool> MAIN_ENABLE_SAVESTATES{{System::Main, "Core", "EnableSaveStates"}, false};
 const Info<bool> MAIN_REAL_WII_REMOTE_REPEAT_REPORTS{
     {System::Main, "Core", "RealWiiRemoteRepeatReports"}, true};
+const Info<bool> MAIN_WII_WIILINK_ENABLE{{System::Main, "Core", "EnableWiiLink"}, false};
 
 // Empty means use the Dolphin default URL
 const Info<std::string> MAIN_WII_NUS_SHOP_URL{{System::Main, "Core", "WiiNusShopUrl"}, ""};
@@ -297,6 +305,8 @@ const Info<std::string> MAIN_WIRELESS_MAC{{System::Main, "General", "WirelessMac
 const Info<std::string> MAIN_GDB_SOCKET{{System::Main, "General", "GDBSocket"}, ""};
 const Info<int> MAIN_GDB_PORT{{System::Main, "General", "GDBPort"}, -1};
 const Info<int> MAIN_ISO_PATH_COUNT{{System::Main, "General", "ISOPaths"}, 0};
+const Info<std::string> MAIN_SKYLANDERS_PATH{{System::Main, "General", "SkylandersCollectionPath"},
+                                             ""};
 
 static Info<std::string> MakeISOPathConfigInfo(size_t idx)
 {
@@ -388,7 +398,6 @@ const Info<ShowCursor> MAIN_SHOW_CURSOR{{System::Main, "Interface", "CursorVisib
                                         ShowCursor::OnMovement};
 const Info<bool> MAIN_LOCK_CURSOR{{System::Main, "Interface", "LockCursor"}, false};
 const Info<std::string> MAIN_INTERFACE_LANGUAGE{{System::Main, "Interface", "LanguageCode"}, ""};
-const Info<bool> MAIN_EXTENDED_FPS_INFO{{System::Main, "Interface", "ExtendedFPSInfo"}, false};
 const Info<bool> MAIN_SHOW_ACTIVE_TITLE{{System::Main, "Interface", "ShowActiveTitle"}, true};
 const Info<bool> MAIN_USE_BUILT_IN_TITLE_DATABASE{
     {System::Main, "Interface", "UseBuiltinTitleDatabase"}, true};
@@ -500,6 +509,8 @@ const Info<bool> MAIN_DEBUG_JIT_SYSTEM_REGISTERS_OFF{
 const Info<bool> MAIN_DEBUG_JIT_BRANCH_OFF{{System::Main, "Debug", "JitBranchOff"}, false};
 const Info<bool> MAIN_DEBUG_JIT_REGISTER_CACHE_OFF{{System::Main, "Debug", "JitRegisterCacheOff"},
                                                    false};
+const Info<bool> MAIN_DEBUG_JIT_ENABLE_PROFILING{{System::Main, "Debug", "JitEnableProfiling"},
+                                                 false};
 
 // Main.BluetoothPassthrough
 
@@ -552,6 +563,14 @@ void SetUSBDeviceWhitelist(const std::set<std::pair<u16, u16>>& devices)
 {
   Config::SetBase(Config::MAIN_USB_PASSTHROUGH_DEVICES, SaveUSBWhitelistToString(devices));
 }
+
+// Main.EmulatedUSBDevices
+
+const Info<bool> MAIN_EMULATE_SKYLANDER_PORTAL{
+    {System::Main, "EmulatedUSBDevices", "EmulateSkylanderPortal"}, false};
+
+const Info<bool> MAIN_EMULATE_INFINITY_BASE{
+    {System::Main, "EmulatedUSBDevices", "EmulateInfinityBase"}, false};
 
 // The reason we need this function is because some memory card code
 // expects to get a non-NTSC-K region even if we're emulating an NTSC-K Wii.
@@ -640,17 +659,17 @@ std::string GetMemcardPath(std::string configured_filename, ExpansionInterface::
   constexpr std::string_view jp_region = "." JAP_DIR;
   constexpr std::string_view eu_region = "." EUR_DIR;
   std::optional<DiscIO::Region> path_region = std::nullopt;
-  if (StringEndsWith(name, us_region))
+  if (name.ends_with(us_region))
   {
     name = name.substr(0, name.size() - us_region.size());
     path_region = DiscIO::Region::NTSC_U;
   }
-  else if (StringEndsWith(name, jp_region))
+  else if (name.ends_with(jp_region))
   {
     name = name.substr(0, name.size() - jp_region.size());
     path_region = DiscIO::Region::NTSC_J;
   }
-  else if (StringEndsWith(name, eu_region))
+  else if (name.ends_with(eu_region))
   {
     name = name.substr(0, name.size() - eu_region.size());
     path_region = DiscIO::Region::PAL;
@@ -692,7 +711,7 @@ std::string GetGCIFolderPath(std::string configured_folder, ExpansionInterface::
   // If there's no region code just insert one at the end.
 
   UnifyPathSeparators(configured_folder);
-  while (StringEndsWith(configured_folder, "/"))
+  while (configured_folder.ends_with('/'))
     configured_folder.pop_back();
 
   constexpr std::string_view us_region = "/" USA_DIR;
@@ -700,17 +719,17 @@ std::string GetGCIFolderPath(std::string configured_folder, ExpansionInterface::
   constexpr std::string_view eu_region = "/" EUR_DIR;
   std::string_view base_path = configured_folder;
   std::optional<DiscIO::Region> path_region = std::nullopt;
-  if (StringEndsWith(base_path, us_region))
+  if (base_path.ends_with(us_region))
   {
     base_path = base_path.substr(0, base_path.size() - us_region.size());
     path_region = DiscIO::Region::NTSC_U;
   }
-  else if (StringEndsWith(base_path, jp_region))
+  else if (base_path.ends_with(jp_region))
   {
     base_path = base_path.substr(0, base_path.size() - jp_region.size());
     path_region = DiscIO::Region::NTSC_J;
   }
-  else if (StringEndsWith(base_path, eu_region))
+  else if (base_path.ends_with(eu_region))
   {
     base_path = base_path.substr(0, base_path.size() - eu_region.size());
     path_region = DiscIO::Region::PAL;
@@ -727,4 +746,17 @@ bool IsDefaultGCIFolderPathConfigured(ExpansionInterface::Slot slot)
 {
   return Config::Get(GetInfoForGCIPath(slot)).empty();
 }
+
+bool AreCheatsEnabled()
+{
+  return Config::Get(::Config::MAIN_ENABLE_CHEATS) &&
+         !AchievementManager::GetInstance().IsHardcoreModeActive();
+}
+
+bool IsDebuggingEnabled()
+{
+  return Config::Get(::Config::MAIN_ENABLE_DEBUGGING) &&
+         !AchievementManager::GetInstance().IsHardcoreModeActive();
+}
+
 }  // namespace Config

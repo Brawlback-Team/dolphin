@@ -170,15 +170,6 @@ bool VolumeWAD::CheckContentIntegrity(const IOS::ES::Content& content,
   return Common::SHA1::CalculateDigest(decrypted_data.data(), content.size) == content.sha1;
 }
 
-bool VolumeWAD::CheckContentIntegrity(const IOS::ES::Content& content, u64 content_offset,
-                                      const IOS::ES::TicketReader& ticket) const
-{
-  std::vector<u8> encrypted_data(Common::AlignUp(content.size, 0x40));
-  if (!m_reader->Read(content_offset, encrypted_data.size(), encrypted_data.data()))
-    return false;
-  return CheckContentIntegrity(content, encrypted_data, ticket);
-}
-
 IOS::ES::TicketReader VolumeWAD::GetTicketWithFixedCommonKey() const
 {
   if (!m_ticket.IsValid() || !m_tmd.IsValid())
@@ -256,7 +247,7 @@ std::string VolumeWAD::GetMakerID(const Partition& partition) const
     return "00";
 
   // Some weird channels use 0x0000 in place of the MakerID, so we need a check here
-  if (!IsPrintableCharacter(temp[0]) || !IsPrintableCharacter(temp[1]))
+  if (!Common::IsPrintableCharacter(temp[0]) || !Common::IsPrintableCharacter(temp[1]))
     return "00";
 
   return DecodeString(temp);

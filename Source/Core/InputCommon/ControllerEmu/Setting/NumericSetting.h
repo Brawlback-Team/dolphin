@@ -60,8 +60,10 @@ public:
 
   virtual ~NumericSettingBase() = default;
 
-  virtual void LoadFromIni(const IniFile::Section& section, const std::string& group_name) = 0;
-  virtual void SaveToIni(IniFile::Section& section, const std::string& group_name) const = 0;
+  virtual void LoadFromIni(const Common::IniFile::Section& section,
+                           const std::string& group_name) = 0;
+  virtual void SaveToIni(Common::IniFile::Section& section,
+                         const std::string& group_name) const = 0;
 
   virtual InputReference& GetInputReference() = 0;
   virtual const InputReference& GetInputReference() const = 0;
@@ -78,6 +80,7 @@ public:
 
   virtual void SetToDefault() = 0;
 
+  const char* GetININame() const;
   const char* GetUIName() const;
   const char* GetUISuffix() const;
   const char* GetUIDescription() const;
@@ -110,7 +113,7 @@ public:
 
   void SetToDefault() override { m_value.SetValue(m_default_value); }
 
-  void LoadFromIni(const IniFile::Section& section, const std::string& group_name) override
+  void LoadFromIni(const Common::IniFile::Section& section, const std::string& group_name) override
   {
     std::string str_value;
     if (section.Get(group_name + m_details.ini_name, &str_value))
@@ -124,7 +127,7 @@ public:
     }
   }
 
-  void SaveToIni(IniFile::Section& section, const std::string& group_name) const override
+  void SaveToIni(Common::IniFile::Section& section, const std::string& group_name) const override
   {
     if (IsSimpleValue())
     {
@@ -140,14 +143,7 @@ public:
   }
 
   bool IsSimpleValue() const override { return m_value.IsSimpleValue(); }
-
-  void SimplifyIfPossible() override
-  {
-    ValueType value;
-    if (TryParse(m_value.m_input.GetExpression(), &value))
-      m_value.SetValue(value);
-  }
-
+  void SimplifyIfPossible() override;
   void SetExpressionFromValue() override;
   InputReference& GetInputReference() override { return m_value.m_input; }
   const InputReference& GetInputReference() const override { return m_value.m_input; }
@@ -190,7 +186,6 @@ public:
 
   bool IsSimpleValue() const { return m_input.GetExpression().empty(); }
 
-private:
   void SetValue(ValueType value)
   {
     m_value = value;
@@ -199,6 +194,7 @@ private:
     m_input.SetExpression("");
   }
 
+private:
   // Values are R/W by both UI and CPU threads.
   mutable std::atomic<ValueType> m_value = {};
 

@@ -202,9 +202,9 @@ static void WriteSwizzler(ShaderCode& code, const EFBCopyParams& params, APIType
   const int blkH = TexDecoder_GetEFBCopyBlockHeightInTexels(params.copy_format);
   int samples = GetEncodedSampleCount(params.copy_format);
 
-  code.Write("  int x_block_position = (uv1.x >> {}) << {};\n", IntLog2(blkH * blkW / samples),
-             IntLog2(blkW));
-  code.Write("  int y_block_position = uv1.y << {};\n", IntLog2(blkH));
+  code.Write("  int x_block_position = (uv1.x >> {}) << {};\n",
+             MathUtil::IntLog2(blkH * blkW / samples), MathUtil::IntLog2(blkW));
+  code.Write("  int y_block_position = uv1.y << {};\n", MathUtil::IntLog2(blkH));
   if (samples == 1)
   {
     // With samples == 1, we write out pairs of blocks; one A8R8, one G8B8.
@@ -212,9 +212,10 @@ static void WriteSwizzler(ShaderCode& code, const EFBCopyParams& params, APIType
     samples = 2;
   }
   code.Write("  int offset_in_block = uv1.x & {};\n", (blkH * blkW / samples) - 1);
-  code.Write("  int y_offset_in_block = offset_in_block >> {};\n", IntLog2(blkW / samples));
+  code.Write("  int y_offset_in_block = offset_in_block >> {};\n",
+             MathUtil::IntLog2(blkW / samples));
   code.Write("  int x_offset_in_block = (offset_in_block & {}) << {};\n", (blkW / samples) - 1,
-             IntLog2(samples));
+             MathUtil::IntLog2(samples));
 
   code.Write("  sampleUv.x = x_block_position + x_offset_in_block;\n"
              "  sampleUv.y = y_block_position + y_offset_in_block;\n");
@@ -1088,7 +1089,7 @@ std::string GenerateDecodingShader(TextureFormat format, std::optional<TLUTForma
     ss << "#define TEXEL_BUFFER_FORMAT_R32G32 1\n";
     break;
   case NUM_TEXEL_BUFFER_FORMATS:
-    ASSERT(0);
+    ASSERT(false);
     break;
   }
 

@@ -58,8 +58,9 @@ struct pixel_shader_uid_data
   DstBlendFactor blend_dst_factor_alpha : 3;  // Only used with shader_framebuffer_fetch blend
   u32 blend_subtract : 1;                     // Only used with shader_framebuffer_fetch blend
   u32 blend_subtract_alpha : 1;               // Only used with shader_framebuffer_fetch blend
+  u32 emulate_logic_op_with_blend : 1;        // Only used with logic op blend emulation
   u32 logic_op_enable : 1;                    // Only used with shader_framebuffer_fetch logic ops
-  u32 logic_op_mode : 4;                      // Only used with shader_framebuffer_fetch logic ops
+  u32 logic_op_mode : 4;  // Only used with shader_framebuffer_fetch logic ops and blend emulation
 
   u32 texMtxInfo_n_projection : 8;  // 8x1 bit
   u32 tevindref_bi0 : 3;
@@ -157,10 +158,15 @@ struct pixel_shader_uid_data
 
 using PixelShaderUid = ShaderUid<pixel_shader_uid_data>;
 
+void WriteCustomShaderStructImpl(ShaderCode* out, u32 num_stages, bool per_pixel_lighting,
+                                 const pixel_shader_uid_data* uid_data);
+
 ShaderCode GeneratePixelShaderCode(APIType api_type, const ShaderHostConfig& host_config,
-                                   const pixel_shader_uid_data* uid_data);
+                                   const pixel_shader_uid_data* uid_data,
+                                   const CustomPixelShaderContents& custom_details);
 void WritePixelShaderCommonHeader(ShaderCode& out, APIType api_type,
-                                  const ShaderHostConfig& host_config, bool bounding_box);
+                                  const ShaderHostConfig& host_config, bool bounding_box,
+                                  const CustomPixelShaderContents& custom_details);
 void ClearUnusedPixelShaderUidBits(APIType api_type, const ShaderHostConfig& host_config,
                                    PixelShaderUid* uid);
 PixelShaderUid GetPixelShaderUid();

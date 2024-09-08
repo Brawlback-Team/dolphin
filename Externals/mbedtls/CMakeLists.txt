@@ -228,7 +228,8 @@ endif(CMAKE_COMPILER_IS_IAR)
 
 if(CMAKE_COMPILER_IS_MSVC)
     # Strictest warnings
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /W3")
+    # Dolphin/MSVC: we want to disable all warnings for externals
+    #set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /W3")
 endif(CMAKE_COMPILER_IS_MSVC)
 
 if(MBEDTLS_FATAL_WARNINGS)

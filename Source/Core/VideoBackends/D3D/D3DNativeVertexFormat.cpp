@@ -7,7 +7,7 @@
 #include "Common/EnumMap.h"
 
 #include "VideoBackends/D3D/D3DBase.h"
-#include "VideoBackends/D3D/D3DRender.h"
+#include "VideoBackends/D3D/D3DGfx.h"
 #include "VideoBackends/D3D/D3DState.h"
 #include "VideoBackends/D3D/D3DVertexManager.h"
 #include "VideoBackends/D3D/DXShader.h"
@@ -18,14 +18,14 @@ namespace DX11
 std::mutex s_input_layout_lock;
 
 std::unique_ptr<NativeVertexFormat>
-Renderer::CreateNativeVertexFormat(const PortableVertexDeclaration& vtx_decl)
+Gfx::CreateNativeVertexFormat(const PortableVertexDeclaration& vtx_decl)
 {
   return std::make_unique<D3DVertexFormat>(vtx_decl);
 }
 
 DXGI_FORMAT VarToD3D(ComponentFormat t, int size, bool integer)
 {
-  using FormatMap = Common::EnumMap<DXGI_FORMAT, ComponentFormat::Float>;
+  using FormatMap = Common::EnumMap<DXGI_FORMAT, ComponentFormat::InvalidFloat7>;
   static constexpr auto f = [](FormatMap a) { return a; };  // Deduction helper
 
   static constexpr std::array<FormatMap, 4> d3d_float_format_lookup = {
@@ -35,12 +35,18 @@ DXGI_FORMAT VarToD3D(ComponentFormat t, int size, bool integer)
           DXGI_FORMAT_R16_UNORM,
           DXGI_FORMAT_R16_SNORM,
           DXGI_FORMAT_R32_FLOAT,
+          DXGI_FORMAT_R32_FLOAT,
+          DXGI_FORMAT_R32_FLOAT,
+          DXGI_FORMAT_R32_FLOAT,
       }),
       f({
           DXGI_FORMAT_R8G8_UNORM,
           DXGI_FORMAT_R8G8_SNORM,
           DXGI_FORMAT_R16G16_UNORM,
           DXGI_FORMAT_R16G16_SNORM,
+          DXGI_FORMAT_R32G32_FLOAT,
+          DXGI_FORMAT_R32G32_FLOAT,
+          DXGI_FORMAT_R32G32_FLOAT,
           DXGI_FORMAT_R32G32_FLOAT,
       }),
       f({
@@ -49,12 +55,18 @@ DXGI_FORMAT VarToD3D(ComponentFormat t, int size, bool integer)
           DXGI_FORMAT_UNKNOWN,
           DXGI_FORMAT_UNKNOWN,
           DXGI_FORMAT_R32G32B32_FLOAT,
+          DXGI_FORMAT_R32G32B32_FLOAT,
+          DXGI_FORMAT_R32G32B32_FLOAT,
+          DXGI_FORMAT_R32G32B32_FLOAT,
       }),
       f({
           DXGI_FORMAT_R8G8B8A8_UNORM,
           DXGI_FORMAT_R8G8B8A8_SNORM,
           DXGI_FORMAT_R16G16B16A16_UNORM,
           DXGI_FORMAT_R16G16B16A16_SNORM,
+          DXGI_FORMAT_R32G32B32A32_FLOAT,
+          DXGI_FORMAT_R32G32B32A32_FLOAT,
+          DXGI_FORMAT_R32G32B32A32_FLOAT,
           DXGI_FORMAT_R32G32B32A32_FLOAT,
       }),
   };
@@ -66,6 +78,9 @@ DXGI_FORMAT VarToD3D(ComponentFormat t, int size, bool integer)
           DXGI_FORMAT_R16_UINT,
           DXGI_FORMAT_R16_SINT,
           DXGI_FORMAT_UNKNOWN,
+          DXGI_FORMAT_UNKNOWN,
+          DXGI_FORMAT_UNKNOWN,
+          DXGI_FORMAT_UNKNOWN,
       }),
       f({
           DXGI_FORMAT_R8G8_UINT,
@@ -73,8 +88,14 @@ DXGI_FORMAT VarToD3D(ComponentFormat t, int size, bool integer)
           DXGI_FORMAT_R16G16_UINT,
           DXGI_FORMAT_R16G16_SINT,
           DXGI_FORMAT_UNKNOWN,
+          DXGI_FORMAT_UNKNOWN,
+          DXGI_FORMAT_UNKNOWN,
+          DXGI_FORMAT_UNKNOWN,
       }),
       f({
+          DXGI_FORMAT_UNKNOWN,
+          DXGI_FORMAT_UNKNOWN,
+          DXGI_FORMAT_UNKNOWN,
           DXGI_FORMAT_UNKNOWN,
           DXGI_FORMAT_UNKNOWN,
           DXGI_FORMAT_UNKNOWN,
@@ -86,6 +107,9 @@ DXGI_FORMAT VarToD3D(ComponentFormat t, int size, bool integer)
           DXGI_FORMAT_R8G8B8A8_SINT,
           DXGI_FORMAT_R16G16B16A16_UINT,
           DXGI_FORMAT_R16G16B16A16_SINT,
+          DXGI_FORMAT_UNKNOWN,
+          DXGI_FORMAT_UNKNOWN,
+          DXGI_FORMAT_UNKNOWN,
           DXGI_FORMAT_UNKNOWN,
       }),
   };

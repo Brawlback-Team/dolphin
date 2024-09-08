@@ -11,6 +11,10 @@
 
 class PointerWrap;
 
+namespace Core
+{
+class System;
+}
 namespace Memcard
 {
 struct HeaderData;
@@ -35,9 +39,9 @@ enum class EXIDeviceType : int
   MemoryCardFolder,
   AGP,
   EthernetXLink,
-  // Only used on Apple devices.
   EthernetTapServer,
   EthernetBuiltIn,
+  ModemTapServer,
   Brawlback,
   None = 0xFF
 };
@@ -45,6 +49,7 @@ enum class EXIDeviceType : int
 class IEXIDevice
 {
 public:
+  explicit IEXIDevice(Core::System& system);
   virtual ~IEXIDevice() = default;
 
   // Immediate copy functions
@@ -60,7 +65,6 @@ public:
   virtual bool IsPresent() const;
   virtual void SetCS(int cs);
   virtual void DoState(PointerWrap& p);
-  virtual void PauseAndLock(bool do_lock, bool resume_on_unlock = true);
 
   // Is generating interrupt ?
   virtual bool IsInterruptSet();
@@ -70,12 +74,16 @@ public:
   // such.
   EXIDeviceType m_device_type = EXIDeviceType::None;
 
+protected:
+  Core::System& m_system;
+
 private:
   // Byte transfer function for this device
   virtual void TransferByte(u8& byte);
 };
 
-std::unique_ptr<IEXIDevice> EXIDevice_Create(EXIDeviceType device_type, int channel_num,
+std::unique_ptr<IEXIDevice> EXIDevice_Create(Core::System& system, EXIDeviceType device_type,
+                                             int channel_num,
                                              const Memcard::HeaderData& memcard_header_data);
 }  // namespace ExpansionInterface
 
@@ -98,13 +106,14 @@ struct fmt::formatter<ExpansionInterface::EXIDeviceType>
       _trans("Broadband Adapter (XLink Kai)"),
       _trans("Broadband Adapter (tapserver)"),
       _trans("Broadband Adapter (HLE)"),
+      _trans("Modem Adapter (tapserver)"),
       _trans("Brawlback")
   };
 
   constexpr formatter() : EnumFormatter(names) {}
 
   template <typename FormatContext>
-  auto format(const ExpansionInterface::EXIDeviceType& e, FormatContext& ctx)
+  auto format(const ExpansionInterface::EXIDeviceType& e, FormatContext& ctx) const
   {
     if (e != ExpansionInterface::EXIDeviceType::None)
     {

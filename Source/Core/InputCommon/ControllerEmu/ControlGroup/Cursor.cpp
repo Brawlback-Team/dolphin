@@ -25,12 +25,12 @@ Cursor::Cursor(std::string name_, std::string ui_name_)
       m_last_update(Clock::now())
 {
   for (auto& named_direction : named_directions)
-    AddInput(Translate, named_direction);
+    AddInput(Translatability::Translate, named_direction);
 
-  AddInput(Translate, _trans("Hide"));
-  AddInput(Translate, _trans("Recenter"));
+  AddInput(Translatability::Translate, _trans("Hide"));
+  AddInput(Translatability::Translate, _trans("Recenter"));
 
-  AddInput(Translate, _trans("Relative Input Hold"));
+  AddInput(Translatability::Translate, _trans("Relative Input Hold"));
 
   // Default values chosen to reach screen edges in most games including the Wii Menu.
 
@@ -179,6 +179,11 @@ ControlState Cursor::GetTotalPitch() const
 ControlState Cursor::GetVerticalOffset() const
 {
   return m_vertical_offset_setting.GetValue() / 100;
+}
+
+void Cursor::SetRelativeInput(bool value)
+{
+  m_relative_setting.SetValue(value);
 }
 
 bool Cursor::StateData::IsVisible() const

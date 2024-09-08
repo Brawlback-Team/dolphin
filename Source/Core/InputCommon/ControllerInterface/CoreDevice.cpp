@@ -125,6 +125,11 @@ bool Device::Control::IsMatchingName(std::string_view name) const
   return GetName() == name;
 }
 
+bool Device::Control::IsHidden() const
+{
+  return false;
+}
+
 ControlState Device::FullAnalogSurface::GetState() const
 {
   return (1 + std::max(0.0, m_high.GetState()) - std::max(0.0, m_low.GetState())) / 2;
@@ -134,6 +139,16 @@ std::string Device::FullAnalogSurface::GetName() const
 {
   // E.g. "Full Axis X+"
   return "Full " + m_high.GetName();
+}
+
+bool Device::FullAnalogSurface::IsDetectable() const
+{
+  return m_low.IsDetectable() && m_high.IsDetectable();
+}
+
+bool Device::FullAnalogSurface::IsHidden() const
+{
+  return m_low.IsHidden() && m_high.IsHidden();
 }
 
 bool Device::FullAnalogSurface::IsMatchingName(std::string_view name) const
@@ -162,15 +177,12 @@ void Device::AddCombinedInput(std::string name, const std::pair<std::string, std
 std::string DeviceQualifier::ToString() const
 {
   if (source.empty() && (cid < 0) && name.empty())
-    return "";
+    return {};
 
-  std::ostringstream ss;
-  ss << source << '/';
   if (cid > -1)
-    ss << cid;
-  ss << '/' << name;
-
-  return ss.str();
+    return fmt::format("{}/{}/{}", source, cid, name);
+  else
+    return fmt::format("{}//{}", source, name);
 }
 
 //
@@ -240,6 +252,18 @@ std::shared_ptr<Device> DeviceContainer::FindDevice(const DeviceQualifier& devq)
   }
 
   return nullptr;
+}
+
+std::vector<std::shared_ptr<Device>> DeviceContainer::GetAllDevices() const
+{
+  std::lock_guard lk(m_devices_mutex);
+
+  std::vector<std::shared_ptr<Device>> devices;
+
+  for (const auto& d : m_devices)
+    devices.emplace_back(d);
+
+  return devices;
 }
 
 std::vector<std::string> DeviceContainer::GetAllDeviceStrings() const

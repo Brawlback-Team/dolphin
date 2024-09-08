@@ -46,12 +46,12 @@
 #include "Common/FileUtil.h"
 
 #include "Core/Config/MainSettings.h"
-#include "Core/ConfigManager.h"
 #include "Core/Core.h"
 #include "Core/HW/DVD/DVDInterface.h"
 #include "Core/HW/EXI/EXI.h"
 #include "Core/HW/EXI/EXI_Device.h"
 #include "Core/HW/WiiSave.h"
+#include "Core/System.h"
 #include "Core/WiiUtils.h"
 
 #include "DiscIO/Blob.h"
@@ -66,6 +66,7 @@
 #include "DolphinQt/QtUtils/DoubleClickEventFilter.h"
 #include "DolphinQt/QtUtils/ModalMessageBox.h"
 #include "DolphinQt/QtUtils/ParallelProgressDialog.h"
+#include "DolphinQt/QtUtils/SetWindowDecorations.h"
 #include "DolphinQt/Resources.h"
 #include "DolphinQt/Settings.h"
 #include "DolphinQt/WiiUpdate.h"
@@ -121,8 +122,10 @@ GameList::GameList(QWidget* parent) : QStackedWidget(parent), m_model(this)
   m_prefer_list = Settings::Instance().GetPreferredView();
   ConsiderViewChange();
 
-  const auto* zoom_in = new QShortcut(QKeySequence::ZoomIn, this);
-  const auto* zoom_out = new QShortcut(QKeySequence::ZoomOut, this);
+  auto* zoom_in = new QShortcut(QKeySequence::ZoomIn, this);
+  auto* zoom_out = new QShortcut(QKeySequence::ZoomOut, this);
+  zoom_in->setContext(Qt::WidgetWithChildrenShortcut);
+  zoom_out->setContext(Qt::WidgetWithChildrenShortcut);
 
   connect(zoom_in, &QShortcut::activated, this, &GameList::ZoomIn);
   connect(zoom_out, &QShortcut::activated, this, &GameList::ZoomOut);
@@ -296,16 +299,14 @@ void GameList::MakeEmptyView()
   size_policy.setRetainSizeWhenHidden(true);
   m_empty->setSizePolicy(size_policy);
 
-  connect(&Settings::Instance(), &Settings::GameListRefreshRequested, this,
-          [this, refreshing_msg = refreshing_msg] {
-            m_empty->setText(refreshing_msg);
-            m_empty->setEnabled(false);
-          });
-  connect(&Settings::Instance(), &Settings::GameListRefreshCompleted, this,
-          [this, empty_msg = empty_msg] {
-            m_empty->setText(empty_msg);
-            m_empty->setEnabled(true);
-          });
+  connect(&Settings::Instance(), &Settings::GameListRefreshRequested, this, [this, refreshing_msg] {
+    m_empty->setText(refreshing_msg);
+    m_empty->setEnabled(false);
+  });
+  connect(&Settings::Instance(), &Settings::GameListRefreshCompleted, this, [this, empty_msg] {
+    m_empty->setText(empty_msg);
+    m_empty->setEnabled(true);
+  });
 }
 
 void GameList::resizeEvent(QResizeEvent* event)
@@ -367,8 +368,10 @@ void GameList::ShowContextMenu(const QPoint&)
 {
   if (!GetSelectedGame())
     return;
+  auto& system = Core::System::GetInstance();
 
   QMenu* menu = new QMenu(this);
+  menu->setAttribute(Qt::WA_DeleteOnClose, true);
 
   if (HasMultipleSelected())
   {
@@ -418,8 +421,8 @@ void GameList::ShowContextMenu(const QPoint&)
       QAction* change_disc = menu->addAction(tr("Change &Disc"), this, &GameList::ChangeDisc);
 
       connect(&Settings::Instance(), &Settings::EmulationStateChanged, change_disc,
-              [change_disc] { change_disc->setEnabled(Core::IsRunning()); });
-      change_disc->setEnabled(Core::IsRunning());
+              [&system, change_disc] { change_disc->setEnabled(Core::IsRunning(system)); });
+      change_disc->setEnabled(Core::IsRunning(system));
 
       menu->addSeparator();
     }
@@ -433,7 +436,7 @@ void GameList::ShowContextMenu(const QPoint&)
                                                     // system menu, trigger a refresh.
                                                     Settings::Instance().NANDRefresh();
                                                   });
-      perform_disc_update->setEnabled(!Core::IsRunning() || !SConfig::GetInstance().bWii);
+      perform_disc_update->setEnabled(!Core::IsRunning(system) || !system.IsWii());
     }
 
     if (!is_mod_descriptor && platform == DiscIO::Platform::WiiWAD)
@@ -446,10 +449,10 @@ void GameList::ShowContextMenu(const QPoint&)
 
       for (QAction* a : {wad_install_action, wad_uninstall_action})
       {
-        a->setEnabled(!Core::IsRunning());
+        a->setEnabled(!Core::IsRunning(system));
         menu->addAction(a);
       }
-      if (!Core::IsRunning())
+      if (!Core::IsRunning(system))
         wad_uninstall_action->setEnabled(WiiUtils::IsTitleInstalled(game->GetTitleID()));
 
       connect(&Settings::Instance(), &Settings::EmulationStateChanged, menu,
@@ -465,8 +468,14 @@ void GameList::ShowContextMenu(const QPoint&)
     if (!is_mod_descriptor &&
         (platform == DiscIO::Platform::WiiWAD || platform == DiscIO::Platform::WiiDisc))
     {
-      menu->addAction(tr("Open Wii &Save Folder"), this, &GameList::OpenWiiSaveFolder);
-      menu->addAction(tr("Export Wii Save"), this, &GameList::ExportWiiSave);
+      QAction* open_wii_save_folder =
+          menu->addAction(tr("Open Wii &Save Folder"), this, &GameList::OpenWiiSaveFolder);
+      QAction* export_wii_save =
+          menu->addAction(tr("Export Wii Save"), this, &GameList::ExportWiiSave);
+
+      open_wii_save_folder->setEnabled(!Core::IsRunning(system));
+      export_wii_save->setEnabled(!Core::IsRunning(system));
+
       menu->addSeparator();
     }
 
@@ -522,7 +531,7 @@ void GameList::ShowContextMenu(const QPoint&)
     connect(&Settings::Instance(), &Settings::EmulationStateChanged, menu, [=](Core::State state) {
       netplay_host->setEnabled(state == Core::State::Uninitialized);
     });
-    netplay_host->setEnabled(!Core::IsRunning());
+    netplay_host->setEnabled(!Core::IsRunning(system));
 
     menu->addAction(netplay_host);
   }
@@ -544,7 +553,12 @@ void GameList::OpenProperties()
   connect(properties, &PropertiesDialog::OpenGeneralSettings, this, &GameList::OpenGeneralSettings);
   connect(properties, &PropertiesDialog::OpenGraphicsSettings, this,
           &GameList::OpenGraphicsSettings);
+#ifdef USE_RETRO_ACHIEVEMENTS
+  connect(properties, &PropertiesDialog::OpenAchievementSettings, this,
+          &GameList::OpenAchievementSettings);
+#endif  // USE_RETRO_ACHIEVEMENTS
 
+  SetQWidgetWindowDecorations(properties);
   properties->show();
 }
 
@@ -599,6 +613,7 @@ void GameList::ConvertFile()
     return;
 
   ConvertDialog dialog{std::move(games), this};
+  SetQWidgetWindowDecorations(&dialog);
   dialog.exec();
 }
 
@@ -616,6 +631,7 @@ void GameList::InstallWAD()
   result_dialog.setWindowTitle(success ? tr("Success") : tr("Failure"));
   result_dialog.setText(success ? tr("Successfully installed this title to the NAND.") :
                                   tr("Failed to install this title to the NAND."));
+  SetQWidgetWindowDecorations(&result_dialog);
   result_dialog.exec();
 }
 
@@ -633,6 +649,7 @@ void GameList::UninstallWAD()
                             "this title from the NAND without deleting its save data. Continue?"));
   warning_dialog.setStandardButtons(QMessageBox::No | QMessageBox::Yes);
 
+  SetQWidgetWindowDecorations(&warning_dialog);
   if (warning_dialog.exec() == QMessageBox::No)
     return;
 
@@ -644,6 +661,7 @@ void GameList::UninstallWAD()
   result_dialog.setWindowTitle(success ? tr("Success") : tr("Failure"));
   result_dialog.setText(success ? tr("Successfully removed this title from the NAND.") :
                                   tr("Failed to remove this title from the NAND."));
+  SetQWidgetWindowDecorations(&result_dialog);
   result_dialog.exec();
 }
 
@@ -693,7 +711,14 @@ void GameList::OpenWiiSaveFolder()
   if (!game)
     return;
 
-  QUrl url = QUrl::fromLocalFile(QString::fromStdString(game->GetWiiFSPath()));
+  const std::string path = game->GetWiiFSPath();
+  if (!File::Exists(path))
+  {
+    ModalMessageBox::information(this, tr("Information"), tr("No save data found."));
+    return;
+  }
+
+  const QUrl url = QUrl::fromLocalFile(QString::fromStdString(path));
   QDesktopServices::openUrl(url);
 }
 
@@ -778,15 +803,11 @@ bool GameList::AddShortcutToDesktop()
 
   std::string game_name = game->GetName(Core::TitleDatabase());
   // Sanitize the string by removing all characters that cannot be used in NTFS file names
-  game_name.erase(std::remove_if(game_name.begin(), game_name.end(),
-                                 [](char ch) {
-                                   static constexpr char illegal_characters[] = {
-                                       '<', '>', ':', '\"', '/', '\\', '|', '?', '*'};
-                                   return std::find(std::begin(illegal_characters),
-                                                    std::end(illegal_characters),
-                                                    ch) != std::end(illegal_characters);
-                                 }),
-                  game_name.end());
+  std::erase_if(game_name, [](char ch) {
+    static constexpr char illegal_characters[] = {'<', '>', ':', '\"', '/', '\\', '|', '?', '*'};
+    return std::find(std::begin(illegal_characters), std::end(illegal_characters), ch) !=
+           std::end(illegal_characters);
+  });
 
   std::wstring desktop_path = std::wstring(desktop.get()) + UTF8ToTStr("\\" + game_name + ".lnk");
   auto persist_file = shell_link.try_query<IPersistFile>();
@@ -810,6 +831,7 @@ void GameList::DeleteFile()
   confirm_dialog.setInformativeText(tr("This cannot be undone!"));
   confirm_dialog.setStandardButtons(QMessageBox::Yes | QMessageBox::Cancel);
 
+  SetQWidgetWindowDecorations(&confirm_dialog);
   if (confirm_dialog.exec() == QMessageBox::Yes)
   {
     for (const auto& game : GetSelectedGames())
@@ -835,6 +857,7 @@ void GameList::DeleteFile()
                                              "delete the file or whether it's still in use."));
           error_dialog.setStandardButtons(QMessageBox::Retry | QMessageBox::Abort);
 
+          SetQWidgetWindowDecorations(&error_dialog);
           if (error_dialog.exec() == QMessageBox::Abort)
             break;
         }
@@ -852,7 +875,8 @@ void GameList::ChangeDisc()
   if (!game)
     return;
 
-  Core::RunAsCPUThread([file_path = game->GetFilePath()] { DVDInterface::ChangeDisc(file_path); });
+  auto& system = Core::System::GetInstance();
+  system.GetDVDInterface().ChangeDisc(Core::CPUThreadGuard{system}, game->GetFilePath());
 }
 
 QAbstractItemView* GameList::GetActiveView() const

@@ -16,13 +16,19 @@
 #include "Common/Logging/Log.h"
 #include "Common/SPSCQueue.h"
 
+#include "Core/AchievementManager.h"
+#include "Core/CPUThreadConfigCallback.h"
+#include "Core/Config/AchievementSettings.h"
 #include "Core/Config/MainSettings.h"
 #include "Core/Core.h"
 #include "Core/PowerPC/PowerPC.h"
 #include "Core/System.h"
 
 #include "VideoCommon/Fifo.h"
+#include "VideoCommon/OnScreenDisplay.h"
+#include "VideoCommon/PerformanceMetrics.h"
 #include "VideoCommon/VideoBackendBase.h"
+#include "VideoCommon/VideoConfig.h"
 
 namespace CoreTiming
 {
@@ -39,6 +45,10 @@ static bool operator<(const Event& left, const Event& right)
 static constexpr int MAX_SLICE_LENGTH = 20000;
 
 static void EmptyTimedCallback(Core::System& system, u64 userdata, s64 cyclesLate)
+{
+}
+
+CoreTimingManager::CoreTimingManager(Core::System& system) : m_system(system)
 {
 }
 
@@ -63,7 +73,7 @@ EventType* CoreTimingManager::RegisterEvent(const std::string& name, TimedCallba
 {
   // check for existing type with same name.
   // we want event type names to remain unique so that we can use them for serialization.
-  ASSERT_MSG(POWERPC, m_event_types.find(name) == m_event_types.end(),
+  ASSERT_MSG(POWERPC, !m_event_types.contains(name),
              "CoreTiming Event \"{}\" is already registered. Events should only be registered "
              "during Init to avoid breaking save states.",
              name);
@@ -82,13 +92,13 @@ void CoreTimingManager::UnregisterAllEvents()
 
 void CoreTimingManager::Init()
 {
-  m_registered_config_callback_id = Config::AddConfigChangedCallback(
-      [this]() { Core::RunAsCPUThread([this]() { RefreshConfig(); }); });
+  m_registered_config_callback_id =
+      CPUThreadConfigCallback::AddConfigChangedCallback([this]() { RefreshConfig(); });
   RefreshConfig();
 
   m_last_oc_factor = m_config_oc_factor;
   m_globals.last_OC_factor_inverted = m_config_oc_inv_factor;
-  PowerPC::ppcState.downcount = CyclesToDowncount(MAX_SLICE_LENGTH);
+  m_system.GetPPCState().downcount = CyclesToDowncount(MAX_SLICE_LENGTH);
   m_globals.slice_length = MAX_SLICE_LENGTH;
   m_globals.global_timer = 0;
   m_idled_cycles = 0;
@@ -98,6 +108,9 @@ void CoreTimingManager::Init()
   // executing the first PPC cycle of each slice to prepare the slice length and downcount for
   // that slice.
   m_is_global_timer_sane = true;
+
+  // Reset data used by the throttling system
+  ResetThrottle(0);
 
   m_event_fifo_id = 0;
   m_ev_lost = RegisterEvent("_lost_event", &EmptyTimedCallback);
@@ -109,7 +122,7 @@ void CoreTimingManager::Shutdown()
   MoveEvents();
   ClearPendingEvents();
   UnregisterAllEvents();
-  Config::RemoveConfigChangedCallback(m_registered_config_callback_id);
+  CPUThreadConfigCallback::RemoveConfigChangedCallback(m_registered_config_callback_id);
 }
 
 void CoreTimingManager::RefreshConfig()
@@ -118,6 +131,23 @@ void CoreTimingManager::RefreshConfig()
       Config::Get(Config::MAIN_OVERCLOCK_ENABLE) ? Config::Get(Config::MAIN_OVERCLOCK) : 1.0f;
   m_config_oc_inv_factor = 1.0f / m_config_oc_factor;
   m_config_sync_on_skip_idle = Config::Get(Config::MAIN_SYNC_ON_SKIP_IDLE);
+
+  // A maximum fallback is used to prevent the system from sleeping for
+  // too long or going full speed in an attempt to catch up to timings.
+  m_max_fallback = std::chrono::duration_cast<DT>(DT_ms(Config::Get(Config::MAIN_MAX_FALLBACK)));
+
+  m_max_variance = std::chrono::duration_cast<DT>(DT_ms(Config::Get(Config::MAIN_TIMING_VARIANCE)));
+
+  if (AchievementManager::GetInstance().IsHardcoreModeActive() &&
+      Config::Get(Config::MAIN_EMULATION_SPEED) < 1.0f &&
+      Config::Get(Config::MAIN_EMULATION_SPEED) > 0.0f)
+  {
+    Config::SetCurrent(Config::MAIN_EMULATION_SPEED, 1.0f);
+    m_emulation_speed = 1.0f;
+    OSD::AddMessage("Minimum speed is 100% in Hardcore Mode");
+  }
+
+  m_emulation_speed = Config::Get(Config::MAIN_EMULATION_SPEED);
 }
 
 void CoreTimingManager::DoState(PointerWrap& p)
@@ -170,11 +200,17 @@ void CoreTimingManager::DoState(PointerWrap& p)
   });
   p.DoMarker("CoreTimingEvents");
 
-  // When loading from a save state, we must assume the Event order is random and meaningless.
-  // The exact layout of the heap in memory is implementation defined, therefore it is platform
-  // and library version specific.
   if (p.IsReadMode())
+  {
+    // When loading from a save state, we must assume the Event order is random and meaningless.
+    // The exact layout of the heap in memory is implementation defined, therefore it is platform
+    // and library version specific.
     std::make_heap(m_event_queue.begin(), m_event_queue.end(), std::greater<Event>());
+
+    // The stave state has changed the time, so our previous Throttle targets are invalid.
+    // Especially when global_time goes down; So we create a fake throttle update.
+    ResetThrottle(m_globals.global_timer);
+  }
 }
 
 // This should only be called from the CPU thread. If you are calling
@@ -184,7 +220,7 @@ u64 CoreTimingManager::GetTicks() const
   u64 ticks = static_cast<u64>(m_globals.global_timer);
   if (!m_is_global_timer_sane)
   {
-    int downcount = DowncountToCycles(PowerPC::ppcState.downcount);
+    int downcount = DowncountToCycles(m_system.GetPPCState().downcount);
     ticks += m_globals.slice_length - downcount;
   }
   return ticks;
@@ -246,13 +282,12 @@ void CoreTimingManager::ScheduleEvent(s64 cycles_into_future, EventType* event_t
 
 void CoreTimingManager::RemoveEvent(EventType* event_type)
 {
-  auto itr = std::remove_if(m_event_queue.begin(), m_event_queue.end(),
-                            [&](const Event& e) { return e.type == event_type; });
+  const size_t erased =
+      std::erase_if(m_event_queue, [&](const Event& e) { return e.type == event_type; });
 
   // Removing random items breaks the invariant so we have to re-establish it.
-  if (itr != m_event_queue.end())
+  if (erased != 0)
   {
-    m_event_queue.erase(itr, m_event_queue.end());
     std::make_heap(m_event_queue.begin(), m_event_queue.end(), std::greater<Event>());
   }
 }
@@ -266,13 +301,13 @@ void CoreTimingManager::RemoveAllEvents(EventType* event_type)
 void CoreTimingManager::ForceExceptionCheck(s64 cycles)
 {
   cycles = std::max<s64>(0, cycles);
-  if (DowncountToCycles(PowerPC::ppcState.downcount) > cycles)
+  auto& ppc_state = m_system.GetPPCState();
+  if (DowncountToCycles(ppc_state.downcount) > cycles)
   {
     // downcount is always (much) smaller than MAX_INT so we can safely cast cycles to an int here.
     // Account for cycles already executed by adjusting the m_globals.slice_length
-    m_globals.slice_length -=
-        DowncountToCycles(PowerPC::ppcState.downcount) - static_cast<int>(cycles);
-    PowerPC::ppcState.downcount = CyclesToDowncount(static_cast<int>(cycles));
+    m_globals.slice_length -= DowncountToCycles(ppc_state.downcount) - static_cast<int>(cycles);
+    ppc_state.downcount = CyclesToDowncount(static_cast<int>(cycles));
   }
 }
 
@@ -288,11 +323,14 @@ void CoreTimingManager::MoveEvents()
 
 void CoreTimingManager::Advance()
 {
-  auto& system = Core::System::GetInstance();
+  CPUThreadConfigCallback::CheckForConfigChanges();
 
   MoveEvents();
 
-  int cyclesExecuted = m_globals.slice_length - DowncountToCycles(PowerPC::ppcState.downcount);
+  auto& power_pc = m_system.GetPowerPC();
+  auto& ppc_state = power_pc.GetPPCState();
+
+  int cyclesExecuted = m_globals.slice_length - DowncountToCycles(ppc_state.downcount);
   m_globals.global_timer += cyclesExecuted;
   m_last_oc_factor = m_config_oc_factor;
   m_globals.last_OC_factor_inverted = m_config_oc_inv_factor;
@@ -305,7 +343,9 @@ void CoreTimingManager::Advance()
     Event evt = std::move(m_event_queue.front());
     std::pop_heap(m_event_queue.begin(), m_event_queue.end(), std::greater<Event>());
     m_event_queue.pop_back();
-    evt.type->callback(system, evt.userdata, m_globals.global_timer - evt.time);
+
+    Throttle(evt.time);
+    evt.type->callback(m_system, evt.userdata, m_globals.global_timer - evt.time);
   }
 
   m_is_global_timer_sane = false;
@@ -317,13 +357,84 @@ void CoreTimingManager::Advance()
         std::min<s64>(m_event_queue.front().time - m_globals.global_timer, MAX_SLICE_LENGTH));
   }
 
-  PowerPC::ppcState.downcount = CyclesToDowncount(m_globals.slice_length);
+  ppc_state.downcount = CyclesToDowncount(m_globals.slice_length);
 
   // Check for any external exceptions.
   // It's important to do this after processing events otherwise any exceptions will be delayed
   // until the next slice:
   //        Pokemon Box refuses to boot if the first exception from the audio DMA is received late
-  PowerPC::CheckExternalExceptions();
+  power_pc.CheckExternalExceptions();
+}
+
+void CoreTimingManager::Throttle(const s64 target_cycle)
+{
+  // Based on number of cycles and emulation speed, increase the target deadline
+  const s64 cycles = target_cycle - m_throttle_last_cycle;
+
+  // Prevent any throttling code if the amount of time passed is < ~0.122ms
+  if (cycles < m_throttle_min_clock_per_sleep)
+    return;
+
+  m_throttle_last_cycle = target_cycle;
+
+  const double speed = Core::GetIsThrottlerTempDisabled() ? 0.0 : m_emulation_speed;
+
+  if (0.0 < speed)
+    m_throttle_deadline +=
+        std::chrono::duration_cast<DT>(DT_s(cycles) / (speed * m_throttle_clock_per_sec));
+
+  const TimePoint time = Clock::now();
+  const TimePoint min_deadline = time - m_max_fallback;
+  const TimePoint max_deadline = time + m_max_fallback;
+
+  if (m_throttle_deadline > max_deadline)
+  {
+    m_throttle_deadline = max_deadline;
+  }
+  else if (m_throttle_deadline < min_deadline)
+  {
+    DEBUG_LOG_FMT(COMMON, "System can not to keep up with timings! [relaxing timings by {} us]",
+                  DT_us(min_deadline - m_throttle_deadline).count());
+    m_throttle_deadline = min_deadline;
+  }
+
+  const TimePoint vi_deadline = time - std::min(m_max_fallback, m_max_variance) / 2;
+
+  // Skip the VI interrupt if the CPU is lagging by a certain amount.
+  // It doesn't matter what amount of lag we skip VI at, as long as it's constant.
+  m_throttle_disable_vi_int = 0.0 < speed && m_throttle_deadline < vi_deadline;
+
+  // Only sleep if we are behind the deadline
+  if (time < m_throttle_deadline)
+  {
+    std::this_thread::sleep_until(m_throttle_deadline);
+
+    // Count amount of time sleeping for analytics
+    const TimePoint time_after_sleep = Clock::now();
+    g_perf_metrics.CountThrottleSleep(time_after_sleep - time);
+  }
+}
+
+void CoreTimingManager::ResetThrottle(s64 cycle)
+{
+  m_throttle_last_cycle = cycle;
+  m_throttle_deadline = Clock::now();
+}
+
+TimePoint CoreTimingManager::GetCPUTimePoint(s64 cyclesLate) const
+{
+  return TimePoint(std::chrono::duration_cast<DT>(DT_s(m_globals.global_timer - cyclesLate) /
+                                                  m_throttle_clock_per_sec));
+}
+
+bool CoreTimingManager::GetVISkip() const
+{
+  return m_throttle_disable_vi_int && g_ActiveConfig.bVISkip && !Core::WantsDeterminism();
+}
+
+bool CoreTimingManager::UseSyncOnSkipIdle() const
+{
+  return m_config_sync_on_skip_idle;
 }
 
 void CoreTimingManager::LogPendingEvents() const
@@ -340,6 +451,9 @@ void CoreTimingManager::LogPendingEvents() const
 // Should only be called from the CPU thread after the PPC clock has changed
 void CoreTimingManager::AdjustEventQueueTimes(u32 new_ppc_clock, u32 old_ppc_clock)
 {
+  m_throttle_clock_per_sec = new_ppc_clock;
+  m_throttle_min_clock_per_sleep = new_ppc_clock / 1200;
+
   for (Event& ev : m_event_queue)
   {
     const s64 ticks = (ev.time - m_globals.global_timer) * new_ppc_clock / old_ppc_clock;
@@ -354,12 +468,13 @@ void CoreTimingManager::Idle()
     // When the FIFO is processing data we must not advance because in this way
     // the VI will be desynchronized. So, We are waiting until the FIFO finish and
     // while we process only the events required by the FIFO.
-    Fifo::FlushGpu();
+    m_system.GetFifo().FlushGpu();
   }
 
-  PowerPC::UpdatePerformanceMonitor(PowerPC::ppcState.downcount, 0, 0);
-  m_idled_cycles += DowncountToCycles(PowerPC::ppcState.downcount);
-  PowerPC::ppcState.downcount = 0;
+  auto& ppc_state = m_system.GetPPCState();
+  PowerPC::UpdatePerformanceMonitor(ppc_state.downcount, 0, 0, ppc_state);
+  m_idled_cycles += DowncountToCycles(ppc_state.downcount);
+  ppc_state.downcount = 0;
 }
 
 std::string CoreTimingManager::GetScheduledEventsSummary() const

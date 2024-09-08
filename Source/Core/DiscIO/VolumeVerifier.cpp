@@ -247,7 +247,7 @@ std::vector<RedumpVerifier::PotentialMatch> RedumpVerifier::ScanDatfile(const st
     if (version % 0x30 != m_revision % 0x30)
       continue;
 
-    if (serials.empty() || StringBeginsWith(serials, "DS"))
+    if (serials.empty() || serials.starts_with("DS"))
     {
       // GC Datel discs have no serials in Redump, Wii Datel discs have serials like "DS000101"
       if (!m_game_id.empty())
@@ -578,17 +578,17 @@ bool VolumeVerifier::CheckPartition(const Partition& partition)
     const auto console_type =
         IsDebugSigned() ? IOS::HLE::IOSC::ConsoleType::RVT : IOS::HLE::IOSC::ConsoleType::Retail;
     IOS::HLE::Kernel ios(console_type);
-    const auto es = ios.GetES();
+    auto& es = ios.GetESCore();
     const std::vector<u8>& cert_chain = m_volume.GetCertificateChain(partition);
 
     if (IOS::HLE::IPC_SUCCESS !=
-            es->VerifyContainer(IOS::HLE::ESDevice::VerifyContainerType::Ticket,
-                                IOS::HLE::ESDevice::VerifyMode::DoNotUpdateCertStore,
-                                m_volume.GetTicket(partition), cert_chain) ||
+            es.VerifyContainer(IOS::HLE::ESCore::VerifyContainerType::Ticket,
+                               IOS::HLE::ESCore::VerifyMode::DoNotUpdateCertStore,
+                               m_volume.GetTicket(partition), cert_chain) ||
         IOS::HLE::IPC_SUCCESS !=
-            es->VerifyContainer(IOS::HLE::ESDevice::VerifyContainerType::TMD,
-                                IOS::HLE::ESDevice::VerifyMode::DoNotUpdateCertStore,
-                                m_volume.GetTMD(partition), cert_chain))
+            es.VerifyContainer(IOS::HLE::ESCore::VerifyContainerType::TMD,
+                               IOS::HLE::ESCore::VerifyMode::DoNotUpdateCertStore,
+                               m_volume.GetTMD(partition), cert_chain))
     {
       AddProblem(Severity::Low,
                  Common::FmtFormatT("The {0} partition is not correctly signed.", name));
@@ -666,7 +666,7 @@ bool VolumeVerifier::CheckPartition(const Partition& partition)
         {
           std::string file_name = f.GetName();
           Common::ToLower(&file_name);
-          if (StringBeginsWith(file_name, correct_ios))
+          if (file_name.starts_with(correct_ios))
           {
             has_correct_ios = true;
             break;
@@ -865,13 +865,13 @@ void VolumeVerifier::CheckMisc()
     bool inconsistent_game_id = true;
     if (game_id_encrypted == "RELSAB")
     {
-      if (StringBeginsWith(game_id_unencrypted, "410"))
+      if (game_id_unencrypted.starts_with("410"))
       {
         // This is the Wii Backup Disc (aka "pinkfish" disc),
         // which legitimately has an inconsistent game ID.
         inconsistent_game_id = false;
       }
-      else if (StringBeginsWith(game_id_unencrypted, "010"))
+      else if (game_id_unencrypted.starts_with("010"))
       {
         // Hacked version of the Wii Backup Disc (aka "pinkfish" disc).
         std::string proper_game_id = game_id_unencrypted;
@@ -982,21 +982,21 @@ void VolumeVerifier::CheckMisc()
   if (m_volume.GetVolumeType() == Platform::WiiWAD)
   {
     IOS::HLE::Kernel ios(m_ticket.GetConsoleType());
-    const auto es = ios.GetES();
+    auto& es = ios.GetESCore();
     const std::vector<u8>& cert_chain = m_volume.GetCertificateChain(PARTITION_NONE);
 
     if (IOS::HLE::IPC_SUCCESS !=
-        es->VerifyContainer(IOS::HLE::ESDevice::VerifyContainerType::Ticket,
-                            IOS::HLE::ESDevice::VerifyMode::DoNotUpdateCertStore, m_ticket,
-                            cert_chain))
+        es.VerifyContainer(IOS::HLE::ESCore::VerifyContainerType::Ticket,
+                           IOS::HLE::ESCore::VerifyMode::DoNotUpdateCertStore, m_ticket,
+                           cert_chain))
     {
       // i18n: "Ticket" here is a kind of digital authorization to use a certain title (e.g. a game)
       AddProblem(Severity::Low, Common::GetStringT("The ticket is not correctly signed."));
     }
 
     if (IOS::HLE::IPC_SUCCESS !=
-        es->VerifyContainer(IOS::HLE::ESDevice::VerifyContainerType::TMD,
-                            IOS::HLE::ESDevice::VerifyMode::DoNotUpdateCertStore, tmd, cert_chain))
+        es.VerifyContainer(IOS::HLE::ESCore::VerifyContainerType::TMD,
+                           IOS::HLE::ESCore::VerifyMode::DoNotUpdateCertStore, tmd, cert_chain))
     {
       AddProblem(
           Severity::Medium,
@@ -1016,7 +1016,7 @@ void VolumeVerifier::CheckMisc()
                            "though the files are not identical."));
   }
 
-  if (IsDisc(m_volume.GetVolumeType()) && StringBeginsWith(game_id_unencrypted, "R8P"))
+  if (IsDisc(m_volume.GetVolumeType()) && game_id_unencrypted.starts_with("R8P"))
     CheckSuperPaperMario();
 }
 
@@ -1059,7 +1059,7 @@ void VolumeVerifier::SetUpHashing()
   else if (m_volume.GetVolumeType() == Platform::WiiDisc)
   {
     // Set up a DiscScrubber for checking whether blocks with errors are unused
-    m_scrubber.SetupScrub(&m_volume);
+    m_scrubber.SetupScrub(m_volume);
   }
 
   std::sort(m_groups.begin(), m_groups.end(),

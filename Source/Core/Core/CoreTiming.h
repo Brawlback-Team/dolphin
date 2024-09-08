@@ -23,6 +23,7 @@
 
 #include "Common/CommonTypes.h"
 #include "Common/SPSCQueue.h"
+#include "Core/CPUThreadConfigCallback.h"
 
 class PointerWrap;
 
@@ -75,6 +76,8 @@ void GlobalIdle();
 class CoreTimingManager
 {
 public:
+  explicit CoreTimingManager(Core::System& system);
+
   // CoreTiming begins at the boundary of timing slice -1. An initial call to Advance() is
   // required to end slice -1 and start slice 0 before the first cycle of code is executed.
   void Init();
@@ -140,8 +143,20 @@ public:
   // Directly accessed by the JIT.
   Globals& GetGlobals() { return m_globals; }
 
+  // Throttle the CPU to the specified target cycle.
+  // Never used outside of CoreTiming, however it remains public
+  // in order to allow custom throttling implementations to be tested.
+  void Throttle(const s64 target_cycle);
+
+  TimePoint GetCPUTimePoint(s64 cyclesLate) const;  // Used by Dolphin Analytics
+  bool GetVISkip() const;                           // Used By VideoInterface
+
+  bool UseSyncOnSkipIdle() const;
+
 private:
   Globals m_globals;
+
+  Core::System& m_system;
 
   // unordered_map stores each element separately as a linked list node so pointers to elements
   // remain stable regardless of rehashes/resizing.
@@ -168,10 +183,22 @@ private:
 
   EventType* m_ev_lost = nullptr;
 
-  size_t m_registered_config_callback_id = 0;
+  CPUThreadConfigCallback::ConfigChangedCallbackID m_registered_config_callback_id;
   float m_config_oc_factor = 0.0f;
   float m_config_oc_inv_factor = 0.0f;
   bool m_config_sync_on_skip_idle = false;
+
+  s64 m_throttle_last_cycle = 0;
+  TimePoint m_throttle_deadline = Clock::now();
+  s64 m_throttle_clock_per_sec = 0;
+  s64 m_throttle_min_clock_per_sleep = 0;
+  bool m_throttle_disable_vi_int = false;
+
+  DT m_max_fallback = {};
+  DT m_max_variance = {};
+  double m_emulation_speed = 1.0;
+
+  void ResetThrottle(s64 cycle);
 
   int DowncountToCycles(int downcount) const;
   int CyclesToDowncount(int cycles) const;

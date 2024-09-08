@@ -8,11 +8,30 @@
 
 #include <imgui.h>
 
+#include "Core/DolphinAnalytics.h"
+#include "Core/HW/SystemTimers.h"
+#include "Core/System.h"
+
 #include "VideoCommon/BPFunctions.h"
 #include "VideoCommon/VideoCommon.h"
 #include "VideoCommon/VideoConfig.h"
+#include "VideoCommon/VideoEvents.h"
 
 Statistics g_stats;
+
+static Common::EventHook s_before_frame_event =
+    BeforeFrameEvent::Register([] { g_stats.ResetFrame(); }, "Statistics::ResetFrame");
+
+static Common::EventHook s_after_frame_event = AfterFrameEvent::Register(
+    [](const Core::System& system) {
+      DolphinAnalytics::Instance().ReportPerformanceInfo({
+          .speed_ratio = system.GetSystemTimers().GetEstimatedEmulationPerformance(),
+          .num_prims = g_stats.this_frame.num_prims + g_stats.this_frame.num_dl_prims,
+          .num_draw_calls = g_stats.this_frame.num_draw_calls,
+      });
+    },
+    "Statistics::PerformanceSample");
+
 static bool clear_scissors;
 
 void Statistics::ResetFrame()
@@ -101,7 +120,6 @@ void Statistics::Display() const
   ImGui::End();
 }
 
-// Is this really needed?
 void Statistics::DisplayProj() const
 {
   if (!ImGui::Begin("Projection Statistics", nullptr, ImGuiWindowFlags_NoNavInputs))
@@ -128,6 +146,9 @@ void Statistics::DisplayProj() const
   ImGui::Text("Projection 13: %f (%f)", gproj[13], g2proj[13]);
   ImGui::Text("Projection 14: %f (%f)", gproj[14], g2proj[14]);
   ImGui::Text("Projection 15: %f (%f)", gproj[15], g2proj[15]);
+  ImGui::NewLine();
+  ImGui::Text("Avg Projection Viewport Ratio Persp(3D): %f", avg_persp_proj_viewport_ratio);
+  ImGui::Text("Avg Projection Viewport Ratio Ortho(2D): %f", avg_ortho_proj_viewport_ratio);
 
   ImGui::End();
 }
