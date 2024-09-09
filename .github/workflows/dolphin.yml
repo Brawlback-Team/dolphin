@@ -43,7 +43,7 @@ jobs:
           include:
             - build_type: Test
               artifact_name: windows-test
-              build_config: -G "Ninja" -DCMAKE_BUILD_TYPE="Release" -DCURL_LIBRARY="../curl-8.9.1_3-win64-mingw/lib" -DCURL_INCLUDE_DIR="../curl-8.9.1_3-win64-mingw/include"
+              build_config: -G "Ninja" -DCMAKE_BUILD_TYPE="Release" -DCURL_LIBRARY="../curl-8.9.1_3-win64-mingw/lib" -DCURL_INCLUDE_DIR="../curl-8.9.1_3-win64-mingw/include" -ENABLE_CLI_TOOL=false -DENABLE_HEADLESS=false
       steps:
       - uses: actions/checkout@v4
         with:
@@ -132,7 +132,7 @@ jobs:
       run: |
            mkdir build
            cd build
-           cmake .. -DLINUX_LOCAL_DEV=true -DCMAKE_PREFIX_PATH=./Externals/Qt/Qt6.5.1/x64/lib/cmake/
+           cmake .. -DLINUX_LOCAL_DEV=true -DCMAKE_PREFIX_PATH=./Externals/Qt/Qt6.5.1/x64/lib/cmake/ -ENABLE_CLI_TOOL=false -DENABLE_HEADLESS=false
 
     - name: Build
       run: |

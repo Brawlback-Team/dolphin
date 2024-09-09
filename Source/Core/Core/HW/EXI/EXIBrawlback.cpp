@@ -1186,7 +1186,7 @@ void CEXIBrawlback::handleStartMatch(u8* payload)
   std::memcpy(&gameSettings, payload, sizeof(GameSettings));
 }
 
-#include <curl/curl.h>
+#include "../../Externals/curl/curl/include/curl/curl.h"
 #include <Common/MemoryUtil.h>
 
 void swapGameReportEndian(GameReport& report)
