@@ -35,7 +35,7 @@ jobs:
            chmod +x ./build-mac.sh && ./build-mac.sh
   windows:
       name: Windows
-      runs-on: windows-latest
+      runs-on: windows-2022
       strategy:
         fail-fast: false
         matrix:
@@ -122,7 +122,7 @@ jobs:
       run: |
            mkdir build
            cd build
-           cmake .. -DLINUX_LOCAL_DEV=true -DCMAKE_PREFIX_PATH=./Externals/Qt/Qt6.3.0/x64/lib/cmake/
+           cmake .. -DLINUX_LOCAL_DEV=true -DCMAKE_PREFIX_PATH=./Externals/Qt/Qt6.5.1/x64/lib/cmake/
 
     - name: Build
       run: |
