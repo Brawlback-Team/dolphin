@@ -43,7 +43,7 @@ jobs:
           include:
             - build_type: Test
               artifact_name: windows-test
-              build_config: -G "Ninja" -DCMAKE_BUILD_TYPE="Release" -DCURL_LIBRARY="./curl-8.9.1_3-win64-mingw/lib" -DCURL_INCLUDE_DIR="./curl-8.9.1_3-win64-mingw/include"
+              build_config: -G "Ninja" -DCMAKE_BUILD_TYPE="Release" -DCURL_LIBRARY="../curl-8.9.1_3-win64-mingw/lib" -DCURL_INCLUDE_DIR="../curl-8.9.1_3-win64-mingw/include"
       steps:
       - uses: actions/checkout@v4
         with:
@@ -51,7 +51,7 @@ jobs:
       - name: Install Dependencies
         run: |
             choco install pkgconfiglite curl
-            curl -sS https://curl.se/windows/dl-8.9.1_3/curl-8.9.1_3-win64-mingw.zip
+            curl -sS https://curl.se/windows/dl-8.9.1_3/curl-8.9.1_3-win64-mingw.zip > curl-8.9.1_3-win64-mingw.zip
             7z x ./curl-8.9.1_3-win64-mingw.zip
       - name: 'Fetch Git Tags'
         shell: bash
