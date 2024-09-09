@@ -568,7 +568,7 @@ add_library(core
 
 target_include_directories(core PRIVATE Brawlback/include)
 
-if(_M_X86)
+if(_M_X86_64)
   target_sources(core PRIVATE
     DSP/Jit/x64/DSPEmitter.cpp
     DSP/Jit/x64/DSPEmitter.h
