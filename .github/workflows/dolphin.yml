@@ -49,7 +49,7 @@ jobs:
         with:
           submodules: recursive
       - name: Install Dependencies
-        run: choco install pkgconfiglite
+        run: choco install pkgconfiglite curl
       - name: 'Fetch Git Tags'
         shell: bash
         if: success()
