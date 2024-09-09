@@ -43,7 +43,7 @@ jobs:
           include:
             - build_type: Test
               artifact_name: windows-test
-              build_config: -G "Ninja" -DCMAKE_BUILD_TYPE="Release"
+              build_config: -G "Ninja" -DCMAKE_BUILD_TYPE="Release" -DCURL_LIBRARY="C:/ProgramData/chocolatey/lib/curl/tools/lib" -DCURL_INCLUDE_DIR="C:/ProgramData/chocolatey/lib/curl/tools/include"
       steps:
       - uses: actions/checkout@v4
         with:
