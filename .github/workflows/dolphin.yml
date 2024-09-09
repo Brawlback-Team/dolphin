@@ -60,6 +60,12 @@ jobs:
              echo "GIT_TAG=$(git describe --tags --abbrev=0)" >> $GITHUB_ENV
              echo "CURR_DATE=$(date +%Y-%m-%d)" >> $GITHUB_ENV
       - uses: egor-tensin/vs-shell@v2
+      - uses: libsdl-org/setup-sdl@main
+        id: sdl
+        with:
+          install-linux-dependencies: true
+          version: 2-latest
+          version-sdl-image: 2-latest
       - name: "Build ${{ matrix.build_type }} Dolphin"
         shell: cmd
         working-directory: ${{ github.workspace }}
