@@ -50,8 +50,8 @@ jobs:
           submodules: recursive
       - name: Install Dependencies
         run: |
-            choco install pkgconfiglite
-            wget -q https://curl.se/windows/dl-8.9.1_3/curl-8.9.1_3-win64-mingw.zip
+            choco install pkgconfiglite curl
+            curl -sS https://curl.se/windows/dl-8.9.1_3/curl-8.9.1_3-win64-mingw.zip
             7z x ./curl-8.9.1_3-win64-mingw.zip
       - name: 'Fetch Git Tags'
         shell: bash
