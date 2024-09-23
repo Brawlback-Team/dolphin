@@ -185,13 +185,6 @@ private:
   std::vector<SlippiUtility::Savestate::ssBackupLoc> dynamicRegions = {};
   u32 lastStatedFrame = 0;
   // -------------------------------
-
-  // --- Savestates
-  std::deque<std::unique_ptr<BrawlbackSavestate>> savestates = {};
-  std::unordered_map<u32, BrawlbackSavestate*> savestatesMap = {};
-
-  std::map<s32, std::unique_ptr<BrawlbackSavestate>> activeSavestates = {};
-  std::deque<std::unique_ptr<BrawlbackSavestate>> availableSavestates = {};
   // -------------------------------
 
   // --- Framedata (player inputs)

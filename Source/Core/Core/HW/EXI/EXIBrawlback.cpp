@@ -15,6 +15,7 @@
 #include "VideoCommon/OnScreenDisplay.h"
 #include <regex>
 #include <Core/System.h>
+#include <incremental-rollback/incremental_rb.h>
 
 namespace fs = std::filesystem;
 // --- Mutexes
@@ -121,65 +122,7 @@ void CEXIBrawlback::handleCaptureSavestate(u8* data)
 
 void CEXIBrawlback::SaveState(bu32 frame)
 {
-  if (frame % 30 == 0)
-  {
-    static int dump_num = 0;
-    // INFO_LOG_FMT(BRAWLBACK, "Dumping mem\n");
-    // Dump::DoMemDumpIteration(dump_num);
-  }
-
-  // tmp
-  if (frame == GAME_START_FRAME && availableSavestates.empty())
-  {
-    activeSavestates.clear();
-    availableSavestates.clear();
-    for (int i = 0; i <= MAX_ROLLBACK_FRAMES; i++)
-    {
-      availableSavestates.push_back(std::make_unique<BrawlbackSavestate>(this->staticRegions));
-    }
-    INFO_LOG_FMT(BRAWLBACK, "Initialized savestates!\n");
-  }
-
-  // Grab an available savestate
-  std::unique_ptr<BrawlbackSavestate> ss;
-  if (!availableSavestates.empty())
-  {
-    ss = std::move(availableSavestates.back());
-    availableSavestates.pop_back();
-  }
-  else
-  {
-    // If there were no available savestates, use the oldest one
-    auto it = activeSavestates.begin();
-    ss = std::move(it->second);
-    // s32 frameToDrop = it->first;
-    // INFO_LOG_FMT(BRAWLBACK, "Dropping savestate for frame %i\n", frameToDrop);
-    activeSavestates.erase(it->first);
-  }
-
-  // If there is already a savestate for this frame, remove it and add it to available
-  if (!activeSavestates.empty() && activeSavestates.count(frame))
-  {
-    availableSavestates.push_back(std::move(activeSavestates[frame]));
-    activeSavestates.erase(frame);
-  }
-
-  if (!ss)
-  {
-    ERROR_LOG_FMT(BRAWLBACK, "Invalid savestate on frame {}\n", frame);
-    PanicAlertFmtT("Invalid savestate on frame {0}\n", frame);
-    return;
-  }
-
-  ss->Capture(this->dynamicRegions);
-  // ss->frame = frame;
-  // ss->checksum = SavestateChecksum(ss->getBackupLocs()); // really expensive calculation
-  // INFO_LOG_FMT(BRAWLBACK, "Savestate for frame %i checksum is %i\n", ss->frame, ss->checksum);
-  activeSavestates[frame] = std::move(ss);
-
-  // u32 timeDiff = (u32)(Common::Timer::NowUs() - startTime);
-  // INFO_LOG_FMT(BRAWLBACK, "Captured savestate for frame %d in: %f ms", frame, ((double)timeDiff) /
-  // 1000);
+  IncrementalRB::SaveWrittenPages(frame - 1, framesToAdvance > 1);
 }
 
 void CEXIBrawlback::handleLoadSavestate(u8* data)
@@ -188,66 +131,7 @@ void CEXIBrawlback::handleLoadSavestate(u8* data)
   bu32 rollbackFrame;
   std::memcpy(&rollbackFrame, data, sizeof(bu32));
   rollbackFrame = swap_endian(rollbackFrame);
-  LoadState(rollbackFrame);
-}
-
-void CEXIBrawlback::LoadState(bu32 rollbackFrame)
-{
-  // INFO_LOG_FMT(BRAWLBACK, "Attempting to load state for frame %i\n", frame);
-
-  if (!activeSavestates.count(rollbackFrame))
-  {
-    // This savestate does not exist - just disconnect and throw hands :/
-    ERROR_LOG_FMT(BRAWLBACK, "Savestate for frame {} does not exist.", rollbackFrame);
-    PanicAlertFmtT("Savestate for frame {0} does not exist.", rollbackFrame);
-    this->isConnected = false;
-    if (this->server)
-    {
-      for (int i = 0; i < this->server->peerCount; i++)
-      {
-        enet_peer_disconnect(&this->server->peers[i], 0);
-      }
-    }
-    // in the future, exit out of the match or something here
-    return;
-  }
-
-  u64 startTime = Common::Timer::NowUs();
-
-  // Fetch preservation blocks
-  std::vector<PreserveBlock> blocks = {};
-
-  // Load savestate
-  activeSavestates[rollbackFrame]->Load(blocks);
-  dynamicRegions.erase(std::remove_if(std::begin(dynamicRegions), std::end(dynamicRegions), [&rollbackFrame](ssBackupLoc obj) { return (obj.frame >= rollbackFrame); }), std::end(dynamicRegions));
-
-  // Move all active savestates to available
-  for (auto it = activeSavestates.begin(); it != activeSavestates.end(); ++it)
-  {
-    availableSavestates.push_back(std::move(it->second));
-  }
-
-  // since we save state during resim frames, when we load state,
-  // we should clear all savestates out to make room for the new resimulated states
-
-  activeSavestates.clear();
-
-  u32 timeDiff = (u32)(Common::Timer::NowUs() - startTime);
-  ERROR_LOG_FMT(BRAWLBACK, "Loaded savestate for frame {} in: {} ms", rollbackFrame,
-            ((double)timeDiff) / 1000);
-}
-
-template <typename T>
-void CEXIBrawlback::SendCmdToGame(EXICommand cmd, T* payload)
-{
-  // std::lock_guard<std::mutex> lock (read_queue_mutex); // crash here wtf?
-  this->read_queue.clear();
-  this->read_queue.push_back(cmd);
-  if (payload)
-  {
-    std::vector<u8> byteVec = Mem::structToByteVector(payload);
-    this->read_queue.insert(this->read_queue.end(), byteVec.begin(), byteVec.end());
-  }
+  IncrementalRB::Rollback(this->lastStatedFrame, rollbackFrame);
 }
 
 void CEXIBrawlback::SendCmdToGame(EXICommand cmd)
@@ -418,8 +302,9 @@ void CEXIBrawlback::updateSync(bu32& localFrame, bu8 playerIdx)
   if (isPredicting && this->shouldRollback(localFrame) && latestConfirmedFrame)
   {
     const PlayerFrameData playerPredictedInputs = predictedInputs.playerFrameDatas[playerIdx];
-    INFO_LOG_FMT(BRAWLBACK, "Checking predicted inputs against remote inputs. predicted frame = {}\n",
-             playerPredictedInputs.frame);
+    INFO_LOG_FMT(BRAWLBACK,
+                 "Checking predicted inputs against remote inputs. predicted frame = {}\n",
+                 playerPredictedInputs.frame);
 
     for (int i = this->latestConfirmedFrame + 1; i <= finalFrame; i++)
     {
@@ -457,8 +342,8 @@ void CEXIBrawlback::updateSync(bu32& localFrame, bu8 playerIdx)
   {
     // not synchronized, rollback & resim
     INFO_LOG_FMT(BRAWLBACK, "Should rollback! frame = {} latestConfirmedFrame = {}\n", localFrame,
-             latestConfirmedFrame);
-    LoadState(this->latestConfirmedFrame);
+                 latestConfirmedFrame);
+    IncrementalRB::Rollback(localFrame, latestConfirmedFrame);
     // if on frame 10 we rollback to frame 7 we need to simulate frames 7,8,9, and 10 to get to
     // where we were before. 10 - 7 + 1 = 4
     this->framesToAdvance = localFrame - this->latestConfirmedFrame + 1;
@@ -1183,6 +1068,10 @@ void CEXIBrawlback::handleFindMatch(u8* payload)
 void CEXIBrawlback::handleStartMatch(u8* payload)
 {
   // if (!payload) return;
+  auto& system = Core::System::GetInstance();
+  auto& memory = system.GetMemory();
+
+  memory.ResetDirtyPages();
   std::memcpy(&gameSettings, payload, sizeof(GameSettings));
 }
 

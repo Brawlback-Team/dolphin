@@ -55,7 +55,7 @@ struct LogicalMemoryView
   void* mapped_pointer;
   u32 mapped_size;
 };
-
+bool isFramePointerDirty();
 class MemoryManager
 {
 public:
@@ -77,6 +77,8 @@ public:
   u32 GetExRamSize() const { return m_exram_size; }
   u32 GetExRamMask() const { return m_exram_mask; }
 
+  u32 GetEmulatedAddress(u8* address);
+  bool IsAddressInLogicalMemory(const u8* address) const;
   bool IsAddressInFastmemArea(const u8* address) const;
   u8* GetPhysicalBase() const { return m_physical_base; }
   u8* GetLogicalBase() const { return m_logical_base; }
@@ -88,6 +90,21 @@ public:
   u8*& GetEXRAM() { return m_exram; }
   u8* GetL1Cache() { return m_l1_cache; }
   u8*& GetFakeVMEM() { return m_fake_vmem; }
+
+  std::map<u64, u8>& GetDirtyPages() { return m_dirty_pages; }
+
+  // Dirty Page Handling
+  bool IsAddressDirty(uintptr_t address);
+  bool IsPageDirty(uintptr_t page_address);
+  void SetPageDirtyBit(uintptr_t page_address, bool dirty);
+  void SetAddressDirtyBit(uintptr_t address, size_t size, bool dirty);
+  void ResetDirtyPages();
+  bool HandleChangeProtection(void* address, size_t size, u32 flag);
+  bool HandleFault(uintptr_t fault_address);
+  u64 GetDirtyPageIndexFromAddress(u64 address);
+  void WriteProtectPhysicalMemoryRegions();
+  void InitDirtyPages();
+  bool IsAddressInEmulatedMemory(uintptr_t address);
 
   MMIO::Mapping* GetMMIOMapping() const { return m_mmio_mapping.get(); }
 
@@ -253,6 +270,8 @@ private:
   std::array<void*, PowerPC::BAT_PAGE_COUNT> m_logical_page_mappings{};
 
   Core::System& m_system;
+
+  std::map<u64, u8> m_dirty_pages;
 
   void InitMMIO(bool is_wii);
 };
