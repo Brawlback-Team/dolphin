@@ -355,10 +355,32 @@ namespace IncrementalRB
     TrackAlloc(GetPointer(0x92dcdf41), 0x92e90127 - 0x92dcdf41);
     TrackAlloc(GetPointer(0x92e90141), 0x935ce200 - 0x92e90141);
     #else
-    TrackAlloc(GetPointer(0x80000000), 0x805a5153 - 0x80000000);
-    TrackAlloc(GetPointer(0x805b5159), 0x817ba59f - 0x805b5159);
-    TrackAlloc(GetPointer(0x817ca5a1), 0x817fffff - 0x817ca5a1);
-    TrackAlloc(GetPointer(0x90000000), 0x93ffffff - 0x90000000);
+    /*
+    TrackAlloc(GetPointer(0x800064E0), 0x8000C860 - 0x800064E0); // Data Sections 0 - 1
+    TrackAlloc(GetPointer(0x804064E0), 0x805A5120 - 0x804064E0); // Data Sections 2 - 7, BSS, in-betweens
+    TrackAlloc(GetPointer(0x805b5160), 0x817da5a0 - 0x805b5160); // MEM1
+    TrackAlloc(GetPointer(0x90000800), 0x935e0000 - 0x90000800); // MEM2
+    */
+    TrackAlloc(GetPointer(0x80000000), 0x817FFFFF - 0x80000000);  // MEM1
+    TrackAlloc(GetPointer(0x90000000), 0x93FFFFFF - 0x90000000);  // MEM2
+    // Stacks
+    ExcludeMem(GetPointer(0x805a5154), 0x805b5158 - 0x805a5154);
+    /*
+    ExcludeMem(GetPointer(0x805bc4c0), 0x805bf4c0 - 0x805bc4c0);
+    ExcludeMem(GetPointer(0x805b8ee0), 0x805ba0e0 - 0x805b8ee0);
+    ExcludeMem(GetPointer(0x804c2340), 0x804c6340 - 0x804c2340);
+    ExcludeMem(GetPointer(0x804c6340), 0x804ca340 - 0x804c6340);
+    ExcludeMem(GetPointer(0x90de7ae0), 0x90de8ae0 - 0x90de7ae0);
+    ExcludeMem(GetPointer(0x90de5dc0), 0x90de6dc0 - 0x90de5dc0);
+    ExcludeMem(GetPointer(0x805b7660), 0x805b8660 - 0x805b7660);
+    ExcludeMem(GetPointer(0x90fd9898), 0x90fdc898 - 0x90fd9898);
+    */
+    // Heaps
+    ExcludeMem(GetPointer(0x817ba5a0), 0x817ca5a0 - 0x817ba5a0); // Syringe Heap
+    ExcludeMem(GetPointer(0x94000000), 0xF4240);                 // EXI Transfer Heap
+    ExcludeMem(GetPointer(0x90199800), 0x90e61400 - 0x90199800); // Sound Heap
+    ExcludeMem(GetPointer(0x805d1e60), 0x80611f60 - 0x805d1e60); // Render FIFO Heap
+    ExcludeMem(GetPointer(0x9134cc00), 0x91478e00 - 0x9134cc00); // Copy FB Heap
     #endif
     jobsystem::Initialize(
         numWorkerThreads -
@@ -443,7 +465,36 @@ namespace IncrementalRB
         INFO_LOG_FMT(BRAWLBACK, "rolling back {} -> {}\n", nowFrame, ((u32*)ssData)[0]);
       }
   #endif
-      rbMemcpy(orig, ssData, pageSize);
+      auto orig_ptr = reinterpret_cast<uintptr_t>(orig);
+      auto ssData_ptr = reinterpret_cast<uintptr_t>(ssData);
+      bool rbCopyOrig = true;
+      for (int f = 0; f < ExcludeMemList.size(); f++)
+      {
+        auto gap_start = reinterpret_cast<uintptr_t>(ExcludeMemList[f].data);
+        auto gap_end = gap_start + ExcludeMemList[f].size;
+        if (gap_start >= orig_ptr && gap_start < orig_ptr + pageSize)
+        {
+          memcpy(orig, ssData, gap_start - orig_ptr);
+          rbCopyOrig = false;
+        }
+        if (gap_end >= orig_ptr && gap_end < orig_ptr + pageSize)
+        {
+          auto dest = reinterpret_cast<void*>(orig_ptr + ((gap_end - orig_ptr) + 1));
+          auto src = reinterpret_cast<void*>(ssData_ptr + ((gap_end - orig_ptr) + 1));
+          auto size = orig_ptr + pageSize - gap_end - 1;
+          memcpy(dest, src, size);
+          rbCopyOrig = false;
+        }
+        if (orig_ptr >= gap_start && orig_ptr <= gap_end)
+        {
+          rbCopyOrig = false;
+        }
+      }
+
+      if (rbCopyOrig)
+      {
+        rbMemcpy(orig, ssData, pageSize);
+      }
     }
   #endif
   }

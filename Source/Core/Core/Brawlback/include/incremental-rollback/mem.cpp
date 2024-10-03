@@ -28,6 +28,7 @@
 
 // the [i].AddressArray.Count here represents the total number of pages in this allocation
 std::vector<TrackedBuffer> TrackedMemList = {};
+std::vector<Buffer> ExcludeMemList = {};
 // called on a buffer allocated with VirtualAlloc and MEM_WRITE_WATCH flag
 void TrackAlloc(void* ptr, size_t size)
 {
@@ -53,9 +54,20 @@ void TrackAlloc(void* ptr, size_t size)
 
     TrackedMemList.push_back(tracked_buf);
 }
-
-void UntrackAlloc(void* ptr)
+void ExcludeMem(void* ptr, size_t size)
 {
+  if (!ptr || !size)
+  {
+    return;
+  }
+  Buffer buf = {};
+  buf.data = (char*)ptr;
+  buf.size = size;
+
+  ExcludeMemList.push_back(buf);
+}
+void UntrackAlloc(void* ptr)
+  {
     if (!ptr)
         return;
     for (int i = 0; i < TrackedMemList.size(); i++)
@@ -106,9 +118,9 @@ void ResetWrittenPages()
   memory.ResetDirtyPages();
 }
 
-int GetWrittenPages(char* base, u64 baseSize, void** writtenToPages, u64* pageCount)
+int GetWrittenPages(char* base, u64 baseSize, void** writtenToPages, u64& pageCount)
 {
-  int writtenToPagesIndex = 0;
+  size_t writtenToPagesIndex = 0;
   size_t pageSize = Common::PageSize();
   size_t pageMask = pageSize - 1;
   uintptr_t base_ptr = reinterpret_cast<uintptr_t>(base);
@@ -117,31 +129,20 @@ int GetWrittenPages(char* base, u64 baseSize, void** writtenToPages, u64* pageCo
   auto& system = Core::System::GetInstance();
   auto& memory = system.GetMemory();
 
-  while (base_pte < base_ptr + baseSize)
+  while (base_pte <= base_ptr + baseSize)
   {
     if (memory.IsPageDirty(base_pte))
     {
-      if (writtenToPagesIndex > *pageCount)
+      if (writtenToPagesIndex > pageCount)
       {
         return 1;
       }
-      memory.SetPageDirtyBit(base_pte, false);
-      u8* addr_bytes = reinterpret_cast<u8*>(base_pte);
-      if (!memory.HandleChangeProtection(addr_bytes, 0x1, PAGE_READONLY))
-      {
-        return 2;
-      }
-      auto emu_address = memory.GetEmulatedAddress(addr_bytes);
-      if (!memory.HandleChangeProtection(memory.GetLogicalBase() + emu_address, 0x1, PAGE_READONLY))
-      {
-        return 3;
-      }
-      *(writtenToPages + writtenToPagesIndex) = addr_bytes;
+      writtenToPages[writtenToPagesIndex] = reinterpret_cast<u8*>(base_pte);
       writtenToPagesIndex++;
     }
     base_pte += pageSize;
   }
-  *pageCount = writtenToPagesIndex;
+  pageCount = writtenToPagesIndex;
   return 0;
 }
 
@@ -149,6 +150,16 @@ bool GetAndResetWrittenPages(void** changedPageAddresses, u64* numChangedPages, 
 {
     //PROFILE_FUNCTION();
     *numChangedPages = 0;
+
+    auto totalPages = 0;
+    for (auto& it : Core::System::GetInstance().GetMemory().GetDirtyPages())
+    {
+      if (it.second == 1)
+      {
+        totalPages++;
+      }
+    }
+    INFO_LOG_FMT(BRAWLBACK, "SANITY CHECK: {} TOTAL PAGES ARE DIRTY\n", totalPages);
     for (TrackedBuffer& buf : TrackedMemList)
     {
         // on input to GetWriteWatch this is the maximum number of possible changed pages in this allocation
@@ -161,13 +172,13 @@ bool GetAndResetWrittenPages(void** changedPageAddresses, u64* numChangedPages, 
           //PROFILE_SCOPE("GetWriteWatch");
             // get changed pages for specified buffer (buffer.data, buffer.size)
             // NOTE: addresses returned here are sorted (ascending)
-            result = GetWrittenPages(buf.buffer.data, buf.buffer.size, addressesBase, &pageCount);
+            result = GetWrittenPages(buf.buffer.data, buf.buffer.size, addressesBase, pageCount);
         }
         *numChangedPages += pageCount;
         if (result != 0 || pageCount > maxEntries || *numChangedPages > maxEntries)
         {
             ERROR_LOG_FMT(BRAWLBACK, "WRITTEN PAGE WRITE FAILED! RESULT CODE: {}\n", result);
-            if (result == 2)
+            if (result == 2 || result == 3)
             {
               DWORD dw = GetLastError();
               ERROR_LOG_FMT(BRAWLBACK, "WRITTEN PAGE WRITE FAILED DUE TO A FAILURE TO WRITE PROTECT. THE REASON IS: {}\n", dw);
@@ -175,6 +186,7 @@ bool GetAndResetWrittenPages(void** changedPageAddresses, u64* numChangedPages, 
             return false;
         }
     }
+    Core::System::GetInstance().GetMemory().ResetDirtyPages();
     return true;
 }
 

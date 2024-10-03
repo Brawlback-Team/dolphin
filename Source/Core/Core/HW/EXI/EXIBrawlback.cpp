@@ -181,6 +181,7 @@ void CEXIBrawlback::handleLocalPadData(u8* data)
 
   if (frame == GAME_START_FRAME && !this->hasGameStarted)
   {
+    Core::System::GetInstance().GetMemory().ResetDirtyPages();
     // push framedatas for first few delay frames
     for (int i = GAME_START_FRAME; i < FRAME_DELAY; i++)
     {
@@ -1068,10 +1069,6 @@ void CEXIBrawlback::handleFindMatch(u8* payload)
 void CEXIBrawlback::handleStartMatch(u8* payload)
 {
   // if (!payload) return;
-  auto& system = Core::System::GetInstance();
-  auto& memory = system.GetMemory();
-
-  memory.ResetDirtyPages();
   std::memcpy(&gameSettings, payload, sizeof(GameSettings));
 }
 

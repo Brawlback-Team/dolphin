@@ -149,7 +149,10 @@ bool MemoryManager::IsPageDirty(uintptr_t page_address)
 }
 void MemoryManager::SetPageDirtyBit(uintptr_t page_address, bool dirty)
 {
-  m_dirty_pages[page_address] = dirty;
+  if (m_dirty_pages.contains(page_address))
+  {
+    m_dirty_pages[page_address] = dirty;
+  }
 }
 
 void MemoryManager::SetAddressDirtyBit(uintptr_t address, size_t size, bool dirty)
@@ -183,16 +186,18 @@ void MemoryManager::InitDirtyPages()
 
 bool MemoryManager::IsAddressInEmulatedMemory(uintptr_t address)
 {
-  return (address >= reinterpret_cast<uintptr_t>(GetSpanForAddress(0x80000000).data()) &&
-          address <= reinterpret_cast<uintptr_t>(GetSpanForAddress(0x817FFFFF).data())) ||
-         (address >= reinterpret_cast<uintptr_t>(GetSpanForAddress(0x90000000).data()) &&
-          address <= reinterpret_cast<uintptr_t>(GetSpanForAddress(0x93FFFFFF).data()));
+  return m_ram && m_exram &&
+         ((address >= reinterpret_cast<uintptr_t>(m_ram) &&
+           address < reinterpret_cast<uintptr_t>(m_ram) + m_ram_size) ||
+          (address >= reinterpret_cast<uintptr_t>(m_exram) &&
+           address < reinterpret_cast<uintptr_t>(m_exram) + m_exram_size));
 }
 
 bool MemoryManager::HandleFault(uintptr_t fault_address)
 {
   uintptr_t logical_base_addr = reinterpret_cast<uintptr_t>(m_logical_base);
   u8* fault_address_bytes = reinterpret_cast<u8*>(fault_address);
+  bool is_logical = false;
   if (IsAddressInLogicalMemory(fault_address_bytes))
   {
     if (!HandleChangeProtection(fault_address_bytes, 0x1, PAGE_READWRITE))
@@ -201,18 +206,19 @@ bool MemoryManager::HandleFault(uintptr_t fault_address)
     }
     u32 em_address = fault_address - logical_base_addr;
     fault_address = reinterpret_cast<uintptr_t>(GetSpanForAddress(em_address).data());
+    is_logical = true;
   }
-  if (!IsAddressInEmulatedMemory(fault_address))
+  if (IsAddressInEmulatedMemory(fault_address))
   {
-    return false;
+    uintptr_t page = GetDirtyPageIndexFromAddress(fault_address);
+    if (!HandleChangeProtection(reinterpret_cast<void*>(page), 0x1, PAGE_READWRITE))
+    {
+      return false;
+    }
+    SetPageDirtyBit(page, true);
+    return true;
   }
-  uintptr_t page = GetDirtyPageIndexFromAddress(fault_address);
-  if (!HandleChangeProtection(reinterpret_cast<void*>(page), 0x1, PAGE_READWRITE))
-  {
-    return false;
-  }
-  SetPageDirtyBit(page, true);
-  return true;
+  return is_logical;
 }
 
 void MemoryManager::WriteProtectPhysicalMemoryRegions()
@@ -230,6 +236,18 @@ void MemoryManager::WriteProtectPhysicalMemoryRegions()
       PanicAlertFmt("Memory::WriteProtectPhysicalMemoryRegions(): Failed to guard protect for "
                     "this block of memory at 0x{:08X}.",
                     reinterpret_cast<uintptr_t>(memory[i]));
+    }
+  }
+
+  for (auto& entry : m_logical_mapped_entries)
+  {
+    bool change_protection = HandleChangeProtection(entry.mapped_pointer, entry.mapped_size, PAGE_READONLY);
+
+    if (!change_protection)
+    {
+      PanicAlertFmt("Memory::WriteProtectPhysicalMemoryRegions(): Failed to guard protect for "
+                    "this block of memory at 0x{:08X}.",
+                    reinterpret_cast<uintptr_t>(entry.mapped_pointer));
     }
   }
 
@@ -345,12 +363,12 @@ u32 MemoryManager::GetEmulatedAddress(u8* address)
 {
   if (address >= m_ram && address < m_ram + GetRamSize())
   {
-    auto diff = address - m_ram;
+    auto diff = reinterpret_cast<uintptr_t>(address) - reinterpret_cast<uintptr_t>(m_ram);
     return 0x80000000 + diff;
   }
   else if (address >= m_exram && address < m_exram + GetExRamSize())
   {
-    auto diff = address - m_exram;
+    auto diff = reinterpret_cast<uintptr_t>(address) - reinterpret_cast<uintptr_t>(m_exram);
     return 0x90000000 + diff;
   }
   return 0x0;
@@ -479,15 +497,6 @@ void MemoryManager::UpdateLogicalMemory(const PowerPC::BatTable& dbat_table)
                   "Memory::UpdateLogicalMemory(): Failed to map memory region at 0x{:08X} "
                   "(size 0x{:08X}) into logical fastmem region at 0x{:08X}.",
                   intersection_start, mapped_size, logical_address);
-              exit(0);
-            }
-
-            if (!m_arena.VirtualProtectMemoryRegion(mapped_pointer, mapped_size, PAGE_READONLY))
-            {
-              PanicAlertFmt(
-                  "Memory::UpdateLogicalMemory(): Failed to protect memory region at 0x{:08X} "
-                  "(size 0x{:08X}) into logical fastmem region at 0x{:08X}.",
-                  mapped_pointer, mapped_size, logical_address);
               exit(0);
             }
             m_logical_mapped_entries.push_back({mapped_pointer, mapped_size});

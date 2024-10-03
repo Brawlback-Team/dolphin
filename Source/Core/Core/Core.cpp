@@ -76,6 +76,7 @@
 #include "Core/State.h"
 #include "Core/System.h"
 #include "Core/WiiRoot.h"
+#include "Core/HW/Memmap.h"
 
 #ifdef USE_MEMORYWATCHER
 #include "Core/MemoryWatcher.h"
@@ -422,7 +423,6 @@ static void CpuThread(Core::System& system, const std::optional<std::string>& sa
       }
     }
   }
-
   // Enter CPU run loop. When we leave it - we are done.
   system.GetCPU().Run();
 

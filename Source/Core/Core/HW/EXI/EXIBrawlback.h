@@ -184,6 +184,7 @@ private:
   };
   std::vector<SlippiUtility::Savestate::ssBackupLoc> dynamicRegions = {};
   u32 lastStatedFrame = 0;
+  int savestateNum = 0;
   // -------------------------------
   // -------------------------------
 

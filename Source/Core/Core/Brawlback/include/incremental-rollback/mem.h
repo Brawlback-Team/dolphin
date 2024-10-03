@@ -24,13 +24,14 @@ struct TrackedBuffer
 };
 
 extern std::vector<TrackedBuffer> TrackedMemList;
-
-// passed in memory block MUST be allocated (at least on windows...) with VirtualAlloc and the MEM_WRITE_WATCH flag
+extern std::vector<Buffer> ExcludeMemList;
+    // passed in memory block MUST be allocated (at least on windows...) with VirtualAlloc and the MEM_WRITE_WATCH flag
 void TrackAlloc(void* ptr, size_t size);
+void ExcludeMem(void* ptr, size_t size);
 void UntrackAlloc(void* ptr);
 void ResetAllocs();
 void PrintTrackedBuf(const TrackedBuffer& buf);
 void ResetWrittenPages();
-int GetWrittenPages(char* base, u64 baseSize, void** writtenToPages, u64* pageCount);
+int GetWrittenPages(char* base, u64 baseSize, void** writtenToPages, u64& pageCount);
 bool GetAndResetWrittenPages(void** changedPageAddresses, u64* numChangedPages, u64 maxEntries);
 void fastMemcpy(void* pvDest, void* pvSrc, size_t nBytes);

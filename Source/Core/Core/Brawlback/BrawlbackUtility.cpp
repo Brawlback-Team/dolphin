@@ -299,13 +299,13 @@ namespace Brawlback
 
         void DoMemDumpIteration(int& dump_num) {
             std::string dump_num_str = std::to_string(dump_num);
-            std::string frame_folder = File::GetUserPath(D_DUMP_IDX) + "/memdumps/dump" + dump_num_str;
-            if (!File::Exists(frame_folder))
-                File::CreateFullPath(frame_folder);
+            std::string frame_folder = File::GetUserPath(D_DUMP_IDX) + "memdumps/dump" + dump_num_str;
+            
 
             std::string mem1_file = frame_folder + "/mem1_" + dump_num_str + ".raw";
             std::string mem2_file = frame_folder + "/mem2_" + dump_num_str + ".raw";
-
+            File::CreateFullPath(mem1_file);
+            File::CreateFullPath(mem2_file);
             Dump::DumpMem(AddressSpace::Type::Mem1, mem1_file);
             Dump::DumpMem(AddressSpace::Type::Mem2, mem2_file);
             dump_num += 1;
