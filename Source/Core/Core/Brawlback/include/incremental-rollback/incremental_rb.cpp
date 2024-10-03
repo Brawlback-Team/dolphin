@@ -355,32 +355,17 @@ namespace IncrementalRB
     TrackAlloc(GetPointer(0x92dcdf41), 0x92e90127 - 0x92dcdf41);
     TrackAlloc(GetPointer(0x92e90141), 0x935ce200 - 0x92e90141);
     #else
-    /*
     TrackAlloc(GetPointer(0x800064E0), 0x8000C860 - 0x800064E0); // Data Sections 0 - 1
     TrackAlloc(GetPointer(0x804064E0), 0x805A5120 - 0x804064E0); // Data Sections 2 - 7, BSS, in-betweens
     TrackAlloc(GetPointer(0x805b5160), 0x817da5a0 - 0x805b5160); // MEM1
     TrackAlloc(GetPointer(0x90000800), 0x935e0000 - 0x90000800); // MEM2
-    */
-    TrackAlloc(GetPointer(0x80000000), 0x817FFFFF - 0x80000000);  // MEM1
-    TrackAlloc(GetPointer(0x90000000), 0x93FFFFFF - 0x90000000);  // MEM2
     // Stacks
     ExcludeMem(GetPointer(0x805a5154), 0x805b5158 - 0x805a5154);
-    /*
-    ExcludeMem(GetPointer(0x805bc4c0), 0x805bf4c0 - 0x805bc4c0);
-    ExcludeMem(GetPointer(0x805b8ee0), 0x805ba0e0 - 0x805b8ee0);
-    ExcludeMem(GetPointer(0x804c2340), 0x804c6340 - 0x804c2340);
-    ExcludeMem(GetPointer(0x804c6340), 0x804ca340 - 0x804c6340);
-    ExcludeMem(GetPointer(0x90de7ae0), 0x90de8ae0 - 0x90de7ae0);
-    ExcludeMem(GetPointer(0x90de5dc0), 0x90de6dc0 - 0x90de5dc0);
-    ExcludeMem(GetPointer(0x805b7660), 0x805b8660 - 0x805b7660);
-    ExcludeMem(GetPointer(0x90fd9898), 0x90fdc898 - 0x90fd9898);
-    */
     // Heaps
     ExcludeMem(GetPointer(0x817ba5a0), 0x817ca5a0 - 0x817ba5a0); // Syringe Heap
     ExcludeMem(GetPointer(0x94000000), 0xF4240);                 // EXI Transfer Heap
-    ExcludeMem(GetPointer(0x90199800), 0x90e61400 - 0x90199800); // Sound Heap
-    ExcludeMem(GetPointer(0x805d1e60), 0x80611f60 - 0x805d1e60); // Render FIFO Heap
     ExcludeMem(GetPointer(0x9134cc00), 0x91478e00 - 0x9134cc00); // Copy FB Heap
+    ExcludeMem(GetPointer(0x805ca260), 0x805d1e60 - 0x805ca260); // Thread Heap
     #endif
     jobsystem::Initialize(
         numWorkerThreads -
@@ -508,12 +493,12 @@ namespace IncrementalRB
     // -1 because all savestates are taken after a frame's simulation
     // this means if you want to rollback to frame 5, you'd actually need to restore the data
     // captured on frame 4
-    s32 savestateOffset = currentFrame - rollbackFrame;
+    s32 savestateOffset = currentFrame - rollbackFrame - 1;
     assert(rollbackFrame < currentFrame && savestateOffset < MAX_SAVESTATES);
     // -1 because we want to start rolling back on the index before the current frame
     // another -1 because our savestates are for the end of the frame, so need to go back another
-    s32 currentSavestateIdx = Wrap(currentFrame - 2, MAX_SAVESTATES);
-    s32 endingSavestateIdx = Wrap(currentSavestateIdx - savestateOffset + 1, MAX_SAVESTATES);
+    s32 currentSavestateIdx = Wrap(currentFrame - 1 - 1, MAX_SAVESTATES);
+    s32 endingSavestateIdx = Wrap(currentSavestateIdx - savestateOffset, MAX_SAVESTATES);
 
     assert(endingSavestateIdx < MAX_SAVESTATES);
 #ifdef ENABLE_LOGGING

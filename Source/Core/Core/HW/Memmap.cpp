@@ -225,9 +225,9 @@ void MemoryManager::WriteProtectPhysicalMemoryRegions()
 {
   const size_t page_size = Common::PageSize();
   const size_t page_mask = page_size - 1;
-  u8* memory[3] = {GetRAM(), GetEXRAM(), GetLogicalBase()};
-  u64 memory_size[3] = {0x817FFFFF - 0x80000000 + 1, 0x93FFFFFF - 0x90000000 + 1, 0x1'0000'0000};
-  for (int i = 0; i < 3; i++)
+  u8* memory[2] = {GetRAM(), GetEXRAM()};
+  u64 memory_size[2] = {0x817FFFFF - 0x80000000 + 1, 0x93FFFFFF - 0x90000000 + 1};
+  for (int i = 0; i < 2; i++)
   {
     bool change_protection = HandleChangeProtection(memory[i], memory_size[i], PAGE_READONLY);
 
@@ -236,6 +236,13 @@ void MemoryManager::WriteProtectPhysicalMemoryRegions()
       PanicAlertFmt("Memory::WriteProtectPhysicalMemoryRegions(): Failed to guard protect for "
                     "this block of memory at 0x{:08X}.",
                     reinterpret_cast<uintptr_t>(memory[i]));
+    }
+    intptr_t out_pointer = reinterpret_cast<uintptr_t>(memory[i]);
+    intptr_t out_pointer_pte = out_pointer & ~page_mask;
+    size_t size = memory_size[i] + (out_pointer_pte - out_pointer);
+    for (size_t page = out_pointer_pte; page < out_pointer_pte + size; page += page_size)
+    {
+      m_dirty_pages[page] = false;
     }
   }
 
@@ -248,17 +255,6 @@ void MemoryManager::WriteProtectPhysicalMemoryRegions()
       PanicAlertFmt("Memory::WriteProtectPhysicalMemoryRegions(): Failed to guard protect for "
                     "this block of memory at 0x{:08X}.",
                     reinterpret_cast<uintptr_t>(entry.mapped_pointer));
-    }
-  }
-
-  for (int i = 0; i < 2; i++)
-  {
-    intptr_t out_pointer = reinterpret_cast<uintptr_t>(memory[i]);
-    intptr_t out_pointer_pte = out_pointer & ~page_mask;
-    size_t size = memory_size[i] + (out_pointer_pte - out_pointer);
-    for (size_t page = out_pointer_pte; page < out_pointer_pte + size; page += page_size)
-    {
-      m_dirty_pages[page] = false;
     }
   }
 }

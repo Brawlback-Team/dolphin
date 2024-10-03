@@ -150,16 +150,6 @@ bool GetAndResetWrittenPages(void** changedPageAddresses, u64* numChangedPages, 
 {
     //PROFILE_FUNCTION();
     *numChangedPages = 0;
-
-    auto totalPages = 0;
-    for (auto& it : Core::System::GetInstance().GetMemory().GetDirtyPages())
-    {
-      if (it.second == 1)
-      {
-        totalPages++;
-      }
-    }
-    INFO_LOG_FMT(BRAWLBACK, "SANITY CHECK: {} TOTAL PAGES ARE DIRTY\n", totalPages);
     for (TrackedBuffer& buf : TrackedMemList)
     {
         // on input to GetWriteWatch this is the maximum number of possible changed pages in this allocation
