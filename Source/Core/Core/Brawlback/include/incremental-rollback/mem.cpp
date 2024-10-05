@@ -137,7 +137,18 @@ int GetWrittenPages(char* base, u64 baseSize, void** writtenToPages, u64& pageCo
       {
         return 1;
       }
-      writtenToPages[writtenToPagesIndex] = reinterpret_cast<u8*>(base_pte);
+      u8* base_pte_bytes = reinterpret_cast<u8*>(base_pte);
+      if(!memory.HandleChangeProtection(base_pte_bytes, 0x1, PAGE_READONLY))
+      {
+        return 2;
+      }
+      auto& addr = memory.GetDirtyPages()[base_pte].second;
+      if (!memory.IsAddressInEmulatedMemory(addr) && !memory.HandleChangeProtection(reinterpret_cast<void*>(addr), 0x1, PAGE_READONLY))
+      {
+        return 3;
+      }
+      memory.SetPageDirtyBit(base_pte, false, base_pte);
+      writtenToPages[writtenToPagesIndex] = base_pte_bytes;
       writtenToPagesIndex++;
     }
     base_pte += pageSize;
@@ -176,7 +187,6 @@ bool GetAndResetWrittenPages(void** changedPageAddresses, u64* numChangedPages, 
             return false;
         }
     }
-    Core::System::GetInstance().GetMemory().ResetDirtyPages();
     return true;
 }
 

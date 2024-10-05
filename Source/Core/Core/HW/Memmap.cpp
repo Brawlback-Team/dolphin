@@ -140,18 +140,19 @@ void MemoryManager::InitMMIO(bool is_wii)
 
 bool MemoryManager::IsAddressDirty(uintptr_t address)
 {
-  return m_dirty_pages[GetDirtyPageIndexFromAddress(address)];
+  return m_dirty_pages[GetDirtyPageIndexFromAddress(address)].first;
 }
 
 bool MemoryManager::IsPageDirty(uintptr_t page_address)
 {
-  return m_dirty_pages[page_address];
+  return m_dirty_pages[page_address].first;
 }
-void MemoryManager::SetPageDirtyBit(uintptr_t page_address, bool dirty)
+void MemoryManager::SetPageDirtyBit(uintptr_t page_address, bool dirty, u64 dirty_address)
 {
   if (m_dirty_pages.contains(page_address))
   {
-    m_dirty_pages[page_address] = dirty;
+    m_dirty_pages[page_address].first = dirty;
+    m_dirty_pages[page_address].second = dirty_address;
   }
 }
 
@@ -159,7 +160,8 @@ void MemoryManager::SetAddressDirtyBit(uintptr_t address, size_t size, bool dirt
 {
   for (size_t i = 0; i < size; i++)
   {
-    m_dirty_pages[GetDirtyPageIndexFromAddress(address + i)] = dirty;
+    m_dirty_pages[GetDirtyPageIndexFromAddress(address + i)].first = dirty;
+    m_dirty_pages[GetDirtyPageIndexFromAddress(address + i)].second = address;
   }
 }
 
@@ -198,12 +200,14 @@ bool MemoryManager::HandleFault(uintptr_t fault_address)
   uintptr_t logical_base_addr = reinterpret_cast<uintptr_t>(m_logical_base);
   u8* fault_address_bytes = reinterpret_cast<u8*>(fault_address);
   bool is_logical = false;
+  uintptr_t logical_address;
   if (IsAddressInLogicalMemory(fault_address_bytes))
   {
     if (!HandleChangeProtection(fault_address_bytes, 0x1, PAGE_READWRITE))
     {
       return false;
     }
+    logical_address = fault_address;
     u32 em_address = fault_address - logical_base_addr;
     fault_address = reinterpret_cast<uintptr_t>(GetSpanForAddress(em_address).data());
     is_logical = true;
@@ -215,7 +219,7 @@ bool MemoryManager::HandleFault(uintptr_t fault_address)
     {
       return false;
     }
-    SetPageDirtyBit(page, true);
+    SetPageDirtyBit(page, true, is_logical ? logical_address : fault_address);
     return true;
   }
   return is_logical;
@@ -242,7 +246,8 @@ void MemoryManager::WriteProtectPhysicalMemoryRegions()
     size_t size = memory_size[i] + (out_pointer_pte - out_pointer);
     for (size_t page = out_pointer_pte; page < out_pointer_pte + size; page += page_size)
     {
-      m_dirty_pages[page] = false;
+      m_dirty_pages[page].first = false;
+      m_dirty_pages[page].second = out_pointer_pte;
     }
   }
 

@@ -85,6 +85,7 @@ public:
   u8* GetLogicalBase() const { return m_logical_base; }
   u8* GetPhysicalPageMappingsBase() const { return m_physical_page_mappings_base; }
   u8* GetLogicalPageMappingsBase() const { return m_logical_page_mappings_base; }
+  std::vector<LogicalMemoryView> GetLogicalMappedEntries() const { return m_logical_mapped_entries; }
 
   // FIXME: these should not return their address, but AddressSpace wants that
   u8*& GetRAM() { return m_ram; }
@@ -92,12 +93,12 @@ public:
   u8* GetL1Cache() { return m_l1_cache; }
   u8*& GetFakeVMEM() { return m_fake_vmem; }
 
-  std::map<u64, u8>& GetDirtyPages() { return m_dirty_pages; }
+  std::map<u64, std::pair<u8, u64>>& GetDirtyPages() { return m_dirty_pages; }
 
   // Dirty Page Handling
   bool IsAddressDirty(uintptr_t address);
   bool IsPageDirty(uintptr_t page_address);
-  void SetPageDirtyBit(uintptr_t page_address, bool dirty);
+  void SetPageDirtyBit(uintptr_t page_address, bool dirty, u64 dirty_address);
   void SetAddressDirtyBit(uintptr_t address, size_t size, bool dirty);
   void ResetDirtyPages();
   bool HandleChangeProtection(void* address, size_t size, u32 flag);
@@ -272,7 +273,7 @@ private:
 
   Core::System& m_system;
 
-  std::map<u64, u8> m_dirty_pages;
+  std::map<u64, std::pair<u8, u64>> m_dirty_pages;
 
   void InitMMIO(bool is_wii);
 };

@@ -364,8 +364,6 @@ namespace IncrementalRB
     // Heaps
     ExcludeMem(GetPointer(0x817ba5a0), 0x817ca5a0 - 0x817ba5a0); // Syringe Heap
     ExcludeMem(GetPointer(0x94000000), 0xF4240);                 // EXI Transfer Heap
-    ExcludeMem(GetPointer(0x9134cc00), 0x91478e00 - 0x9134cc00); // Copy FB Heap
-    ExcludeMem(GetPointer(0x805ca260), 0x805d1e60 - 0x805ca260); // Thread Heap
     #endif
     jobsystem::Initialize(
         numWorkerThreads -
@@ -493,12 +491,12 @@ namespace IncrementalRB
     // -1 because all savestates are taken after a frame's simulation
     // this means if you want to rollback to frame 5, you'd actually need to restore the data
     // captured on frame 4
-    s32 savestateOffset = currentFrame - rollbackFrame - 1;
+    s32 savestateOffset = currentFrame - rollbackFrame;
     assert(rollbackFrame < currentFrame && savestateOffset < MAX_SAVESTATES);
     // -1 because we want to start rolling back on the index before the current frame
     // another -1 because our savestates are for the end of the frame, so need to go back another
-    s32 currentSavestateIdx = Wrap(currentFrame - 1 - 1, MAX_SAVESTATES);
-    s32 endingSavestateIdx = Wrap(currentSavestateIdx - savestateOffset, MAX_SAVESTATES);
+    s32 currentSavestateIdx = Wrap(currentFrame - 2, MAX_SAVESTATES);
+    s32 endingSavestateIdx = Wrap(currentSavestateIdx - savestateOffset + 1, MAX_SAVESTATES);
 
     assert(endingSavestateIdx < MAX_SAVESTATES);
 #ifdef ENABLE_LOGGING
