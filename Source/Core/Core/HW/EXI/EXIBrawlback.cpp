@@ -16,6 +16,8 @@
 #include <regex>
 #include <Core/System.h>
 #include <incremental-rollback/incremental_rb.h>
+#include <chrono>
+#include "Common/CommonTypes.h"
 
 namespace fs = std::filesystem;
 // --- Mutexes
@@ -97,6 +99,7 @@ CEXIBrawlback::~CEXIBrawlback()
 {
   enet_deinitialize();
   enet_host_destroy(this->server);
+  this->server = nullptr;
   this->isConnected = false;
   if (this->netplay_thread.joinable())
   {
@@ -824,6 +827,11 @@ void CEXIBrawlback::ProcessNetReceive(ENetEvent* event)
       this->ProcessGameSettings(gameSettingsFromOpponent);
     }
     break;
+    case NetPacketCommand::CMD_CONNECT:
+    {
+      INFO_LOG_FMT(BRAWLBACK, "Recieved connection packet from opponent");
+    }
+    break;
     default:
       WARN_LOG_FMT(BRAWLBACK, "Unknown packet cmd byte!");
       std::stringstream ss;
@@ -837,35 +845,83 @@ void CEXIBrawlback::ProcessNetReceive(ENetEvent* event)
 void CEXIBrawlback::NetplayThreadFunc()
 {
   Common::SetCurrentThreadName("BrawlbackNetplay");
-  ENetEvent event;
 
+  enet_uint32 timeout;
   // loop until we connect to someone, then after we connected,
   // do another loop for passing data between the connected clients
-
-  INFO_LOG_FMT(BRAWLBACK, "Waiting for connection to opponent...");
-  while (enet_host_service(this->server, &event, 0) >= 0 && !this->isConnected)
+  ENetEvent event;
+  if (this->server != nullptr)
   {
-    switch (event.type)
+    INFO_LOG_FMT(BRAWLBACK, "Waiting for connection to opponent {}:{}...",
+                 this->server->peers[0].address.host, this->server->peers[0].address.port);
+  }
+  bool qos_success = false;
+#ifdef _WIN32
+  QOS_VERSION ver = {1, 0};
+
+  if (QOSCreateHandle(&ver, &m_qos_handle))
+  {
+    struct sockaddr_in sin = {0};
+
+    sin.sin_family = AF_INET;
+    sin.sin_port = ENET_HOST_TO_NET_16(this->peer->host->address.port);
+    sin.sin_addr.s_addr = this->peer->host->address.host;
+
+    if (QOSAddSocketToFlow(m_qos_handle, this->peer->host->socket,
+                           reinterpret_cast<PSOCKADDR>(&sin),
+                           // this is 0x38
+                           QOSTrafficTypeControl, QOS_NON_ADAPTIVE_FLOW, &m_qos_flow_id))
     {
-    case ENET_EVENT_TYPE_CONNECT:
-      INFO_LOG_FMT(BRAWLBACK, "Connected!");
-      if (event.peer)
+      DWORD dscp = 0x2e;
+
+      // this will fail if we're not admin
+      // sets DSCP to the same as linux (0x2e)
+      QOSSetFlow(m_qos_handle, m_qos_flow_id, QOSSetOutgoingDSCPValue, sizeof(DWORD), &dscp, 0,
+                 nullptr);
+
+      qos_success = true;
+    }
+#else
+#ifdef __linux__
+  // highest priority
+  int priority = 7;
+  setsockopt(this->peer->socket, SOL_SOCKET, SO_PRIORITY, &priority, sizeof(priority));
+#endif
+
+  // https://www.tucny.com/Home/dscp-tos
+  // ef is better than cs7
+  int tos_val = 0xb8;
+  qos_success =
+      setsockopt(this->server->socket, IPPROTO_IP, IP_TOS, &tos_val, sizeof(tos_val)) == 0;
+#endif
+  }
+  timeout = this->isHost ? 5000 : 1000;
+  while (!this->isConnected)
+  {
+    auto net = enet_host_service(this->server, &event, timeout);
+    if (net > 0)
+    {
+      switch (event.type)
       {
-        INFO_LOG_FMT(BRAWLBACK, "A new client connected from {:#x}:{:d}\n", event.peer->address.host,
-                 event.peer->address.port);
-        this->isConnected = true;
+      case ENET_EVENT_TYPE_CONNECT:
+        INFO_LOG_FMT(BRAWLBACK, "Connected!");
+        if (event.peer)
+        {
+          INFO_LOG_FMT(BRAWLBACK, "A new client connected from {:#x}:{:d}\n",
+                       event.peer->address.host, event.peer->address.port);
+          this->isConnected = true;
+        }
+        else
+        {
+          WARN_LOG_FMT(BRAWLBACK, "Connect event received, but peer was null!");
+        }
+        break;
+      case ENET_EVENT_TYPE_NONE:
+        // INFO_LOG_FMT(BRAWLBACK, "Enet event type none. Nothing to do");
+        break;
       }
-      else
-      {
-        WARN_LOG_FMT(BRAWLBACK, "Connect event received, but peer was null!");
-      }
-      break;
-    case ENET_EVENT_TYPE_NONE:
-      // INFO_LOG_FMT(BRAWLBACK, "Enet event type none. Nothing to do");
-      break;
     }
   }
-
   if (this->isHost)
   {  // if we're host, send our game settings to clients right after connecting
     this->netplay->BroadcastGameSettings(this->server, &this->gameSettings);
@@ -901,13 +957,18 @@ void CEXIBrawlback::NetplayThreadFunc()
 void CEXIBrawlback::MatchmakingThreadFunc()
 {
   Common::SetCurrentThreadName("BrawlbackMatchmakingPhase2");
-  while (this->matchmaking)
+  bool connected = false;
+  while (this->matchmaking && !connected)
   {
     switch (this->matchmaking->GetMatchmakeState())
     {
     case Matchmaking::ProcessState::OPPONENT_CONNECTING:
       this->matchmaking->SetMatchmakeState(Matchmaking::ProcessState::CONNECTION_SUCCESS);
       this->connectToOpponent();
+      break;
+    case Matchmaking::ProcessState::CONNECTION_SUCCESS:
+      connected = true;
+      this->netplay_thread = std::thread(&CEXIBrawlback::NetplayThreadFunc, this);
       break;
     case Matchmaking::ProcessState::ERROR_ENCOUNTERED:
       ERROR_LOG_FMT(BRAWLBACK, "MATCHMAKING: ERROR TRYING TO CONNECT!");
@@ -917,56 +978,58 @@ void CEXIBrawlback::MatchmakingThreadFunc()
       break;
     }
   }
-  INFO_LOG_FMT(BRAWLBACK, "~~~~~~~~~~~~~~ END MATCHMAKING THREAD ~~~~~~~~~~~~~~\n");
+  INFO_LOG_FMT(BRAWLBACK, "~~~~~~~~~~~~~~ END MATCHMAKING PHASE 2 THREAD ~~~~~~~~~~~~~~\n");
 }
 
 void CEXIBrawlback::connectToOpponent()
 {
   this->isHost = this->matchmaking->IsHost();
-
+  ENetAddress addr;
+  std::string address;
   if (this->isHost)
   {
     INFO_LOG_FMT(BRAWLBACK, "Matchmaking: Creating server...");
-    ENetAddress address;
-    address.host = ENET_HOST_ANY;
-    address.port = this->matchmaking->GetLocalPort();
-
-    this->server = enet_host_create(&address, 10, 3, 0, 0);
   }
   else
   {
     INFO_LOG_FMT(BRAWLBACK, "Matchmaking: Creating client...");
-    this->server = enet_host_create(NULL, 10, 3, 0, 0);
-
-    bool connectedToAtLeastOne = false;
-    for (int i = 0; i < this->matchmaking->RemotePlayerCount(); i++)
-    {
-      ENetAddress addr;
-      int set_host_res =
-          enet_address_set_host(&addr, this->matchmaking->GetRemoteIPAddresses()[i].c_str());
-      if (set_host_res < 0)
-      {
-        WARN_LOG_FMT(BRAWLBACK, "Failed to enet_address_set_host");
-      }
-      addr.port = this->matchmaking->GetRemotePorts()[i];
-
-      ENetPeer* peer = enet_host_connect(this->server, &addr, 1, 0);
-      if (peer == NULL)
-      {
-        WARN_LOG_FMT(BRAWLBACK, "Failed to enet_host_connect");
-      }
-      connectedToAtLeastOne = true;
-    }
-    if (!connectedToAtLeastOne)
-    {
-      ERROR_LOG_FMT(BRAWLBACK, "Failed to connect to any client/host");
-      return;
-    }
   }
-
-  INFO_LOG_FMT(BRAWLBACK, "Net initialized, starting netplay thread");
-  // loop to receive data over net
-  this->netplay_thread = std::thread(&CEXIBrawlback::NetplayThreadFunc, this);
+  addr.host = ENET_HOST_ANY;
+  addr.port = this->matchmaking->GetLocalPort();
+  this->server = enet_host_create(&addr, 10, 3, 0, 0);
+  if (this->server == nullptr)
+  {
+    ERROR_LOG_FMT(BRAWLBACK, "Failed to connect to any client/host");
+    return;
+  }
+  bool connectedToAtLeastOne = false;
+  for (int i = 0; i < this->matchmaking->RemotePlayerCount(); i++)
+  {
+    address = this->matchmaking->GetRemoteIPAddresses()[i];
+    int set_host_res = enet_address_set_host(&addr, address.c_str());
+    if (set_host_res < 0)
+    {
+      WARN_LOG_FMT(BRAWLBACK, "Failed to enet_address_set_host");
+    }
+    addr.port = this->matchmaking->GetRemotePorts()[i];
+    this->peer = enet_host_connect(this->server, &addr, 3, 0);
+    if (this->peer == nullptr)
+    {
+      WARN_LOG_FMT(BRAWLBACK, "Failed to enet_host_connect");
+    }
+    {
+      using namespace std::chrono_literals;
+      auto PEER_TIMEOUT = 30s;
+      enet_peer_timeout(this->peer, 0, PEER_TIMEOUT.count(), PEER_TIMEOUT.count());
+    }
+    connectedToAtLeastOne = true;
+  }
+  if (!connectedToAtLeastOne)
+  {
+    ERROR_LOG_FMT(BRAWLBACK, "Failed to connect to any client/host");
+    return;
+  }
+  this->server->mtu = std::min(this->server->mtu, NetPlay::MAX_ENET_MTU);
 }
 
 void CEXIBrawlback::handleFindMatch(u8* payload)

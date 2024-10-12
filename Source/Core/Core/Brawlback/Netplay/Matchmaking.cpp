@@ -232,7 +232,7 @@ int Matchmaking::receiveMessage(json &msg, int timeoutMs)
 
 void Matchmaking::MatchmakeThread()
 {
-    Common::SetCurrentThreadName("BrawlbackMatchmakingPhase1");
+  Common::SetCurrentThreadName("BrawlbackMatchmakingPhase1");
 	while (IsSearching())
 	{
 		switch (m_state)
@@ -251,6 +251,7 @@ void Matchmaking::MatchmakeThread()
 
 	// Clean up ENET connections
 	terminateMmConnection();
+  INFO_LOG_FMT(BRAWLBACK, "~~~~~~~~~~~~~~ END MATCHMAKING PHASE 1 THREAD ~~~~~~~~~~~~~~\n");
 }
 
 void Matchmaking::disconnectFromServer()
@@ -295,6 +296,60 @@ void Matchmaking::terminateMmConnection()
 		m_client = nullptr;
 	}
 }
+
+static char* getLocalAddressFallback()
+{
+  char host[256];
+  int hostname = gethostname(host, sizeof(host));  // find the host name
+  if (hostname == -1)
+  {
+    ERROR_LOG_FMT(BRAWLBACK, "[Matchmaking] Error finding LAN address");
+    return nullptr;
+  }
+
+  struct hostent* host_entry = gethostbyname(host);  // find host information
+  if (host_entry == NULL || host_entry->h_addrtype != AF_INET || host_entry->h_addr_list[0] == 0)
+  {
+    ERROR_LOG_FMT(BRAWLBACK, "[Matchmaking] Error finding LAN host");
+    return nullptr;
+  }
+
+  // Fetch the last IP (because that was correct for me, not sure if it will be for all)
+  for (int i = 0; host_entry->h_addr_list[i] != 0; i++)
+    if (host_entry->h_addr_list[i + 1] == 0)
+      return host_entry->h_addr_list[i];
+  return nullptr;
+}
+
+static enet_uint32 getLocalAddress(ENetAddress* mm_address)
+{
+  ENetSocket socket = enet_socket_create(ENET_SOCKET_TYPE_DATAGRAM);
+  if (socket == -1)
+  {
+    ERROR_LOG_FMT(BRAWLBACK, "[Matchmaking] Failed to get local address: socket create");
+    enet_socket_destroy(socket);
+    return 0;
+  }
+
+  if (enet_socket_connect(socket, mm_address) == -1)
+  {
+    ERROR_LOG_FMT(BRAWLBACK, "[Matchmaking] Failed to get local address: socket connect");
+    enet_socket_destroy(socket);
+    return 0;
+  }
+
+  ENetAddress enet_address;
+  if (enet_socket_get_address(socket, &enet_address) == -1)
+  {
+    ERROR_LOG_FMT(BRAWLBACK, "[Matchmaking] Failed to get local address: socket get address");
+    enet_socket_destroy(socket);
+    return 0;
+  }
+
+  enet_socket_destroy(socket);
+  return enet_address.host;
+}
+
 
 void Matchmaking::startMatchmaking()
 {
@@ -406,43 +461,27 @@ void Matchmaking::startMatchmaking()
 	// it will hurt
 	char lanAddr[30] = "";
 
-	char host[256];
-	char *IP = nullptr;
-	struct hostent *host_entry;
-	int hostname;
-	hostname = gethostname(host, sizeof(host)); // find the host name
-	if (hostname == -1)
-	{
-		ERROR_LOG_FMT(BRAWLBACK, "[Matchmaking] Error finding LAN address");
-	}
-	else
-	{
-		host_entry = (hostent*)gethostbyname(host); // find host information
-		if (host_entry == NULL || host_entry->h_addrtype != AF_INET)
-		{
-			ERROR_LOG_FMT(BRAWLBACK, "[Matchmaking] Error finding LAN host");
-		}
-		else
-		{
-			// Fetch the last IP (because that was correct for me, not sure if it will be for all)
-			int i = 0;
-			while (host_entry->h_addr_list[i] != 0)
-			{
-				IP = inet_ntoa(*((struct in_addr *)host_entry->h_addr_list[i]));
-				WARN_LOG_FMT(BRAWLBACK, "[Matchmaking] IP at idx {}: {}", i, IP);
-				i++;
-			}
-
-			sprintf(lanAddr, "%s:%d", IP, m_hostPort);
-		}
-	}
-
-	if (SConfig::GetInstance().m_slippiForceLanIp)
-	{
-
-		WARN_LOG_FMT(BRAWLBACK, "[Matchmaking] Overwriting LAN IP sent with configured address");
-		sprintf(lanAddr, "%s:%d", SConfig::GetInstance().m_slippiLanIp.c_str(), m_hostPort);
-	}
+  if (SConfig::GetInstance().m_slippiForceLanIp)
+  {
+    WARN_LOG_FMT(BRAWLBACK, "[Matchmaking] Overwriting LAN IP sent with configured address");
+    sprintf(lanAddr, "%s:%d", SConfig::GetInstance().m_slippiLanIp.c_str(), m_hostPort);
+  }
+  else
+  {
+    enet_uint32 local_address = getLocalAddress(&addr);
+    if (local_address != 0)
+    {
+      sprintf(lanAddr, "%s:%d", inet_ntoa(*(struct in_addr*)&local_address), m_hostPort);
+    }
+    else
+    {
+      char* fallback_address = getLocalAddressFallback();
+      if (fallback_address != nullptr)
+      {
+        sprintf(lanAddr, "%s:%d", inet_ntoa(*(struct in_addr*)fallback_address), m_hostPort);
+      }
+    }
+  }
 
 	WARN_LOG_FMT(BRAWLBACK, "[Matchmaking] Sending LAN address: {}", lanAddr);
 
@@ -605,6 +644,7 @@ void Matchmaking::handleMatchmaking()
 
 			auto lanIp = el.value("ipAddressLan", "1.1.1.1:123");
 
+      WARN_LOG_FMT(BRAWLBACK, "EXT IP: {}", extIp);
 			WARN_LOG_FMT(BRAWLBACK, "LAN IP: {}", lanIp);
 
 			if (exIpParts[0] != localExternalIp || lanIp.empty())

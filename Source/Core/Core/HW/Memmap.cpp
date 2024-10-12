@@ -200,7 +200,7 @@ bool MemoryManager::HandleFault(uintptr_t fault_address)
   uintptr_t logical_base_addr = reinterpret_cast<uintptr_t>(m_logical_base);
   u8* fault_address_bytes = reinterpret_cast<u8*>(fault_address);
   bool is_logical = false;
-  uintptr_t logical_address;
+  uintptr_t logical_address = 0;
   if (IsAddressInLogicalMemory(fault_address_bytes))
   {
     if (!HandleChangeProtection(fault_address_bytes, 0x1, PAGE_READWRITE))

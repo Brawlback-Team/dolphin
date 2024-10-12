@@ -11,6 +11,13 @@ struct Buffer
     bool operator==(const Buffer& buf) const { return data == buf.data && size == buf.size; }
 };
 
+struct ExcludeBuffer
+{
+  Buffer buffer;
+  uintptr_t start_page;
+  uintptr_t end_page;
+};
+
 struct AddressArray
 {
     void** Addresses;
@@ -24,7 +31,7 @@ struct TrackedBuffer
 };
 
 extern std::vector<TrackedBuffer> TrackedMemList;
-extern std::vector<Buffer> ExcludeMemList;
+extern std::vector<ExcludeBuffer> ExcludeMemList;
     // passed in memory block MUST be allocated (at least on windows...) with VirtualAlloc and the MEM_WRITE_WATCH flag
 void TrackAlloc(void* ptr, size_t size);
 void ExcludeMem(void* ptr, size_t size);
@@ -32,6 +39,6 @@ void UntrackAlloc(void* ptr);
 void ResetAllocs();
 void PrintTrackedBuf(const TrackedBuffer& buf);
 void ResetWrittenPages();
-int GetWrittenPages(char* base, u64 baseSize, void** writtenToPages, u64& pageCount);
-bool GetAndResetWrittenPages(void** changedPageAddresses, u64* numChangedPages, u64 maxEntries);
+int GetWrittenPages(char* base, u64 baseSize, std::vector<uintptr_t>& changedPageAddresses, u64& pageCount);
+bool GetAndResetWrittenPages(std::vector<uintptr_t>& changedPageAddresses, u64 maxEntries);
 void fastMemcpy(void* pvDest, void* pvSrc, size_t nBytes);

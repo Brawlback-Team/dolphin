@@ -48,11 +48,10 @@ namespace IncrementalRB
   struct Savestate
   {
     // sorted (ascending) list of changed pages
-    void* changedPages[MAX_NUM_CHANGED_PAGES] = {};
+    std::vector<uintptr_t> changedPages = {};
     // page-sized blocks of memory that contains data after this frame wrote to the pages
-    void* afterCopies[MAX_NUM_CHANGED_PAGES] = {};
+    std::vector<uintptr_t> afterCopies = {};
     Arena arena = {};
-    u64 numChangedPages = 0;
     u32 frame = 0;
     bool valid = false;
   };
@@ -359,11 +358,39 @@ namespace IncrementalRB
     TrackAlloc(GetPointer(0x804064E0), 0x805A5120 - 0x804064E0); // Data Sections 2 - 7, BSS, in-betweens
     TrackAlloc(GetPointer(0x805b5160), 0x817da5a0 - 0x805b5160); // MEM1
     TrackAlloc(GetPointer(0x90000800), 0x935e0000 - 0x90000800); // MEM2
-    // Stacks
-    ExcludeMem(GetPointer(0x805a5154), 0x805b5158 - 0x805a5154);
+
+    // Threading Stuff
+    ExcludeMem(GetPointer(0x805a5154), 0x805b5158 - 0x805a5154); // Main Thread Stack
+    ExcludeMem(GetPointer(0x804dd558 + 0x2C8), 0x318 - 0x2C8);   // Main Thread OSThread (w/o OSContext)
+
     // Heaps
+    ExcludeMem(GetPointer(0x80b8db60), 0x80c23a60 - 0x80b8db60); // Effect Heap
     ExcludeMem(GetPointer(0x817ba5a0), 0x817ca5a0 - 0x817ba5a0); // Syringe Heap
     ExcludeMem(GetPointer(0x94000000), 0xF4240);                 // EXI Transfer Heap
+
+    // VI Stuff
+    ExcludeMem(GetPointer(0x805a07d0), 0x20);
+    ExcludeMem(GetPointer(0x805a0844), 0xC);
+    ExcludeMem(GetPointer(0x805a07a4), 0x4);
+    ExcludeMem(GetPointer(0x804de550), 0xF0);
+
+    // Effects Stuff
+    ExcludeMem(GetPointer(0x80663300), 0x140);                   // efManager
+
+    // GX Stuff
+    ExcludeMem(GetPointer(0x805a08c0), 0x1);                     // DrawDone
+    ExcludeMem(GetPointer(0x804de760), 0x4F4);                   // gx
+
+    // SFX Stuff
+    //ExcludeMem(GetPointer(0x804D9060), 0x804DD050 - 0x804D9060); // Music Stream
+
+    // Misc.
+    ExcludeMem(GetPointer(0x804de290), 0x9C);                    // static struct EXIControl Ecb[3];
+
+    std::sort(ExcludeMemList.begin(), ExcludeMemList.end(),
+              [](const ExcludeBuffer& lhs, const ExcludeBuffer& rhs) {
+                return lhs.buffer.data < rhs.buffer.data;
+              });
     #endif
     jobsystem::Initialize(
         numWorkerThreads -
@@ -431,13 +458,13 @@ namespace IncrementalRB
     }
     jobsystem::Wait(jobctx);
   #else
-    for (u32 i = 0; i < savestate.numChangedPages; i++)
+    for (u32 i = 0; i < savestate.changedPages.size(); i++)
     {
       //PROFILE_SCOPE("rollback page");
       // apply the "after" state of this past frame
       // changedPages[i] will always correspond to the same index in afterCopies
-      void* orig = savestate.changedPages[i];
-      void* ssData = savestate.afterCopies[i];
+      void* orig = reinterpret_cast<void*>(savestate.changedPages[i]);
+      void* ssData = reinterpret_cast<void*>(savestate.afterCopies[i]);
   #ifdef ENABLE_LOGGING
       assert((orig >= GetRAM() && orig < GetRAM() + GetRAMSize()) ||
              (orig >= GetEXRAM() && orig < GetEXRAM() + GetEXRAMSize()));
@@ -453,22 +480,58 @@ namespace IncrementalRB
       bool rbCopyOrig = true;
       for (int f = 0; f < ExcludeMemList.size(); f++)
       {
-        auto gap_start = reinterpret_cast<uintptr_t>(ExcludeMemList[f].data);
-        auto gap_end = gap_start + ExcludeMemList[f].size;
+        auto gap_start = reinterpret_cast<uintptr_t>(ExcludeMemList[f].buffer.data);
+        auto gap_end = gap_start + ExcludeMemList[f].buffer.size;
         if (gap_start >= orig_ptr && gap_start < orig_ptr + pageSize)
         {
-          memcpy(orig, ssData, gap_start - orig_ptr);
+          size_t size;
+          void* dest;
+          void* src;
+          if (ExcludeMemList[f].start_page == ExcludeMemList[f - 1].end_page)
+          {
+            auto other_gap_end = reinterpret_cast<uintptr_t>(ExcludeMemList[f - 1].buffer.data) +
+                                 ExcludeMemList[f - 1].buffer.size;
+            dest = reinterpret_cast<void*>(orig_ptr + (other_gap_end - orig_ptr + 1));
+            src = reinterpret_cast<void*>(ssData_ptr + (other_gap_end - orig_ptr + 1));
+          }
+          else
+          {
+            dest = orig;
+            src = ssData;
+          }
+
+          size = gap_start - reinterpret_cast<uintptr_t>(dest);
+
+          /*
+          INFO_LOG_FMT(
+              BRAWLBACK, "GAP START: {:#x}, ORIG_PTR: {:#x}, DEST: {:#x}, SRC: {:#x}, SIZE {:#x}\n",
+              memory.GetEmulatedAddress((u8*)gap_start), memory.GetEmulatedAddress((u8*)orig_ptr),
+              memory.GetEmulatedAddress((u8*)dest), (uintptr_t)src, size);*/
+          memcpy(dest, src, size);
           rbCopyOrig = false;
         }
         if (gap_end >= orig_ptr && gap_end < orig_ptr + pageSize)
         {
-          auto dest = reinterpret_cast<void*>(orig_ptr + ((gap_end - orig_ptr) + 1));
-          auto src = reinterpret_cast<void*>(ssData_ptr + ((gap_end - orig_ptr) + 1));
-          auto size = orig_ptr + pageSize - gap_end - 1;
+          size_t size;
+          void* dest = reinterpret_cast<void*>(orig_ptr + ((gap_end - orig_ptr) + 1));
+          void* src = reinterpret_cast<void*>(ssData_ptr + ((gap_end - orig_ptr) + 1));
+          if (ExcludeMemList[f].end_page == ExcludeMemList[f + 1].start_page)
+          {
+            size = reinterpret_cast<uintptr_t>(ExcludeMemList[f + 1].buffer.data) - reinterpret_cast<uintptr_t>(dest);
+          }
+          else
+          {
+            size = orig_ptr + pageSize - reinterpret_cast<uintptr_t>(dest);
+          }
+          /*
+          INFO_LOG_FMT(
+              BRAWLBACK, "GAP END: {:#x}, ORIG_PTR: {:#x}, DEST: {:#x}, SRC: {:#x}, SIZE {:#x}\n",
+              memory.GetEmulatedAddress((u8*)gap_end), memory.GetEmulatedAddress((u8*)orig_ptr),
+              memory.GetEmulatedAddress((u8*)dest), (uintptr_t)src, size);*/
           memcpy(dest, src, size);
           rbCopyOrig = false;
         }
-        if (orig_ptr >= gap_start && orig_ptr <= gap_end)
+        if (orig_ptr >= ExcludeMemList[f].start_page && orig_ptr <= ExcludeMemList[f].end_page)
         {
           rbCopyOrig = false;
         }
@@ -476,6 +539,10 @@ namespace IncrementalRB
 
       if (rbCopyOrig)
       {
+        /*
+        INFO_LOG_FMT(
+            BRAWLBACK, "RBMEMCPYING! DEST: {:#x}, SRC: {:#x}, SIZE {:#x}\n",
+                     memory.GetEmulatedAddress((u8*)orig), (uintptr_t)ssData, pageSize);*/
         rbMemcpy(orig, ssData, pageSize);
       }
     }
@@ -491,12 +558,12 @@ namespace IncrementalRB
     // -1 because all savestates are taken after a frame's simulation
     // this means if you want to rollback to frame 5, you'd actually need to restore the data
     // captured on frame 4
-    s32 savestateOffset = currentFrame - rollbackFrame;
+    s32 savestateOffset = currentFrame - rollbackFrame - 1;
     assert(rollbackFrame < currentFrame && savestateOffset < MAX_SAVESTATES);
     // -1 because we want to start rolling back on the index before the current frame
     // another -1 because our savestates are for the end of the frame, so need to go back another
-    s32 currentSavestateIdx = Wrap(currentFrame - 2, MAX_SAVESTATES);
-    s32 endingSavestateIdx = Wrap(currentSavestateIdx - savestateOffset + 1, MAX_SAVESTATES);
+    s32 currentSavestateIdx = Wrap(currentFrame - 1 - 1, MAX_SAVESTATES);
+    s32 endingSavestateIdx = Wrap(currentSavestateIdx - savestateOffset, MAX_SAVESTATES);
 
     assert(endingSavestateIdx < MAX_SAVESTATES);
 #ifdef ENABLE_LOGGING
@@ -544,8 +611,8 @@ namespace IncrementalRB
     arena_clear(&savestate.arena);
     // NOTE: we *do* rely on nullptrs in afterCopies indicating an unwritten/evicted savestate
     // so that when we are resimulating, we don't have to reallocate
-    memset(savestate.afterCopies, 0, sizeof(void*) * savestate.numChangedPages);
-    memset(savestate.changedPages, 0, savestate.numChangedPages);  // optional
+    savestate.afterCopies.clear();
+    savestate.changedPages.clear();
     savestate.valid = false;
   }
 
@@ -555,17 +622,9 @@ namespace IncrementalRB
     u64 pageSize = Common::PageSize();
     // for parallelization, need to do the allocation stuff first since this needs to be serial.
     // Arenas are not threadsafe
-    for (u32 i = 0; i < savestate.numChangedPages; i++)
+    for (u32 i = 0; i < savestate.changedPages.size(); i++)
     {
-      void* copyOfWrittenPage = savestate.afterCopies[i];
-      // during resim frames, our afterCopies won't have been cleared to 0, so we don't need to
-      // realloc there since while resimulating, we are just overwriting the contents of past frames
-      // with our new resim-ed stuff
-      if (copyOfWrittenPage == nullptr)
-      {
-        copyOfWrittenPage = arena_alloc(&savestate.arena, pageSize);
-      }
-      savestate.afterCopies[i] = copyOfWrittenPage;
+      savestate.afterCopies.push_back(reinterpret_cast<uintptr_t>(arena_alloc(&savestate.arena, pageSize)));
     }
   #ifdef MULTITHREAD
     u32 pagesPerThread = savestate.numChangedPages / numWorkerThreads;
@@ -599,13 +658,13 @@ namespace IncrementalRB
     
     
   #else
-    for (u32 i = 0; i < savestate.numChangedPages; i++)
+    for (u32 i = 0; i < savestate.changedPages.size(); i++)
     {
       //PROFILE_SCOPE("save page");
       u8* changedGameMemPage = (u8*)savestate.changedPages[i];
       assert((changedGameMemPage >= GetRAM() && changedGameMemPage < GetRAM() + GetRAMSize()) ||
           (changedGameMemPage >= GetEXRAM() && changedGameMemPage < GetEXRAM() + GetEXRAMSize()));
-      rbMemcpy(savestate.afterCopies[i], changedGameMemPage, pageSize);
+      rbMemcpy((u8*)savestate.afterCopies[i], changedGameMemPage, pageSize);
   #ifdef ENABLE_LOGGING
       if ((u32*)savestate.changedPages[i] == GetGameMemFrame())
       {
@@ -629,20 +688,18 @@ namespace IncrementalRB
       EvictSavestate(savestate);
     }
     savestate.frame = frame;
-    savestate.numChangedPages = 0;
-    savestate.valid = GetAndResetWrittenPages(savestate.changedPages, &savestate.numChangedPages,
+    savestate.valid = GetAndResetWrittenPages(savestate.changedPages,
                                               MAX_NUM_CHANGED_PAGES);
     
     assert(savestate.valid);
-    assert(savestate.numChangedPages <= MAX_NUM_CHANGED_PAGES);
+    assert(savestate.changedPages.size() <= MAX_NUM_CHANGED_PAGES);
     OnPagesWritten(savestate);
 
   #ifdef ENABLE_LOGGING
-    u64 numChangedBytes = savestate.numChangedPages * Common::PageSize();
+    u64 numChangedBytes = savestate.changedPages.size() * Common::PageSize();
     float changedMB = numChangedBytes / 1024.0 / 1024.0;
     INFO_LOG_FMT(BRAWLBACK, "Frame {}, head = {}\tNum changed pages = {}\tChanged MB = {}\n",
-                 frame, savestateHead,
-           savestate.numChangedPages, changedMB);
+                 frame, savestateHead, savestate.changedPages.size(), changedMB);
   #endif
   }
 

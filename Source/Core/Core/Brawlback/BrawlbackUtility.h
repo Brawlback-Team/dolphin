@@ -95,6 +95,7 @@ namespace Brawlback {
         CMD_FRAME_DATA = 1,
         CMD_GAME_SETTINGS = 2,
         CMD_FRAME_DATA_ACK = 3,
+        CMD_CONNECT = 4
     };
 
     struct FrameOffsetData {

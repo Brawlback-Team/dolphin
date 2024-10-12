@@ -2,6 +2,7 @@
 //#include "profiler.h"
 #include <vector>
 #include <cassert>
+#include <set>
 
 #include <Common/Logging/Log.h>
 #include <Common/MemoryUtil.h>
@@ -28,7 +29,7 @@
 
 // the [i].AddressArray.Count here represents the total number of pages in this allocation
 std::vector<TrackedBuffer> TrackedMemList = {};
-std::vector<Buffer> ExcludeMemList = {};
+std::vector<ExcludeBuffer> ExcludeMemList = {};
 // called on a buffer allocated with VirtualAlloc and MEM_WRITE_WATCH flag
 void TrackAlloc(void* ptr, size_t size)
 {
@@ -56,15 +57,21 @@ void TrackAlloc(void* ptr, size_t size)
 }
 void ExcludeMem(void* ptr, size_t size)
 {
+  auto pageSize = Common::PageSize();
+  auto pageMask = pageSize - 1;
   if (!ptr || !size)
   {
     return;
   }
+  ExcludeBuffer exl = {};
   Buffer buf = {};
   buf.data = (char*)ptr;
   buf.size = size;
-
-  ExcludeMemList.push_back(buf);
+  exl.buffer = buf;
+  auto ptr_addr = reinterpret_cast<uintptr_t>(ptr);
+  exl.start_page = ptr_addr & ~pageMask;
+  exl.end_page = (ptr_addr + size) & ~pageMask;
+  ExcludeMemList.push_back(exl);
 }
 void UntrackAlloc(void* ptr)
   {
@@ -118,7 +125,7 @@ void ResetWrittenPages()
   memory.ResetDirtyPages();
 }
 
-int GetWrittenPages(char* base, u64 baseSize, void** writtenToPages, u64& pageCount)
+int GetWrittenPages(char* base, u64 baseSize, std::vector<uintptr_t>& changedPageAddresses, u64& pageCount)
 {
   size_t writtenToPagesIndex = 0;
   size_t pageSize = Common::PageSize();
@@ -148,8 +155,11 @@ int GetWrittenPages(char* base, u64 baseSize, void** writtenToPages, u64& pageCo
         return 3;
       }
       memory.SetPageDirtyBit(base_pte, false, base_pte);
-      writtenToPages[writtenToPagesIndex] = base_pte_bytes;
-      writtenToPagesIndex++;
+      if (std::find(changedPageAddresses.begin(), changedPageAddresses.end(), base_pte) == changedPageAddresses.end())
+      {
+        changedPageAddresses.push_back(base_pte);
+        writtenToPagesIndex++;
+      }
     }
     base_pte += pageSize;
   }
@@ -157,26 +167,23 @@ int GetWrittenPages(char* base, u64 baseSize, void** writtenToPages, u64& pageCo
   return 0;
 }
 
-bool GetAndResetWrittenPages(void** changedPageAddresses, u64* numChangedPages, u64 maxEntries)
+bool GetAndResetWrittenPages(std::vector<uintptr_t>& changedPageAddresses, u64 maxEntries)
 {
     //PROFILE_FUNCTION();
-    *numChangedPages = 0;
     for (TrackedBuffer& buf : TrackedMemList)
     {
         // on input to GetWriteWatch this is the maximum number of possible changed pages in this allocation
         // on output, this is the number of page addresses that have been changed
         u64 pageCount = buf.changedPages.Count;
         int result;
-        // move forward by the number of changed pages. 
-        void** addressesBase = (void**)((u64**)changedPageAddresses + *numChangedPages);
+        // move forward by the number of changed pages.
         {
           //PROFILE_SCOPE("GetWriteWatch");
             // get changed pages for specified buffer (buffer.data, buffer.size)
             // NOTE: addresses returned here are sorted (ascending)
-            result = GetWrittenPages(buf.buffer.data, buf.buffer.size, addressesBase, pageCount);
+            result = GetWrittenPages(buf.buffer.data, buf.buffer.size, changedPageAddresses, pageCount);
         }
-        *numChangedPages += pageCount;
-        if (result != 0 || pageCount > maxEntries || *numChangedPages > maxEntries)
+        if (result != 0 || pageCount > maxEntries || changedPageAddresses.size() > maxEntries)
         {
             ERROR_LOG_FMT(BRAWLBACK, "WRITTEN PAGE WRITE FAILED! RESULT CODE: {}\n", result);
             if (result == 2 || result == 3)

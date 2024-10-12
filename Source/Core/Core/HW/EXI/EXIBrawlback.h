@@ -9,7 +9,9 @@
 #include "Core/Brawlback/Savestate.h"
 #include "Core/Brawlback/TimeSync.h"
 #include "Core/HW/EXI/EXI_Device.h"
-
+#ifdef _WIN32
+#include <Qos2.h>
+#endif
 using namespace Brawlback;
 
 class CEXIBrawlback : public ExpansionInterface::IEXIDevice
@@ -80,10 +82,16 @@ private:
   void ProcessFrameAck(FrameAck* frameAck);
   bu32 GetLatestRemoteFrame();
   ENetHost* server = nullptr;
+  ENetPeer* peer = nullptr;
   std::thread netplay_thread;
   std::unique_ptr<BrawlbackNetplay> netplay;
 
   bool isConnected = false;
+#ifdef _WIN32
+  HANDLE m_qos_handle;
+  QOS_FLOWID m_qos_flow_id;
+#endif
+
   // -------------------------------
 
   // --- Matchmaking
