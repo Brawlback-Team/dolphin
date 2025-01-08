@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<root>
+ <rdmgr>
+  <timestamp type="u64_t">1731339589</timestamp>
+  <hostname>DESKTOP-1CUNED7</hostname>
+  <os>windows</os>
+  <product>Intel® Advisor 2024.2.0</product>
+  <buildNumber type="s32_t">615539</buildNumber>
+  <logicalCPUCount type="s32_t">32</logicalCPUCount>
+  <physicalCoreCount type="s32_t">16</physicalCoreCount>
+  <processorPackageCount type="s32_t">1</processorPackageCount>
+  <CPUFrequency type="s64_t">3400000000</CPUFrequency>
+  <CPUFamily type="s32_t">25</CPUFamily>
+  <CPUModel type="s32_t">33</CPUModel>
+  <CPUStepping type="s32_t">2</CPUStepping>
+  <CPUBrandName>AMD Ryzen 9 5950X 16-Core Processor            </CPUBrandName>
+  <isa>avx2</isa>
+ </rdmgr>
+</root>

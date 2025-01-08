@@ -47,12 +47,15 @@ private:
   void handleEndOfReplay();
   void handleDumpAll(u8*);
   void handleAlloc(u8* payload);
+  void handleTrackAlarm(u8* payload, bool track);
   void handleDealloc(u8* payload);
   void handleFrameCounterLoc(u8* payload);
   void handleGetNextFrame(u8* payload, int index);
   void handleNumReplays();
   void handleGetStartReplay(u8* payload);
   void handleCancelMatchmaking();
+
+  void handleEfParticle(u8* payload, bool track);
 
   template <typename T>
   void SendCmdToGame(EXICommand cmd, T* payload);
@@ -123,8 +126,9 @@ private:
   FrameData predictedInputs; // predicted inputs from some previous frame
   bu32 framesToAdvance = 1; // number of "frames" to advance the simulation on this frame
   bu32 latestConfirmedFrame = 0; // Tracks the last frame where we synchronized the game state with the remote client
+  bu32 stopRollbackFrame = -1;
   std::vector<SavestateMemRegionInfo> deallocRegions = {};
-  void updateSync(bu32& localFrame, u8 playerIdx);
+  void updateSync(bu32& localFrame, u8 playerIdx, bool& skipFrame);
   bool shouldRollback(bu32 localFrame);
   void LoadState(bu32 rollbackFrame);
   void SaveState(bu32 frame);
@@ -199,7 +203,7 @@ private:
   // --- Framedata (player inputs)
   void handleSendInputs(bu32 frame);
   PlayerFrameData getLocalInputs(const bu32& frame);
-  PlayerFrameData getRemoteInputs(bu32& frame, bu8 playerIdx);
+  PlayerFrameData getRemoteInputs(bu32& frame, bu8 playerIdx, bool& skipFrame);
   void storeLocalInputs(PlayerFrameData* localPlayerFramedata);
 
   // local player input history. Always holds FRAMEDATA_MAX_QUEUE_SIZE of past inputs

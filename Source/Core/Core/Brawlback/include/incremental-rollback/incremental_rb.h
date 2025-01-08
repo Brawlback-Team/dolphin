@@ -2,6 +2,7 @@
 
 #include "util.h"
 #include <Common/ChunkFile.h>
+#include "Core/HW/Memmap.h"
 
 #ifdef DEBUG
 #define ENABLE_LOGGING
@@ -22,6 +23,8 @@ namespace IncrementalRB
 
     typedef u8* (*GetPointerCb)(u32);
 
+    typedef std::array<Memory::PhysicalMemoryRegion, 4> (*GetPhysicalRegionsCb)();
+
     struct IncrementalRBCallbacks
     {
         GetRAMSizeCb getRAMSize = nullptr;
@@ -31,13 +34,14 @@ namespace IncrementalRB
         GetEXRAMCb getEXRAM = nullptr;
         GetGameMemFrameCb getGameMemFrame = nullptr;
         GetPointerCb getPointer = nullptr;
+        GetPhysicalRegionsCb getPhysicalRegions = nullptr;
     };
     // NOTE: gamestate pointer returned by the GetGameStateCb
     // must have been allocated with VirtualAlloc with the MEM_WRITE_WATCH flag
     // this sets our callbacks and tracks the memory block returned by GetGameStateCb and GetGamestateMemSizeCb
     void InitState(IncrementalRBCallbacks cb);
     // should be called at the END of every game simulation frame. Right now, this just saves the game state
-    void SaveWrittenPages(u32 frame, bool isResim);
+    void SaveWrittenPages(u32 frame, bool resim);
     void OnFrameEnd(s32 frame, bool isResim);
     void Shutdown();
 

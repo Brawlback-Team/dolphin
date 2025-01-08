@@ -22,7 +22,6 @@
 #include <Core/HW/HSP/HSP.h>
 #include <Core/HW/WII_IPC.h>
 #include <Core/IOS/IOS.h>
-#include <Core/HW/Memmap.h>
 #include <Core/Movie.h>
 #include <VideoCommon/VideoBackendBase.h>
 #include <Core/GeckoCode.h>
@@ -41,7 +40,7 @@ constexpr u32 numWorkerThreads = 4;
 // always page-sized, and pages are always aligned... surely there's some wins there. Also very easy to parallelize
 
 
-constexpr u64 MAX_NUM_CHANGED_PAGES = 52000;
+constexpr u64 MAX_NUM_CHANGED_PAGES = 60000;
 
 namespace IncrementalRB
 {
@@ -137,12 +136,30 @@ namespace IncrementalRB
     return nullptr;
   }
 
+  inline std::array<Memory::PhysicalMemoryRegion, 4> GetPhysicalRegions()
+  {
+    if (cbs.getPhysicalRegions)
+    {
+      return cbs.getPhysicalRegions();
+    }
+    return {};
+  }
+
   void InitState(IncrementalRBCallbacks cb)
   {
     //PROFILE_FUNCTION();
     
     cbs = cb;
     ResetAllocs();
+    for (auto& savestate : savestateInfo.savestates)
+    {
+      savestate.changedPages.clear();
+      savestate.afterCopies.clear();
+      if (savestate.arena.backing_mem)
+      {
+        _mm_free(savestate.arena.backing_mem);
+      }
+    }
     #ifdef SPECIFIC_TRACKING
     std::vector<Region> staticRegions = {
         {0x806414a0, 0x806414a0 + 0x60},
@@ -354,43 +371,45 @@ namespace IncrementalRB
     TrackAlloc(GetPointer(0x92dcdf41), 0x92e90127 - 0x92dcdf41);
     TrackAlloc(GetPointer(0x92e90141), 0x935ce200 - 0x92e90141);
     #else
-    TrackAlloc(GetPointer(0x800064E0), 0x8000C860 - 0x800064E0); // Data Sections 0 - 1
-    TrackAlloc(GetPointer(0x804064E0), 0x805A5120 - 0x804064E0); // Data Sections 2 - 7, BSS, in-betweens
-    TrackAlloc(GetPointer(0x805b5160), 0x817da5a0 - 0x805b5160); // MEM1
-    TrackAlloc(GetPointer(0x90000800), 0x935e0000 - 0x90000800); // MEM2
+    std::array<Memory::PhysicalMemoryRegion, 4> physical_entries = GetPhysicalRegions();
+    for (int i = 0; i < physical_entries.size(); i++)
+    {
+      if (!physical_entries[i].active)
+      {
+        continue;
+      }
 
+      TrackAlloc(*physical_entries[i].out_pointer, physical_entries[i].size);
+    }
     // Threading Stuff
+    //ExcludeMem(GetPointer(0x804dd558 + 0x2C8), 0x318 - 0x2C8);   // Main Thread OSThread (w/o OSContext)
+    ExcludeMem(GetPointer(0x804c1d08), 0x28);  // RemoteSpeakerAlarm OSAlarm
+    ExcludeMem(GetPointer(0x805bf420), 0x28);  // ??? OSAlarm
+    ExcludeMem(GetPointer(0x804f67e0), 0x28);  // WPAD OSAlarm
+    ExcludeMem(GetPointer(0x805297a0), 0x28);  // BTU OSAlarm
+    ExcludeMem(GetPointer(0x805bacc0), 0x28);  // PAD OSAlarm
+    ExcludeMem(GetPointer(0x805b85e0), 0x28);  // OSALarmSleep OSAlarm
     ExcludeMem(GetPointer(0x805a5154), 0x805b5158 - 0x805a5154); // Main Thread Stack
-    ExcludeMem(GetPointer(0x804dd558 + 0x2C8), 0x318 - 0x2C8);   // Main Thread OSThread (w/o OSContext)
-
     // Heaps
-    ExcludeMem(GetPointer(0x80b8db60), 0x80c23a60 - 0x80b8db60); // Effect Heap
     ExcludeMem(GetPointer(0x817ba5a0), 0x817ca5a0 - 0x817ba5a0); // Syringe Heap
+    ExcludeMem(GetPointer(0x90199800), 0x90e61400 - 0x90199800); // Sound Heap
+    ExcludeMem(GetPointer(0x805ca260), 0x805d1e60 - 0x805ca260); // Thread Heap
     ExcludeMem(GetPointer(0x94000000), 0xF4240);                 // EXI Transfer Heap
 
     // VI Stuff
+    
     ExcludeMem(GetPointer(0x805a07d0), 0x20);
     ExcludeMem(GetPointer(0x805a0844), 0xC);
     ExcludeMem(GetPointer(0x805a07a4), 0x4);
     ExcludeMem(GetPointer(0x804de550), 0xF0);
-
-    // Effects Stuff
-    ExcludeMem(GetPointer(0x80663300), 0x140);                   // efManager
-
     // GX Stuff
     ExcludeMem(GetPointer(0x805a08c0), 0x1);                     // DrawDone
     ExcludeMem(GetPointer(0x804de760), 0x4F4);                   // gx
-
     // SFX Stuff
-    //ExcludeMem(GetPointer(0x804D9060), 0x804DD050 - 0x804D9060); // Music Stream
+    ExcludeMem(GetPointer(0x804D9060), 0x804DD050 - 0x804D9060); // Music Stream
 
     // Misc.
-    ExcludeMem(GetPointer(0x804de290), 0x9C);                    // static struct EXIControl Ecb[3];
-
-    std::sort(ExcludeMemList.begin(), ExcludeMemList.end(),
-              [](const ExcludeBuffer& lhs, const ExcludeBuffer& rhs) {
-                return lhs.buffer.data < rhs.buffer.data;
-              });
+    //ExcludeMem(GetPointer(0x804de290), 0x9C);                    // static struct EXIControl Ecb[3];
     #endif
     jobsystem::Initialize(
         numWorkerThreads -
@@ -466,8 +485,8 @@ namespace IncrementalRB
       void* orig = reinterpret_cast<void*>(savestate.changedPages[i]);
       void* ssData = reinterpret_cast<void*>(savestate.afterCopies[i]);
   #ifdef ENABLE_LOGGING
-      assert((orig >= GetRAM() && orig < GetRAM() + GetRAMSize()) ||
-             (orig >= GetEXRAM() && orig < GetEXRAM() + GetEXRAMSize()));
+      //assert((orig >= GetRAM() && orig < GetRAM() + GetRAMSize()) ||
+             //(orig >= GetEXRAM() && orig < GetEXRAM() + GetEXRAMSize()));
       // first 4 bytes of game mem contains current frame
       if (orig == GetGameMemFrame())
       {
@@ -478,71 +497,68 @@ namespace IncrementalRB
       auto orig_ptr = reinterpret_cast<uintptr_t>(orig);
       auto ssData_ptr = reinterpret_cast<uintptr_t>(ssData);
       bool rbCopyOrig = true;
-      for (int f = 0; f < ExcludeMemList.size(); f++)
+      void* dest = nullptr;
+      void* src = nullptr;
+      size_t size = 0;
+      if (ExcludeMemList.size() > 0)
       {
-        auto gap_start = reinterpret_cast<uintptr_t>(ExcludeMemList[f].buffer.data);
-        auto gap_end = gap_start + ExcludeMemList[f].buffer.size;
-        if (gap_start >= orig_ptr && gap_start < orig_ptr + pageSize)
+        for (int f = 1; f < ExcludeMemList.size(); f++)
         {
-          size_t size;
-          void* dest;
-          void* src;
-          if (ExcludeMemList[f].start_page == ExcludeMemList[f - 1].end_page)
+          auto gap_start = reinterpret_cast<uintptr_t>(ExcludeMemList[f].buffer.data);
+          if (gap_start >= orig_ptr && gap_start < orig_ptr + pageSize)
           {
-            auto other_gap_end = reinterpret_cast<uintptr_t>(ExcludeMemList[f - 1].buffer.data) +
-                                 ExcludeMemList[f - 1].buffer.size;
-            dest = reinterpret_cast<void*>(orig_ptr + (other_gap_end - orig_ptr + 1));
-            src = reinterpret_cast<void*>(ssData_ptr + (other_gap_end - orig_ptr + 1));
+            if (ExcludeMemList[f].start_page == ExcludeMemList[f - 1].end_page)
+            {
+              auto other_gap_end = reinterpret_cast<uintptr_t>(ExcludeMemList[f - 1].buffer.data) +
+                                   ExcludeMemList[f - 1].buffer.size;
+              dest = reinterpret_cast<void*>(orig_ptr + (other_gap_end - orig_ptr + 1));
+              src = reinterpret_cast<void*>(ssData_ptr + (other_gap_end - orig_ptr + 1));
+            }
+            else
+            {
+              dest = orig;
+              src = ssData;
+            }
+            rbCopyOrig = false;
+            size = gap_start - reinterpret_cast<uintptr_t>(dest);
+            memcpy(dest, src, size);
+            break;
           }
-          else
-          {
-            dest = orig;
-            src = ssData;
-          }
-
-          size = gap_start - reinterpret_cast<uintptr_t>(dest);
-
-          /*
-          INFO_LOG_FMT(
-              BRAWLBACK, "GAP START: {:#x}, ORIG_PTR: {:#x}, DEST: {:#x}, SRC: {:#x}, SIZE {:#x}\n",
-              memory.GetEmulatedAddress((u8*)gap_start), memory.GetEmulatedAddress((u8*)orig_ptr),
-              memory.GetEmulatedAddress((u8*)dest), (uintptr_t)src, size);*/
-          memcpy(dest, src, size);
-          rbCopyOrig = false;
         }
-        if (gap_end >= orig_ptr && gap_end < orig_ptr + pageSize)
+        for (int f = 0; f < ExcludeMemList.size() - 1; f++)
         {
-          size_t size;
-          void* dest = reinterpret_cast<void*>(orig_ptr + ((gap_end - orig_ptr) + 1));
-          void* src = reinterpret_cast<void*>(ssData_ptr + ((gap_end - orig_ptr) + 1));
-          if (ExcludeMemList[f].end_page == ExcludeMemList[f + 1].start_page)
+          auto gap_start = reinterpret_cast<uintptr_t>(ExcludeMemList[f].buffer.data);
+          auto gap_end = gap_start + ExcludeMemList[f].buffer.size;
+          if (gap_end >= orig_ptr && gap_end < orig_ptr + pageSize)
           {
-            size = reinterpret_cast<uintptr_t>(ExcludeMemList[f + 1].buffer.data) - reinterpret_cast<uintptr_t>(dest);
+            dest = reinterpret_cast<void*>(orig_ptr + ((gap_end - orig_ptr) + 1));
+            src = reinterpret_cast<void*>(ssData_ptr + ((gap_end - orig_ptr) + 1));
+            if (ExcludeMemList[f].end_page == ExcludeMemList[f + 1].start_page)
+            {
+              size = reinterpret_cast<uintptr_t>(ExcludeMemList[f + 1].buffer.data) -
+                     reinterpret_cast<uintptr_t>(dest);
+            }
+            else
+            {
+              size = orig_ptr + pageSize - reinterpret_cast<uintptr_t>(dest);
+            }
+            rbCopyOrig = false;
+            memcpy(dest, src, size);
+            break;
           }
-          else
-          {
-            size = orig_ptr + pageSize - reinterpret_cast<uintptr_t>(dest);
-          }
-          /*
-          INFO_LOG_FMT(
-              BRAWLBACK, "GAP END: {:#x}, ORIG_PTR: {:#x}, DEST: {:#x}, SRC: {:#x}, SIZE {:#x}\n",
-              memory.GetEmulatedAddress((u8*)gap_end), memory.GetEmulatedAddress((u8*)orig_ptr),
-              memory.GetEmulatedAddress((u8*)dest), (uintptr_t)src, size);*/
-          memcpy(dest, src, size);
-          rbCopyOrig = false;
         }
-        if (orig_ptr >= ExcludeMemList[f].start_page && orig_ptr <= ExcludeMemList[f].end_page)
+        for (int f = 0; f < ExcludeMemList.size() && rbCopyOrig; f++)
         {
-          rbCopyOrig = false;
+          if (orig_ptr >= ExcludeMemList[f].start_page && orig_ptr <= ExcludeMemList[f].end_page)
+          {
+            rbCopyOrig = false;
+            break;
+          }
         }
       }
 
       if (rbCopyOrig)
       {
-        /*
-        INFO_LOG_FMT(
-            BRAWLBACK, "RBMEMCPYING! DEST: {:#x}, SRC: {:#x}, SIZE {:#x}\n",
-                     memory.GetEmulatedAddress((u8*)orig), (uintptr_t)ssData, pageSize);*/
         rbMemcpy(orig, ssData, pageSize);
       }
     }
@@ -555,7 +571,7 @@ namespace IncrementalRB
     if (currentFrame < MAX_SAVESTATES)
       return;
 
-    // -1 because all savestates are taken after a frame's simulation
+   // -1 because all savestates are taken after a frame's simulation
     // this means if you want to rollback to frame 5, you'd actually need to restore the data
     // captured on frame 4
     s32 savestateOffset = currentFrame - rollbackFrame - 1;
@@ -598,7 +614,7 @@ namespace IncrementalRB
     // beginning of 10/end of 9 since that's where we need to reapply the new inputs and start
     // resimulating so we do one more at the end of this loop
     INFO_LOG_FMT(BRAWLBACK, "ASSERT CHECK 1: {} == {}?\n", savestateInfo.savestates[currentSavestateIdx].frame, rollbackFrame - 1);
-    assert(savestateInfo.savestates[currentSavestateIdx].frame == (u32)(rollbackFrame - 1));
+    assert(savestateInfo.savestates[currentSavestateIdx].frame == (u32)(rollbackFrame) - 1);
     RollbackSavestate(savestateInfo.savestates[currentSavestateIdx]);
     INFO_LOG_FMT(BRAWLBACK, "ASSERT CHECK 2: {} == {}?\n", *GetGameMemFrame(), rollbackFrame);
     assert(*GetGameMemFrame() == (u32)rollbackFrame);
@@ -609,8 +625,6 @@ namespace IncrementalRB
     //PROFILE_FUNCTION();
     // free up all the page snapshots tied to it
     arena_clear(&savestate.arena);
-    // NOTE: we *do* rely on nullptrs in afterCopies indicating an unwritten/evicted savestate
-    // so that when we are resimulating, we don't have to reallocate
     savestate.afterCopies.clear();
     savestate.changedPages.clear();
     savestate.valid = false;
@@ -662,8 +676,8 @@ namespace IncrementalRB
     {
       //PROFILE_SCOPE("save page");
       u8* changedGameMemPage = (u8*)savestate.changedPages[i];
-      assert((changedGameMemPage >= GetRAM() && changedGameMemPage < GetRAM() + GetRAMSize()) ||
-          (changedGameMemPage >= GetEXRAM() && changedGameMemPage < GetEXRAM() + GetEXRAMSize()));
+      //assert((changedGameMemPage >= GetRAM() && changedGameMemPage < GetRAM() + GetRAMSize()) ||
+          //(changedGameMemPage >= GetEXRAM() && changedGameMemPage < GetEXRAM() + GetEXRAMSize()));
       rbMemcpy((u8*)savestate.afterCopies[i], changedGameMemPage, pageSize);
   #ifdef ENABLE_LOGGING
       if ((u32*)savestate.changedPages[i] == GetGameMemFrame())
@@ -677,14 +691,14 @@ namespace IncrementalRB
   #endif
   }
 
-  void SaveWrittenPages(u32 frame, bool isResim)
+  void SaveWrittenPages(u32 frame, bool resim)
   {
     //PROFILE_FUNCTION();
     u32 savestateHead = frame % MAX_SAVESTATES;
     Savestate& savestate = savestateInfo.savestates[savestateHead];
-    if (savestate.valid && !isResim)
+    if (savestate.valid && !resim)
     {
-      // only evict old savestates when we're simulating/saving the current frame
+      INFO_LOG_FMT(BRAWLBACK, "EVICTING SAVESTATE!\n");
       EvictSavestate(savestate);
     }
     savestate.frame = frame;
@@ -703,9 +717,9 @@ namespace IncrementalRB
   #endif
   }
 
-  void OnFrameEnd(s32 frame, bool isResim)
+  void OnFrameEnd(s32 frame, bool resim)
   {
-    SaveWrittenPages(frame, isResim);
+    SaveWrittenPages(frame, resim);
 
   }
 

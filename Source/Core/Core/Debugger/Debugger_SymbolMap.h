@@ -24,6 +24,7 @@ struct CallstackEntry
   u32 vAddress = 0;
 };
 
+bool IsRangeInCallstack(const Core::CPUThreadGuard& guard, u32 addr1, u32 addr2);
 bool GetCallstack(const Core::CPUThreadGuard& guard, std::vector<CallstackEntry>& output);
 void PrintCallstack(const Core::CPUThreadGuard& guard, Common::Log::LogType type,
                     Common::Log::LogLevel level);

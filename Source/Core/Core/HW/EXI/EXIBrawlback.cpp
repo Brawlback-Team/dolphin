@@ -111,6 +111,7 @@ CEXIBrawlback::~CEXIBrawlback()
   {
     this->matchmaking_thread.join();
   }
+
 }
 
 void CEXIBrawlback::handleCaptureSavestate(u8* data)
@@ -119,13 +120,17 @@ void CEXIBrawlback::handleCaptureSavestate(u8* data)
   bu32 frame;
   std::memcpy(&frame, data, sizeof(bu32));
   frame = swap_endian(frame);
+  INFO_LOG_FMT(BRAWLBACK, "Game Frame Page is Dirty?: {} Trackable? {}\n",
+               Memory::isFramePointerDirty(), Memory::isFramePointerTrack());
+  Core::System::GetInstance().GetMemory().SetTrackMemoryPages(false);
   SaveState(frame);
   this->lastStatedFrame = frame;
+  
 }
 
 void CEXIBrawlback::SaveState(bu32 frame)
 {
-  IncrementalRB::SaveWrittenPages(frame - 1, framesToAdvance > 1);
+  IncrementalRB::SaveWrittenPages(frame - 1, framesToAdvance > 1 && frame - 1 != stopRollbackFrame);
 }
 
 void CEXIBrawlback::handleLoadSavestate(u8* data)
@@ -158,6 +163,7 @@ FrameData CreateBlankFrameData(u32 frame)
 {
   FrameData fd;
   fd.randomSeed = 0;
+  fd.skipFrame = false;
   for (int i = 0; i < MAX_NUM_PLAYERS; i++)
   {
     fd.playerFrameDatas[i] = CreateBlankPlayerFrameData(frame, i);
@@ -184,7 +190,6 @@ void CEXIBrawlback::handleLocalPadData(u8* data)
 
   if (frame == GAME_START_FRAME && !this->hasGameStarted)
   {
-    Core::System::GetInstance().GetMemory().ResetDirtyPages();
     // push framedatas for first few delay frames
     for (int i = GAME_START_FRAME; i < FRAME_DELAY; i++)
     {
@@ -260,7 +265,7 @@ void CEXIBrawlback::handleFrameDataRequest(u8* data)
       // remote inputs
       if (i != this->localPlayerIdx)
       {
-        framedataToSendToGame.playerFrameDatas[i] = this->getRemoteInputs(currentFrame, i);
+        framedataToSendToGame.playerFrameDatas[i] = this->getRemoteInputs(currentFrame, i, framedataToSendToGame.skipFrame);
       }
     }
     // since getRemoteInputs may change the current frame (in the case of a rollback), always get
@@ -272,6 +277,21 @@ void CEXIBrawlback::handleFrameDataRequest(u8* data)
   {
     framedataToSendToGame = CreateBlankFrameData(currentFrame);
   }
+  auto& system = Core::System::GetInstance();
+  auto& memory = system.GetMemory();
+  if (framesToAdvance > 1 && currentFrame == stopRollbackFrame)
+  {
+    framedataToSendToGame.skipFrame = true;
+  }
+  if (currentFrame == GAME_START_FRAME)
+  {
+    memory.InitDirtyPages();
+  }
+  else
+  {
+    //memory.ResetDirtyPages();
+  }
+  memory.SetTrackMemoryPages(true);
 
   std::lock_guard<std::mutex> lock(read_queue_mutex);
   this->read_queue.clear();
@@ -294,7 +314,7 @@ PlayerFrameData CEXIBrawlback::getLocalInputs(const bu32& frame)
   return *localFrameData;
 }
 
-void CEXIBrawlback::updateSync(bu32& localFrame, bu8 playerIdx)
+void CEXIBrawlback::updateSync(bu32& localFrame, bu8 playerIdx, bool& skipFrame)
 {
   // https://gist.github.com/rcmagic/f8d76bca32b5609e85ab156db38387e9#file-rollbackpseudocode-txt-L46
 
@@ -352,7 +372,9 @@ void CEXIBrawlback::updateSync(bu32& localFrame, bu8 playerIdx)
     // where we were before. 10 - 7 + 1 = 4
     this->framesToAdvance = localFrame - this->latestConfirmedFrame + 1;
     INFO_LOG_FMT(BRAWLBACK, "Num frames to simulate = {}\n", framesToAdvance);
+    this->stopRollbackFrame = localFrame;
     localFrame = this->latestConfirmedFrame;
+    skipFrame = false;
   }
 
   // INFO_LOG_FMT(BRAWLBACK, "UpdateSync latestConfirmedFrame = %i\n", latestConfirmedFrame);
@@ -366,7 +388,7 @@ bool CEXIBrawlback::shouldRollback(bu32 localFrame)
          this->GetLatestRemoteFrame() > this->latestConfirmedFrame;
 }
 
-PlayerFrameData CEXIBrawlback::getRemoteInputs(bu32& localFrame, u8 playerIdx)
+PlayerFrameData CEXIBrawlback::getRemoteInputs(bu32& localFrame, u8 playerIdx, bool& skipFrame)
 {
   PlayerFrameData finalRemoteInputs;
 
@@ -380,7 +402,7 @@ PlayerFrameData CEXIBrawlback::getRemoteInputs(bu32& localFrame, u8 playerIdx)
   
   if (isRollbackMode)
   {
-    this->updateSync(localFrame, playerIdx);
+    this->updateSync(localFrame, playerIdx, skipFrame);
 
     const PlayerFrameData* remoteFrameData =
         findInPlayerFrameDataQueue(this->remotePlayerFrameData[playerIdx], localFrame);
@@ -957,8 +979,7 @@ void CEXIBrawlback::NetplayThreadFunc()
 void CEXIBrawlback::MatchmakingThreadFunc()
 {
   Common::SetCurrentThreadName("BrawlbackMatchmakingPhase2");
-  bool connected = false;
-  while (this->matchmaking && !connected)
+  while (this->matchmaking)
   {
     switch (this->matchmaking->GetMatchmakeState())
     {
@@ -967,8 +988,6 @@ void CEXIBrawlback::MatchmakingThreadFunc()
       this->connectToOpponent();
       break;
     case Matchmaking::ProcessState::CONNECTION_SUCCESS:
-      connected = true;
-      this->netplay_thread = std::thread(&CEXIBrawlback::NetplayThreadFunc, this);
       break;
     case Matchmaking::ProcessState::ERROR_ENCOUNTERED:
       ERROR_LOG_FMT(BRAWLBACK, "MATCHMAKING: ERROR TRYING TO CONNECT!");
@@ -1030,6 +1049,8 @@ void CEXIBrawlback::connectToOpponent()
     return;
   }
   this->server->mtu = std::min(this->server->mtu, NetPlay::MAX_ENET_MTU);
+
+  this->netplay_thread = std::thread(&CEXIBrawlback::NetplayThreadFunc, this);
 }
 
 void CEXIBrawlback::handleFindMatch(u8* payload)
@@ -1137,6 +1158,7 @@ void CEXIBrawlback::handleStartMatch(u8* payload)
 
 #include "../../Externals/curl/curl/include/curl/curl.h"
 #include <Common/MemoryUtil.h>
+#include <incremental-rollback/mem.h>
 
 void swapGameReportEndian(GameReport& report)
 {
@@ -1337,7 +1359,8 @@ void CEXIBrawlback::handleAlloc(u8* payload)
   addAlloc.endAddress = alloc.address + alloc.size;
   addAlloc.regionName = std::string((char*)alloc.nameBuffer, alloc.nameSize);
   addAlloc.frame = this->lastStatedFrame;
-  if (addAlloc.regionName == "Fighter1Resoruce" || addAlloc.regionName == "Fighter2Resoruce" || addAlloc.regionName == "IteamResource")
+  if (addAlloc.regionName == "Fighter1Resoruce" || addAlloc.regionName == "Fighter2Resoruce" ||
+      addAlloc.regionName == "IteamResource")
   {
     u8* data = static_cast<u8*>(Common::AllocateAlignedMemory(3, 64));
     memory.CopyFromEmuSwapped(data, addAlloc.startAddress, 3);
@@ -1378,6 +1401,25 @@ void CEXIBrawlback::handleCancelMatchmaking()
   if (this->matchmaking_thread.joinable())
   {
     this->matchmaking_thread.join();
+  }
+}
+void CEXIBrawlback::handleEfParticle(u8* payload, bool track)
+{
+  auto& system = Core::System::GetInstance();
+  auto& memory = system.GetMemory();
+  bu32 efParticleLoc;
+  memcpy(&efParticleLoc, payload, sizeof(bu32));
+  efParticleLoc = swap_endian(efParticleLoc);
+
+  void* efParticle = memory.GetSpanForAddress(efParticleLoc).data();
+
+  if (track)
+  {
+    ExcludeMem(efParticle, 0xCC);
+  }
+  else
+  {
+    IncludeMem(efParticle);
   }
 }
     // recieve data from game into emulator
@@ -1460,6 +1502,12 @@ void CEXIBrawlback::DMAWrite(u32 address, u32 size)
     break;
   case CMD_CANCEL_MATCHMAKING:
     handleCancelMatchmaking();
+    break;
+  case CMD_TRACK_EF_PARTICLE:
+    handleEfParticle(payload, true);
+    break;
+  case CMD_UNTRACK_EF_PARTICLE:
+    handleEfParticle(payload, false);
     break;
   // just using these CMD's to track frame times lol
   case CMD_TIMER_START:

@@ -59,6 +59,8 @@ namespace Brawlback {
       CMD_SEND_DUMPALL = 32,
       CMD_SEND_FRAMECOUNTERLOC = 33,
       CMD_CANCEL_MATCHMAKING = 34,
+      CMD_TRACK_EF_PARTICLE = 35,
+      CMD_UNTRACK_EF_PARTICLE = 36,
 
       CMD_FIND_OPPONENT = 5,
       CMD_START_MATCH = 13,
@@ -148,6 +150,7 @@ namespace Brawlback {
             SwapPlayerFrameDataEndianness(fd.playerFrameDatas[i]);
         }
         fd.randomSeed = swap_endian(fd.randomSeed);
+        fd.skipFrame = swap_endian(fd.skipFrame);
     }
 
     inline void PrintSyncData(const SyncData& data) {

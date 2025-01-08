@@ -50,6 +50,47 @@ static void WalkTheStack(const Core::CPUThreadGuard& guard,
   }
 }
 
+static bool RangeInTheStack(const Core::CPUThreadGuard& guard, u32 addr1, u32 addr2)
+{
+  const auto& ppc_state = guard.GetSystem().GetPPCState();
+  bool in_stack = false;
+  if (!IsStackBottom(guard, ppc_state.gpr[1]))
+  {
+    u32 addr = PowerPC::MMU::HostRead_U32(guard, ppc_state.gpr[1]);  // SP
+
+    // Walk the stack chain
+    for (int count = 0; !IsStackBottom(guard, addr + 4) && (count < 20); ++count)
+    {
+      u32 func_addr = PowerPC::MMU::HostRead_U32(guard, addr + 4);
+      in_stack = func_addr - 4 >= addr1 && func_addr - 4 <= addr2;
+      if (in_stack || IsStackBottom(guard, addr))
+        break;
+
+      addr = PowerPC::MMU::HostRead_U32(guard, addr);
+    }
+  }
+  return in_stack;
+}
+
+bool IsRangeInCallstack(const Core::CPUThreadGuard& guard, u32 addr1, u32 addr2)
+{
+  auto& system = guard.GetSystem();
+  auto& power_pc = system.GetPowerPC();
+  const auto& ppc_state = power_pc.GetPPCState();
+
+  if (!Core::IsRunning(system) || !PowerPC::MMU::HostIsRAMAddress(guard, ppc_state.gpr[1]) || LR(ppc_state) == 0)
+    return false;
+
+  u32 address = LR(ppc_state) - 4;
+
+  if (address >= addr1 && address <= addr2)
+  {
+    return true;
+  }
+
+  return RangeInTheStack(guard, addr1, addr2);
+}
+
 // Returns callstack "formatted for debugging" - meaning that it
 // includes LR as the last item, and all items are the last step,
 // instead of "pointing ahead"

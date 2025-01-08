@@ -35,6 +35,7 @@ extern std::vector<ExcludeBuffer> ExcludeMemList;
     // passed in memory block MUST be allocated (at least on windows...) with VirtualAlloc and the MEM_WRITE_WATCH flag
 void TrackAlloc(void* ptr, size_t size);
 void ExcludeMem(void* ptr, size_t size);
+void IncludeMem(void* ptr);
 void UntrackAlloc(void* ptr);
 void ResetAllocs();
 void PrintTrackedBuf(const TrackedBuffer& buf);

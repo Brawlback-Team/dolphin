@@ -55,8 +55,17 @@ struct LogicalMemoryView
 {
   void* mapped_pointer;
   u32 mapped_size;
+  u32 logical_base;
+};
+
+struct DirtyPage
+{
+  bool dirty;
+  bool track;
+  u64 address;
 };
 bool isFramePointerDirty();
+bool isFramePointerTrack();
 class MemoryManager
 {
 public:
@@ -79,34 +88,39 @@ public:
   u32 GetExRamMask() const { return m_exram_mask; }
 
   u32 GetEmulatedAddress(u8* address);
-  bool IsAddressInLogicalMemory(const u8* address) const;
+  std::optional<LogicalMemoryView> IsAddressInLogicalMemory(const u8* address) const;
   bool IsAddressInFastmemArea(const u8* address) const;
   u8* GetPhysicalBase() const { return m_physical_base; }
   u8* GetLogicalBase() const { return m_logical_base; }
   u8* GetPhysicalPageMappingsBase() const { return m_physical_page_mappings_base; }
   u8* GetLogicalPageMappingsBase() const { return m_logical_page_mappings_base; }
-  std::vector<LogicalMemoryView> GetLogicalMappedEntries() const { return m_logical_mapped_entries; }
 
   // FIXME: these should not return their address, but AddressSpace wants that
   u8*& GetRAM() { return m_ram; }
   u8*& GetEXRAM() { return m_exram; }
   u8* GetL1Cache() { return m_l1_cache; }
   u8*& GetFakeVMEM() { return m_fake_vmem; }
+  std::array<PhysicalMemoryRegion, 4>& GetPhysicalRegions() { return m_physical_regions; }
+  bool GetTrackMemoryPages() { return m_track_memory_pages; }
 
-  std::map<u64, std::pair<u8, u64>>& GetDirtyPages() { return m_dirty_pages; }
+  std::map<u64, DirtyPage>& GetDirtyPages() { return m_dirty_pages; }
 
   // Dirty Page Handling
   bool IsAddressDirty(uintptr_t address);
   bool IsPageDirty(uintptr_t page_address);
-  void SetPageDirtyBit(uintptr_t page_address, bool dirty, u64 dirty_address);
-  void SetAddressDirtyBit(uintptr_t address, size_t size, bool dirty);
+  void SetPageDirtyBit(uintptr_t page_address, bool dirty, u64 dirty_address, bool track);
+  void SetAddressDirtyBit(uintptr_t address, size_t size, bool dirty, bool track);
   void ResetDirtyPages();
   bool HandleChangeProtection(void* address, size_t size, u32 flag);
   bool HandleFault(uintptr_t fault_address);
   u64 GetDirtyPageIndexFromAddress(u64 address);
   void WriteProtectPhysicalMemoryRegions();
+  void ResetProtectPhysicalMemoryRegions();
   void InitDirtyPages();
   bool IsAddressInEmulatedMemory(uintptr_t address);
+  bool IsAddressInFakeVMEML1Cache(uintptr_t address);
+  u32 FastmemAddressToEmulatedAddress(uintptr_t fault_address, LogicalMemoryView view);
+  void SetTrackMemoryPages(bool track) { m_track_memory_pages = track; }
 
   MMIO::Mapping* GetMMIOMapping() const { return m_mmio_mapping.get(); }
 
@@ -273,7 +287,8 @@ private:
 
   Core::System& m_system;
 
-  std::map<u64, std::pair<u8, u64>> m_dirty_pages;
+  std::map<u64, DirtyPage> m_dirty_pages;
+  bool m_track_memory_pages = false;
 
   void InitMMIO(bool is_wii);
 };

@@ -55,6 +55,11 @@ void TrackAlloc(void* ptr, size_t size)
 
     TrackedMemList.push_back(tracked_buf);
 }
+void IncludeMem(void* ptr)
+{
+  ExcludeMemList.erase(std::remove_if(ExcludeMemList.begin(), ExcludeMemList.end(),
+              [ptr](const ExcludeBuffer& eb) { return eb.buffer.data == ptr; }), ExcludeMemList.end());
+}
 void ExcludeMem(void* ptr, size_t size)
 {
   auto pageSize = Common::PageSize();
@@ -72,6 +77,11 @@ void ExcludeMem(void* ptr, size_t size)
   exl.start_page = ptr_addr & ~pageMask;
   exl.end_page = (ptr_addr + size) & ~pageMask;
   ExcludeMemList.push_back(exl);
+
+  std::sort(ExcludeMemList.begin(), ExcludeMemList.end(),
+            [](const ExcludeBuffer& lhs, const ExcludeBuffer& rhs) {
+              return lhs.buffer.data < rhs.buffer.data;
+            });
 }
 void UntrackAlloc(void* ptr)
   {
@@ -94,8 +104,10 @@ void ResetAllocs()
   for (int i = 0; i < TrackedMemList.size(); i++)
   {
     free(TrackedMemList[i].changedPages.Addresses);
-    TrackedMemList.erase(TrackedMemList.begin() + i);
   }
+  TrackedMemList.clear();
+  ExcludeMemList.clear();
+
 }
 
 void PrintAddressArray(const TrackedBuffer& buf)
@@ -118,13 +130,6 @@ void PrintTrackedBuf(const TrackedBuffer& buf)
     PrintAddressArray(buf);
 }
 
-void ResetWrittenPages()
-{
-  auto& system = Core::System::GetInstance();
-  auto& memory = system.GetMemory();
-  memory.ResetDirtyPages();
-}
-
 int GetWrittenPages(char* base, u64 baseSize, std::vector<uintptr_t>& changedPageAddresses, u64& pageCount)
 {
   size_t writtenToPagesIndex = 0;
@@ -132,11 +137,12 @@ int GetWrittenPages(char* base, u64 baseSize, std::vector<uintptr_t>& changedPag
   size_t pageMask = pageSize - 1;
   uintptr_t base_ptr = reinterpret_cast<uintptr_t>(base);
   uintptr_t base_pte = base_ptr & ~pageMask;
+  uintptr_t end_pte = (base_ptr + baseSize) & ~pageMask;
 
   auto& system = Core::System::GetInstance();
   auto& memory = system.GetMemory();
 
-  while (base_pte <= base_ptr + baseSize)
+  while (base_pte <= end_pte)
   {
     if (memory.IsPageDirty(base_pte))
     {
@@ -149,17 +155,22 @@ int GetWrittenPages(char* base, u64 baseSize, std::vector<uintptr_t>& changedPag
       {
         return 2;
       }
-      auto& addr = memory.GetDirtyPages()[base_pte].second;
-      if (!memory.IsAddressInEmulatedMemory(addr) && !memory.HandleChangeProtection(reinterpret_cast<void*>(addr), 0x1, PAGE_READONLY))
+      auto addr = memory.GetDirtyPages()[base_pte].address;
+      if (memory.IsAddressInLogicalMemory(reinterpret_cast<u8*>(addr)) != std::nullopt &&
+          !memory.HandleChangeProtection(reinterpret_cast<void*>(addr), 0x1, PAGE_READONLY))
       {
         return 3;
       }
-      memory.SetPageDirtyBit(base_pte, false, base_pte);
-      if (std::find(changedPageAddresses.begin(), changedPageAddresses.end(), base_pte) == changedPageAddresses.end())
+      if (memory.GetDirtyPages()[base_pte].track && std::find(changedPageAddresses.begin(),
+                                                          changedPageAddresses.end(),
+                                                          base_pte) ==
+          changedPageAddresses.end())
       {
         changedPageAddresses.push_back(base_pte);
         writtenToPagesIndex++;
       }
+
+      memory.SetPageDirtyBit(base_pte, false, addr, false);
     }
     base_pte += pageSize;
   }
@@ -189,7 +200,7 @@ bool GetAndResetWrittenPages(std::vector<uintptr_t>& changedPageAddresses, u64 m
             if (result == 2 || result == 3)
             {
               DWORD dw = GetLastError();
-              ERROR_LOG_FMT(BRAWLBACK, "WRITTEN PAGE WRITE FAILED DUE TO A FAILURE TO WRITE PROTECT. THE REASON IS: {}\n", dw);
+              ERROR_LOG_FMT(BRAWLBACK, "WRITTEN PAGE WRITE FAILED DUE TO A FAILURE ({}) TO WRITE PROTECT. THE REASON IS: {}\n", result, dw);
             }
             return false;
         }
