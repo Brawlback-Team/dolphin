@@ -20,6 +20,7 @@ public:
   CEXIBrawlback(Core::System& system);
   ~CEXIBrawlback() override;
 
+
   void DMAWrite(u32 address, u32 size) override;
   void DMARead(u32 address, u32 size) override;
 
@@ -30,6 +31,7 @@ public:
 private:
   // byte vector for sending into to the game
   std::vector<u8> read_queue = {};
+  u8* effectsHeap = nullptr; 
 
   // --- DMA handlers
   void handleCaptureSavestate(u8* data);
@@ -54,6 +56,8 @@ private:
   void handleNumReplays();
   void handleGetStartReplay(u8* payload);
   void handleCancelMatchmaking();
+  void handleCopyEffectsHeap(u8* payload);
+  void handleReplaceEffectsHeap(u8* payload);
 
   void handleEfParticle(u8* payload, bool track);
 

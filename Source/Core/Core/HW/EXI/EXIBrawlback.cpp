@@ -125,21 +125,25 @@ void CEXIBrawlback::handleCaptureSavestate(u8* data)
   Core::System::GetInstance().GetMemory().SetTrackMemoryPages(false);
   SaveState(frame);
   this->lastStatedFrame = frame;
-  
+  if (frame > 0 && frame - 1 == this->stopRollbackFrame)
+  {
+    auto& system = Core::System::GetInstance();
+    auto& memory = system.GetMemory();
+    memory.CopyToEmu(0x80b8db60, effectsHeap, 0x80c23a60 - 0x80b8db60);
+  }
 }
 
 void CEXIBrawlback::SaveState(bu32 frame)
 {
-  IncrementalRB::SaveWrittenPages(frame - 1, framesToAdvance > 1 && frame - 1 != stopRollbackFrame);
+  IncrementalRB::SaveWrittenPages(frame - 1, framesToAdvance > 1);
 }
 
 void CEXIBrawlback::handleLoadSavestate(u8* data)
 {
   // frame we should rollback to
-  bu32 rollbackFrame;
-  std::memcpy(&rollbackFrame, data, sizeof(bu32));
-  rollbackFrame = swap_endian(rollbackFrame);
-  IncrementalRB::Rollback(this->lastStatedFrame, rollbackFrame);
+  std::memcpy(&stopRollbackFrame, data, sizeof(bu32));
+  stopRollbackFrame = swap_endian(stopRollbackFrame);
+  IncrementalRB::Rollback(this->lastStatedFrame, stopRollbackFrame);
 }
 
 void CEXIBrawlback::SendCmdToGame(EXICommand cmd)
@@ -289,7 +293,7 @@ void CEXIBrawlback::handleFrameDataRequest(u8* data)
   }
   else
   {
-    //memory.ResetDirtyPages();
+    memory.ResetDirtyPages();
   }
   memory.SetTrackMemoryPages(true);
 
@@ -1422,6 +1426,27 @@ void CEXIBrawlback::handleEfParticle(u8* payload, bool track)
     IncludeMem(efParticle);
   }
 }
+
+void CEXIBrawlback::handleCopyEffectsHeap(u8* payload)
+{
+
+  auto& system = Core::System::GetInstance();
+  auto& memory = system.GetMemory();
+  bu32 frame;
+  std::memcpy(&frame, payload, sizeof(bu32));
+  frame = swap_endian(frame);
+  if (frame == GAME_START_FRAME)
+  {
+    this->effectsHeap = new u8[0x80c23a60 - 0x80b8db60];
+  }
+  memory.CopyFromEmu(effectsHeap, 0x80b8db60, 0x80c23a60 - 0x80b8db60);
+}
+void CEXIBrawlback::handleReplaceEffectsHeap(u8* payload)
+{
+  bu32 frame;
+  std::memcpy(&frame, payload, sizeof(bu32));
+  frame = swap_endian(frame);
+}
     // recieve data from game into emulator
 void CEXIBrawlback::DMAWrite(u32 address, u32 size)
 {
@@ -1509,18 +1534,24 @@ void CEXIBrawlback::DMAWrite(u32 address, u32 size)
   case CMD_UNTRACK_EF_PARTICLE:
     handleEfParticle(payload, false);
     break;
+  case CMD_COPY_EFFECTS_HEAP:
+    handleCopyEffectsHeap(payload);
+    break;
+  case CMD_REPLACE_EFFECTS_HEAP:
+    handleReplaceEffectsHeap(payload);
+    break;
   // just using these CMD's to track frame times lol
   case CMD_TIMER_START:
   {
     frameTime = Common::Timer::NowUs();
+    break;
   }
-  break;
   case CMD_TIMER_END:
   {
     // u32 timeDiff = Common::Timer::NowUs() - frameTime;
     // INFO_LOG_FMT(BRAWLBACK, "Game logic took %f ms\n", (double)(timeDiff / 1000.0));
+    break;
   }
-  break;
 
   default:
     // INFO_LOG_FMT(BRAWLBACK, "Default DMAWrite %u\n", (unsigned int)command_byte);
