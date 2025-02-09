@@ -274,7 +274,7 @@ bool MemoryManager::HandleFault(uintptr_t fault_address)
       return false;
     }
     auto guard = Core::CPUThreadGuard{m_system};
-    SetPageDirtyBit(page, true, logical_address, true);
+    SetPageDirtyBit(page, true, logical_address, Dolphin_Debugger::IsRangeInCallstack(guard, 0x800171b4, 0x80017508) || Dolphin_Debugger::IsRangeInCallstack(guard, 0x8002e578, 0x8002e798));
     return true;
   }
   else if (IsAddressInFakeVMEML1Cache(fault_address))
@@ -284,7 +284,8 @@ bool MemoryManager::HandleFault(uintptr_t fault_address)
     {
       return false;
     }
-    SetPageDirtyBit(page, true, page, true);
+    auto guard = Core::CPUThreadGuard{m_system};
+    SetPageDirtyBit(page, true, page, Dolphin_Debugger::IsRangeInCallstack(guard, 0x800171b4, 0x80017508) || Dolphin_Debugger::IsRangeInCallstack(guard, 0x8002e578, 0x8002e798));
     return true;
   }
   

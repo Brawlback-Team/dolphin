@@ -125,12 +125,6 @@ void CEXIBrawlback::handleCaptureSavestate(u8* data)
   Core::System::GetInstance().GetMemory().SetTrackMemoryPages(false);
   SaveState(frame);
   this->lastStatedFrame = frame;
-  if (frame > 0 && frame - 1 == this->stopRollbackFrame)
-  {
-    auto& system = Core::System::GetInstance();
-    auto& memory = system.GetMemory();
-    memory.CopyToEmu(0x80b8db60, effectsHeap, 0x80c23a60 - 0x80b8db60);
-  }
 }
 
 void CEXIBrawlback::SaveState(bu32 frame)
@@ -374,7 +368,7 @@ void CEXIBrawlback::updateSync(bu32& localFrame, bu8 playerIdx, bool& skipFrame)
     IncrementalRB::Rollback(localFrame, latestConfirmedFrame);
     // if on frame 10 we rollback to frame 7 we need to simulate frames 7,8,9, and 10 to get to
     // where we were before. 10 - 7 + 1 = 4
-    this->framesToAdvance = localFrame - this->latestConfirmedFrame + 1;
+    this->framesToAdvance = localFrame - this->latestConfirmedFrame;
     INFO_LOG_FMT(BRAWLBACK, "Num frames to simulate = {}\n", framesToAdvance);
     this->stopRollbackFrame = localFrame;
     localFrame = this->latestConfirmedFrame;
@@ -803,8 +797,8 @@ void CEXIBrawlback::ProcessGameSettings(GameSettings* opponentGameSettings)
   mergedGameSettings.playerSettings[remotePlayerIdx].playerType = PlayerType::PLAYERTYPE_REMOTE;
 
   // TODO: for now just set port 3 and 4 as disconnect/NONE
+  mergedGameSettings.playerSettings[2].playerType = PlayerType::PLAYERTYPE_NONE;
   mergedGameSettings.playerSettings[3].playerType = PlayerType::PLAYERTYPE_NONE;
-  mergedGameSettings.playerSettings[4].playerType = PlayerType::PLAYERTYPE_NONE;
 
   // if we're not host, we just connected to host and received their game settings,
   // now we need to send our game settings back to them so they can start their game too
@@ -1430,8 +1424,8 @@ void CEXIBrawlback::handleEfParticle(u8* payload, bool track)
 void CEXIBrawlback::handleCopyEffectsHeap(u8* payload)
 {
 
-  auto& system = Core::System::GetInstance();
-  auto& memory = system.GetMemory();
+  //auto& system = Core::System::GetInstance();
+  //auto& memory = system.GetMemory();
   bu32 frame;
   std::memcpy(&frame, payload, sizeof(bu32));
   frame = swap_endian(frame);
@@ -1439,13 +1433,20 @@ void CEXIBrawlback::handleCopyEffectsHeap(u8* payload)
   {
     this->effectsHeap = new u8[0x80c23a60 - 0x80b8db60];
   }
-  memory.CopyFromEmu(effectsHeap, 0x80b8db60, 0x80c23a60 - 0x80b8db60);
+  //memory.CopyFromEmu(effectsHeap, 0x80b8db60, 0x80c23a60 - 0x80b8db60);
 }
 void CEXIBrawlback::handleReplaceEffectsHeap(u8* payload)
 {
   bu32 frame;
   std::memcpy(&frame, payload, sizeof(bu32));
   frame = swap_endian(frame);
+  
+  if (frame > 0 && frame - 1 == this->stopRollbackFrame)
+  {
+    //auto& system = Core::System::GetInstance();
+    //auto& memory = system.GetMemory();
+    //memory.CopyToEmu(0x80b8db60, effectsHeap, 0x80c23a60 - 0x80b8db60);
+  }
 }
     // recieve data from game into emulator
 void CEXIBrawlback::DMAWrite(u32 address, u32 size)

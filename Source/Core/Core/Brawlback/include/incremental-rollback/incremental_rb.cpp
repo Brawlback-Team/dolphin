@@ -382,34 +382,24 @@ namespace IncrementalRB
       TrackAlloc(*physical_entries[i].out_pointer, physical_entries[i].size);
     }
     // Threading Stuff
-    //ExcludeMem(GetPointer(0x804dd558 + 0x2C8), 0x318 - 0x2C8);   // Main Thread OSThread (w/o OSContext)
-    ExcludeMem(GetPointer(0x804c1d08), 0x28);  // RemoteSpeakerAlarm OSAlarm
-    ExcludeMem(GetPointer(0x805bf420), 0x28);  // ??? OSAlarm
-    ExcludeMem(GetPointer(0x804f67e0), 0x28);  // WPAD OSAlarm
-    ExcludeMem(GetPointer(0x805297a0), 0x28);  // BTU OSAlarm
-    ExcludeMem(GetPointer(0x805bacc0), 0x28);  // PAD OSAlarm
-    ExcludeMem(GetPointer(0x805b85e0), 0x28);  // OSALarmSleep OSAlarm
     ExcludeMem(GetPointer(0x805a5154), 0x805b5158 - 0x805a5154); // Main Thread Stack
+    ExcludeMem(GetPointer(0x804c1d08), 0x28);                     // RemoteSpeakerAlarm OSAlarm
+    ExcludeMem(GetPointer(0x805bf420), 0x28);                     // ??? OSAlarm
+    ExcludeMem(GetPointer(0x804f67e0), 0x28);                     // WPAD OSAlarm
+    ExcludeMem(GetPointer(0x805297a0), 0x28);                     // BTU OSAlarm
+    ExcludeMem(GetPointer(0x805bacc0), 0x28);                     // PAD OSAlarm
+    ExcludeMem(GetPointer(0x805b85e0), 0x28);                     // OSALarmSleep OSAlarm
     // Heaps
     ExcludeMem(GetPointer(0x817ba5a0), 0x817ca5a0 - 0x817ba5a0); // Syringe Heap
-    ExcludeMem(GetPointer(0x90199800), 0x90e61400 - 0x90199800); // Sound Heap
-    ExcludeMem(GetPointer(0x805ca260), 0x805d1e60 - 0x805ca260); // Thread Heap
     ExcludeMem(GetPointer(0x94000000), 0xF4240);                 // EXI Transfer Heap
-
     // VI Stuff
-    
     ExcludeMem(GetPointer(0x805a07d0), 0x20);
     ExcludeMem(GetPointer(0x805a0844), 0xC);
     ExcludeMem(GetPointer(0x805a07a4), 0x4);
     ExcludeMem(GetPointer(0x804de550), 0xF0);
     // GX Stuff
-    ExcludeMem(GetPointer(0x805a08c0), 0x1);                     // DrawDone
-    ExcludeMem(GetPointer(0x804de760), 0x4F4);                   // gx
-    // SFX Stuff
-    ExcludeMem(GetPointer(0x804D9060), 0x804DD050 - 0x804D9060); // Music Stream
-
-    // Misc.
-    //ExcludeMem(GetPointer(0x804de290), 0x9C);                    // static struct EXIControl Ecb[3];
+    ExcludeMem(GetPointer(0x805a08c0), 0x1);    // DrawDone
+    ExcludeMem(GetPointer(0x804de760), 0x4F8);  // gx
     #endif
     jobsystem::Initialize(
         numWorkerThreads -
