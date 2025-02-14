@@ -19,7 +19,7 @@ inline T Clamp(T& value, const T& low, const T& high)
 template <typename T>
 inline T PercentOf(T x, u32 percentOutOf100)
 {
-    percentOutOf100 = Clamp(percentOutOf100, 0u, 100u);
+    percentOutOf100 = ::Clamp(percentOutOf100, 0u, 100u);
     return (x * percentOutOf100) / 100;
 }
 
