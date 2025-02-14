@@ -24,6 +24,7 @@
 #include "Common/Swap.h"
 #include "Core/Config/MainSettings.h"
 #include "Core/Core.h"
+#include "Core/Debugger/Debugger_SymbolMap.h"
 #include "Core/HW/AudioInterface.h"
 #include "Core/HW/DSP.h"
 #include "Core/HW/DVD/DVDInterface.h"
@@ -39,6 +40,7 @@
 #include "Core/System.h"
 #include "VideoCommon/CommandProcessor.h"
 #include "VideoCommon/PixelEngine.h"
+#include "incremental-rollback/incremental_rb.h"
 
 #ifdef __linux__
 #include <sys/mman.h> // mprotect constants
