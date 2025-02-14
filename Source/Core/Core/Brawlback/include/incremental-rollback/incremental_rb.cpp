@@ -30,6 +30,10 @@
 #include <Core/Core.h>
 #include <Common/MemoryUtil.h>
 
+#ifdef __linux__
+#include <mm_malloc.h> // _mm_alloc, _mm_free
+#endif
+
 #define ENABLE_LOGGING
 //#define SPECIFIC_TRACKING
 //#define HEAPS
