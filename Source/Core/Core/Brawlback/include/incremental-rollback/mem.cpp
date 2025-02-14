@@ -3,6 +3,7 @@
 #include <vector>
 #include <cassert>
 #include <set>
+#include <cinttypes>
 
 #include <Common/Logging/Log.h>
 #include <Common/MemoryUtil.h>
@@ -119,7 +120,8 @@ void PrintAddressArray(const TrackedBuffer& buf)
     {
         // offset from base buffer pointer that got changed
         u64 changedOffset = ((u8*)ChangedPages.Addresses[PageIndex] - BaseAddress) / pageSize;
-        printf("%llu : %llu\n", PageIndex, changedOffset);
+        printf("%" PRIu64 ": %" PRIu64 "\n", PageIndex, 
+changedOffset);
     }
 }
 
