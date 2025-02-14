@@ -15,6 +15,7 @@
 #include <span>
 #include <tuple>
 
+#include "Common/Assert.h"
 #include "Common/ChunkFile.h"
 #include "Common/CommonTypes.h"
 #include "Common/Logging/Log.h"
@@ -38,8 +39,10 @@
 #include "Core/System.h"
 #include "VideoCommon/CommandProcessor.h"
 #include "VideoCommon/PixelEngine.h"
-#include <incremental-rollback/incremental_rb.h>
-#include <Core/Debugger/Debugger_SymbolMap.h>
+
+#ifdef __linux__
+#include <sys/mman.h> // mprotect constants
+#endif
 
 namespace Memory
 {
@@ -195,9 +198,45 @@ u64 MemoryManager::GetDirtyPageIndexFromAddress(u64 address)
   return address & ~page_mask;
 }
 
-bool MemoryManager::HandleChangeProtection(void* address, size_t size, u32 flag)
+bool MemoryManager::HandleChangeProtection(void* address, size_t size,
+                                           PageProtectionOption protection)
 {
-  return m_arena.VirtualProtectMemoryRegion(address, size, flag);
+#ifdef __WIN32
+  return m_arena.VirtualProtectMemoryRegion(address, size, [protection]() -> DWORD {
+    switch (protection)
+    {
+    case PageProtectionOption::READ_ONLY:
+      return PAGE_READONLY;
+    case PageProtectionOption::READ_WRITE:
+      return PAGE_READWRITE;
+    default:
+      ERROR_LOG_FMT(BRAWLBACK, "Unexpected or not implemented page protection option.");
+      return PAGE_NOACCESS;
+    };
+  }());
+#elif __linux__
+  // mprotect document: https://sourceware.org/glibc/manual/2.40/html_node/Memory-Protection.html
+
+  const long page_size = sysconf(_SC_PAGESIZE);
+  const std::uintptr_t page_start_address =
+      reinterpret_cast<std::uintptr_t>(address) & ~(page_size - 1); // https://stackoverflow.com/questions/6387771/get-starting-address-of-a-memory-page-in-linux
+  const auto new_size = reinterpret_cast<std::uintptr_t>(address) - page_start_address + size;
+  DEBUG_ASSERT(size <= new_size);
+
+  return m_arena.MProtectMemoryRegion(
+      reinterpret_cast<void*>(page_start_address), new_size, [protection]() -> int {
+        switch (protection)
+        {
+        case PageProtectionOption::READ_ONLY:
+          return PROT_READ;
+        case PageProtectionOption::READ_WRITE:
+          return PROT_READ | PROT_WRITE;
+        default:
+          ERROR_LOG_FMT(BRAWLBACK, "Unexpected or not implemented page protection option.");
+          return PROT_NONE;
+        };
+      }());
+#endif
 }
 
 void MemoryManager::InitDirtyPages()

@@ -64,6 +64,13 @@ struct DirtyPage
   bool track;
   u64 address;
 };
+
+enum PageProtectionOption
+{
+  READ_ONLY,
+  READ_WRITE
+};
+
 bool isFramePointerDirty();
 bool isFramePointerTrack();
 class MemoryManager
@@ -111,7 +118,7 @@ public:
   void SetPageDirtyBit(uintptr_t page_address, bool dirty, u64 dirty_address, bool track);
   void SetAddressDirtyBit(uintptr_t address, size_t size, bool dirty, bool track);
   void ResetDirtyPages();
-  bool HandleChangeProtection(void* address, size_t size, u32 flag);
+  bool HandleChangeProtection(void* address, size_t size, PageProtectionOption protection);
   bool HandleFault(uintptr_t fault_address);
   u64 GetDirtyPageIndexFromAddress(u64 address);
   void WriteProtectPhysicalMemoryRegions();

@@ -110,6 +110,11 @@ void MemArena::UnmapFromMemoryRegion(void* view, size_t size)
     NOTICE_LOG_FMT(MEMMAP, "mmap failed");
 }
 
+bool MemArena::MProtectMemoryRegion(void * data, size_t size, int protection){
+  const int mprotect_success = 0;
+  return mprotect(data, size, protection) == mprotect_success;
+}
+
 LazyMemoryRegion::LazyMemoryRegion() = default;
 
 LazyMemoryRegion::~LazyMemoryRegion()
