@@ -905,7 +905,7 @@ void CEXIBrawlback::NetplayThreadFunc()
 #ifdef __linux__
   // highest priority
   int priority = 7;
-  setsockopt(this->peer->socket, SOL_SOCKET, SO_PRIORITY, &priority, sizeof(priority));
+  setsockopt(this->server->socket, SOL_SOCKET, SO_PRIORITY, &priority, sizeof(priority));
 #endif
 
   // https://www.tucny.com/Home/dscp-tos
