@@ -201,8 +201,14 @@ bool GetAndResetWrittenPages(std::vector<uintptr_t>& changedPageAddresses, u64 m
             ERROR_LOG_FMT(BRAWLBACK, "WRITTEN PAGE WRITE FAILED! RESULT CODE: {}\n", result);
             if (result == 2 || result == 3)
             {
+              #ifdef _WIN32
               DWORD dw = GetLastError();
               ERROR_LOG_FMT(BRAWLBACK, "WRITTEN PAGE WRITE FAILED DUE TO A FAILURE ({}) TO WRITE PROTECT. THE REASON IS: {}\n", result, dw);
+              #elif __linux__
+              ERROR_LOG_FMT(BRAWLBACK, "WRITTEN PAGE WRITE FAILED DUE TO A FAILURE ({}) TO WRITE PROTECT. THE REASON IS: {}\n", result, strerror(errno));
+              #else
+              ERROR_LOG_FMT(BRAWLBACK, "WRITTEN PAGE WRITE FAILED DUE TO A FAILURE ({}) TO WRITE PROTECT.", result);
+              #endif
             }
             return false;
         }
