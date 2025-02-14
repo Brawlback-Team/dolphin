@@ -914,7 +914,7 @@ void CEXIBrawlback::NetplayThreadFunc()
   qos_success =
       setsockopt(this->server->socket, IPPROTO_IP, IP_TOS, &tos_val, sizeof(tos_val)) == 0;
 #endif
-  }
+
   timeout = this->isHost ? 5000 : 1000;
   while (!this->isConnected)
   {
