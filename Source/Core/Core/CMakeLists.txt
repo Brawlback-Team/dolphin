@@ -31,6 +31,15 @@ add_library(core
   Brawlback/SlippiUtility.h
   Brawlback/TimeSync.cpp
   Brawlback/TimeSync.h
+  Brawlback/include/incremental-rollback/incremental_rb.cpp
+  Brawlback/include/incremental-rollback/incremental_rb.h
+  Brawlback/include/incremental-rollback/job_system.cpp
+  Brawlback/include/incremental-rollback/job_system.h
+  Brawlback/include/incremental-rollback/mem.cpp
+  Brawlback/include/incremental-rollback/mem.h
+  Brawlback/include/incremental-rollback/tiny_arena.cpp
+  Brawlback/include/incremental-rollback/tiny_arena.h
+  Brawlback/include/incremental-rollback/util.h
   CheatCodes.h
   CheatGeneration.cpp
   CheatGeneration.h
