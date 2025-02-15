@@ -222,8 +222,13 @@ bool MemoryManager::HandleChangeProtection(void* address, size_t size,
   const long page_size = sysconf(_SC_PAGESIZE);
   const std::uintptr_t page_start_address =
       reinterpret_cast<std::uintptr_t>(address) & ~(page_size - 1); // https://stackoverflow.com/questions/6387771/get-starting-address-of-a-memory-page-in-linux
-  const auto new_size = reinterpret_cast<std::uintptr_t>(address) - page_start_address + size;
+  const auto new_size = reinterpret_cast<std::uintptr_t>(address) - page_start_address + 0x1 + size;
+
   DEBUG_ASSERT(size <= new_size);
+  DEBUG_ASSERT(page_start_address % page_size == 0);
+  DEBUG_ASSERT(page_start_address + new_size == reinterpret_cast<std::uintptr_t>(address));
+  // DEBUG_LOG_FMT(BRAWLBACK, "HandleChnageProtection address={:x}, size={:x}, protection={:x}\npage_size={:x}, page_start_address={:x}, new_size={:x}",(std::uintptr_t)address,size,(int)protection,page_size,page_start_address,new_size);
+
 
   return m_arena.MProtectMemoryRegion(
       reinterpret_cast<void*>(page_start_address), new_size, [protection]() -> int {
