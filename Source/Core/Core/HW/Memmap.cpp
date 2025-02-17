@@ -203,7 +203,7 @@ u64 MemoryManager::GetDirtyPageIndexFromAddress(u64 address)
 bool MemoryManager::HandleChangeProtection(void* address, size_t size,
                                            PageProtectionOption protection)
 {
-#ifdef __WIN32
+#ifdef _WIN32
   return m_arena.VirtualProtectMemoryRegion(address, size, [protection]() -> DWORD {
     switch (protection)
     {
