@@ -901,6 +901,7 @@ void CEXIBrawlback::NetplayThreadFunc()
 
       qos_success = true;
     }
+  }
 #else
 #ifdef __linux__
   // highest priority
