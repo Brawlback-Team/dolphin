@@ -15,6 +15,7 @@
 #include <span>
 #include <tuple>
 
+#include "Common/Assert.h"
 #include "Common/ChunkFile.h"
 #include "Common/CommonTypes.h"
 #include "Common/Logging/Log.h"
@@ -23,6 +24,7 @@
 #include "Common/Swap.h"
 #include "Core/Config/MainSettings.h"
 #include "Core/Core.h"
+#include "Core/Debugger/Debugger_SymbolMap.h"
 #include "Core/HW/AudioInterface.h"
 #include "Core/HW/DSP.h"
 #include "Core/HW/DVD/DVDInterface.h"
@@ -38,8 +40,11 @@
 #include "Core/System.h"
 #include "VideoCommon/CommandProcessor.h"
 #include "VideoCommon/PixelEngine.h"
-#include <incremental-rollback/incremental_rb.h>
-#include <Core/Debugger/Debugger_SymbolMap.h>
+#include "incremental-rollback/incremental_rb.h"
+
+#ifdef __linux__
+#include <sys/mman.h> // mprotect constants
+#endif
 
 namespace Memory
 {
@@ -195,9 +200,50 @@ u64 MemoryManager::GetDirtyPageIndexFromAddress(u64 address)
   return address & ~page_mask;
 }
 
-bool MemoryManager::HandleChangeProtection(void* address, size_t size, u32 flag)
+bool MemoryManager::HandleChangeProtection(void* address, size_t size,
+                                           PageProtectionOption protection)
 {
-  return m_arena.VirtualProtectMemoryRegion(address, size, flag);
+#ifdef _WIN32
+  return m_arena.VirtualProtectMemoryRegion(address, size, [protection]() -> DWORD {
+    switch (protection)
+    {
+    case PageProtectionOption::READ_ONLY:
+      return PAGE_READONLY;
+    case PageProtectionOption::READ_WRITE:
+      return PAGE_READWRITE;
+    default:
+      ERROR_LOG_FMT(BRAWLBACK, "Unexpected or not implemented page protection option.");
+      return PAGE_NOACCESS;
+    };
+  }());
+#elif __linux__
+  // mprotect document: https://sourceware.org/glibc/manual/2.40/html_node/Memory-Protection.html
+
+  const long page_size = sysconf(_SC_PAGESIZE);
+  const std::uintptr_t page_start_address =
+      reinterpret_cast<std::uintptr_t>(address) & ~(page_size - 1); // https://stackoverflow.com/questions/6387771/get-starting-address-of-a-memory-page-in-linux
+  const auto new_size = reinterpret_cast<std::uintptr_t>(address) - page_start_address + size;
+
+  // DEBUG_LOG_FMT(BRAWLBACK, "[Linux] MemoryManager::HandleChangeProtection: address={:x}, size={:x}, protection={:x}\npage_size={:x}, page_start_address={:x}, new_size={:x}",reinterpret_cast<std::uintptr_t>(address), size, static_cast<int>(protection), page_size, page_start_address, new_size);
+  DEBUG_ASSERT(size <= new_size);
+  DEBUG_ASSERT(page_start_address % page_size == 0);
+  DEBUG_ASSERT(page_start_address + new_size == reinterpret_cast<std::uintptr_t>(address) + size);
+
+
+  return m_arena.MProtectMemoryRegion(
+      reinterpret_cast<void*>(page_start_address), new_size, [protection]() -> int {
+        switch (protection)
+        {
+        case PageProtectionOption::READ_ONLY:
+          return PROT_READ;
+        case PageProtectionOption::READ_WRITE:
+          return PROT_READ | PROT_WRITE;
+        default:
+          ERROR_LOG_FMT(BRAWLBACK, "Unexpected or not implemented page protection option.");
+          return PROT_NONE;
+        };
+      }());
+#endif
 }
 
 void MemoryManager::InitDirtyPages()
@@ -234,7 +280,7 @@ bool MemoryManager::HandleFault(uintptr_t fault_address)
   if (addr.has_value())
   {
     logical_address = GetDirtyPageIndexFromAddress(fault_address);
-    if (!HandleChangeProtection(reinterpret_cast<void*>(logical_address), 0x1, PAGE_READWRITE))
+    if (!HandleChangeProtection(reinterpret_cast<void*>(logical_address), 0x1, PageProtectionOption::READ_WRITE))
     {
       return false;
     }
@@ -258,7 +304,7 @@ bool MemoryManager::HandleFault(uintptr_t fault_address)
                  reinterpret_cast<uintptr_t>(m_logical_mapped_entries[i].mapped_pointer) -
                  m_logical_mapped_entries[i].logical_base;
           if (!HandleChangeProtection(reinterpret_cast<void*>(logical_address), 0x1,
-            PAGE_READWRITE))
+            PageProtectionOption::READ_WRITE))
           {
             return false;
           }
@@ -269,7 +315,7 @@ bool MemoryManager::HandleFault(uintptr_t fault_address)
         }
       }
     }
-    if (!HandleChangeProtection(reinterpret_cast<void*>(page), 0x1, PAGE_READWRITE))
+    if (!HandleChangeProtection(reinterpret_cast<void*>(page), 0x1, PageProtectionOption::READ_WRITE))
     {
       return false;
     }
@@ -280,7 +326,7 @@ bool MemoryManager::HandleFault(uintptr_t fault_address)
   else if (IsAddressInFakeVMEML1Cache(fault_address))
   {
     uintptr_t page = GetDirtyPageIndexFromAddress(fault_address);
-    if (!HandleChangeProtection(reinterpret_cast<void*>(page), 0x1, PAGE_READWRITE))
+    if (!HandleChangeProtection(reinterpret_cast<void*>(page), 0x1, PageProtectionOption::READ_WRITE))
     {
       return false;
     }
@@ -302,7 +348,7 @@ void MemoryManager::WriteProtectPhysicalMemoryRegions()
     if (!entry.active)
       continue;
 
-    bool change_protection = HandleChangeProtection(*entry.out_pointer, entry.size, PAGE_READONLY);
+    bool change_protection = HandleChangeProtection(*entry.out_pointer, entry.size, PageProtectionOption::READ_ONLY);
 
     if (!change_protection)
     {
@@ -324,7 +370,7 @@ void MemoryManager::WriteProtectPhysicalMemoryRegions()
 
   for (auto& entry : m_logical_mapped_entries)
   {
-    bool change_protection = HandleChangeProtection(entry.mapped_pointer, entry.mapped_size, PAGE_READONLY);
+    bool change_protection = HandleChangeProtection(entry.mapped_pointer, entry.mapped_size, PageProtectionOption::READ_ONLY);
 
     if (!change_protection)
     {
@@ -358,7 +404,7 @@ void MemoryManager::ResetProtectPhysicalMemoryRegions()
         {
           dirty_page.dirty = false;
           dirty_page.track = true;
-          if (!HandleChangeProtection(reinterpret_cast<u8*>(page), 0x1, PAGE_READONLY))
+          if (!HandleChangeProtection(reinterpret_cast<u8*>(page), 0x1, PageProtectionOption::READ_ONLY))
           {
             PanicAlertFmt(
                 "Memory::WriteProtectPhysicalMemoryRegions(): Failed to guard protect for "
@@ -379,7 +425,7 @@ void MemoryManager::ResetProtectPhysicalMemoryRegions()
                                 reinterpret_cast<uintptr_t>(mapped_entry.mapped_pointer) -
                                 mapped_entry.logical_base;
               if (!HandleChangeProtection(reinterpret_cast<void*>(logical_address), 0x1,
-                                          PAGE_READONLY))
+                                          PageProtectionOption::READ_ONLY))
               {
                 PanicAlertFmt(
                     "Memory::WriteProtectPhysicalMemoryRegions(): Failed to guard protect for "

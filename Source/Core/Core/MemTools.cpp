@@ -288,7 +288,8 @@ static void sigsegv_handler(int sig, siginfo_t* info, void* raw_context)
   mcontext_t* ctx = &context->uc_mcontext;
 #endif
   // assume it's not a write
-  if (!Core::System::GetInstance().GetJitInterface().HandleFault(bad_address,
+  Core::System & system=Core::System::GetInstance();
+  if (!system.GetMemory().HandleFault(bad_address) && !system.GetJitInterface().HandleFault(bad_address,
 #ifdef __APPLE__
                                                                  *ctx
 #else

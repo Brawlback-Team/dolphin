@@ -3,6 +3,7 @@
 #include <vector>
 #include <cassert>
 #include <set>
+#include <cinttypes>
 
 #include <Common/Logging/Log.h>
 #include <Common/MemoryUtil.h>
@@ -119,7 +120,8 @@ void PrintAddressArray(const TrackedBuffer& buf)
     {
         // offset from base buffer pointer that got changed
         u64 changedOffset = ((u8*)ChangedPages.Addresses[PageIndex] - BaseAddress) / pageSize;
-        printf("%llu : %llu\n", PageIndex, changedOffset);
+        printf("%" PRIu64 ": %" PRIu64 "\n", PageIndex, 
+changedOffset);
     }
 }
 
@@ -151,13 +153,13 @@ int GetWrittenPages(char* base, u64 baseSize, std::vector<uintptr_t>& changedPag
         return 1;
       }
       u8* base_pte_bytes = reinterpret_cast<u8*>(base_pte);
-      if(!memory.HandleChangeProtection(base_pte_bytes, 0x1, PAGE_READONLY))
+      if(!memory.HandleChangeProtection(base_pte_bytes, 0x1, Memory::PageProtectionOption::READ_ONLY))
       {
         return 2;
       }
       auto addr = memory.GetDirtyPages()[base_pte].address;
       if (memory.IsAddressInLogicalMemory(reinterpret_cast<u8*>(addr)) != std::nullopt &&
-          !memory.HandleChangeProtection(reinterpret_cast<void*>(addr), 0x1, PAGE_READONLY))
+          !memory.HandleChangeProtection(reinterpret_cast<void*>(addr), 0x1, Memory::PageProtectionOption::READ_ONLY))
       {
         return 3;
       }
@@ -199,8 +201,14 @@ bool GetAndResetWrittenPages(std::vector<uintptr_t>& changedPageAddresses, u64 m
             ERROR_LOG_FMT(BRAWLBACK, "WRITTEN PAGE WRITE FAILED! RESULT CODE: {}\n", result);
             if (result == 2 || result == 3)
             {
+              #ifdef _WIN32
               DWORD dw = GetLastError();
               ERROR_LOG_FMT(BRAWLBACK, "WRITTEN PAGE WRITE FAILED DUE TO A FAILURE ({}) TO WRITE PROTECT. THE REASON IS: {}\n", result, dw);
+              #elif __linux__
+              ERROR_LOG_FMT(BRAWLBACK, "WRITTEN PAGE WRITE FAILED DUE TO A FAILURE ({}) TO WRITE PROTECT. THE REASON IS: {}\n", result, strerror(errno));
+              #else
+              ERROR_LOG_FMT(BRAWLBACK, "WRITTEN PAGE WRITE FAILED DUE TO A FAILURE ({}) TO WRITE PROTECT.", result);
+              #endif
             }
             return false;
         }

@@ -901,11 +901,12 @@ void CEXIBrawlback::NetplayThreadFunc()
 
       qos_success = true;
     }
+  }
 #else
 #ifdef __linux__
   // highest priority
   int priority = 7;
-  setsockopt(this->peer->socket, SOL_SOCKET, SO_PRIORITY, &priority, sizeof(priority));
+  setsockopt(this->server->socket, SOL_SOCKET, SO_PRIORITY, &priority, sizeof(priority));
 #endif
 
   // https://www.tucny.com/Home/dscp-tos
@@ -914,7 +915,7 @@ void CEXIBrawlback::NetplayThreadFunc()
   qos_success =
       setsockopt(this->server->socket, IPPROTO_IP, IP_TOS, &tos_val, sizeof(tos_val)) == 0;
 #endif
-  }
+
   timeout = this->isHost ? 5000 : 1000;
   while (!this->isConnected)
   {
@@ -1072,7 +1073,7 @@ void CEXIBrawlback::handleFindMatch(u8* payload)
     connectIP.clear();
     std::getline(file, connectIP);  // read in only one line
     file.close();
-    INFO_LOG_FMT(BRAWLBACK, "IP: %s\n", connectIP.c_str());
+    INFO_LOG_FMT(BRAWLBACK, "IP: {}\n", connectIP.c_str());
   }
   else
   {

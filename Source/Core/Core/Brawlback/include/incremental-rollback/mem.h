@@ -1,6 +1,6 @@
 #pragma once
 #include "util.h"
-
+#include <vector>
 
 #define rbMemcpy(dst, src, size) fastMemcpy(dst, src, size)
 

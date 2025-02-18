@@ -335,7 +335,7 @@ s32 FSCore::Read(u64 fd, u8* data, u32 size, std::optional<u32> ipc_buffer_addr,
 {
   auto& system = Core::System::GetInstance();
   auto& memory = system.GetMemory();
-  memory.HandleChangeProtection(data, size, PAGE_READWRITE);
+  memory.HandleChangeProtection(data, size, Memory::PageProtectionOption::READ_WRITE);
   ticks.Add(IPC_OVERHEAD_TICKS);
 
   const Handle& handle = m_fd_map[fd];

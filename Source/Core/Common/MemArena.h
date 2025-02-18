@@ -122,7 +122,9 @@ public:
   ///
   bool VirtualProtectMemoryRegion(void* data, size_t size, u32 flag);
 
-private:
+  bool MProtectMemoryRegion(void * data, size_t size, int protection);
+
+  private:
 #ifdef _WIN32
   WindowsMemoryRegion* EnsureSplitRegionForMapping(void* address, size_t size);
   bool JoinRegionsAfterUnmap(void* address, size_t size);
