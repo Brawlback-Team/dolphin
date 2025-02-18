@@ -1073,7 +1073,7 @@ void CEXIBrawlback::handleFindMatch(u8* payload)
     connectIP.clear();
     std::getline(file, connectIP);  // read in only one line
     file.close();
-    INFO_LOG_FMT(BRAWLBACK, "IP: %s\n", connectIP.c_str());
+    INFO_LOG_FMT(BRAWLBACK, "IP: {}\n", connectIP.c_str());
   }
   else
   {
