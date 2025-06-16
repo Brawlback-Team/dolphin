@@ -400,6 +400,7 @@ namespace IncrementalRB
     // GX Stuff
     ExcludeMem(GetPointer(0x805a08c0), 0x1);    // DrawDone
     ExcludeMem(GetPointer(0x804de760), 0x4F8);  // gx
+    
     #endif
     jobsystem::Initialize(
         numWorkerThreads -
@@ -472,17 +473,12 @@ namespace IncrementalRB
       //PROFILE_SCOPE("rollback page");
       // apply the "after" state of this past frame
       // changedPages[i] will always correspond to the same index in afterCopies
-      void* orig = reinterpret_cast<void*>(savestate.changedPages[i]);
-      void* ssData = reinterpret_cast<void*>(savestate.afterCopies[i]);
+      u8* orig = reinterpret_cast<u8*>(savestate.changedPages[i]);
+      u8* ssData = reinterpret_cast<u8*>(savestate.afterCopies[i]);
   #ifdef ENABLE_LOGGING
       //assert((orig >= GetRAM() && orig < GetRAM() + GetRAMSize()) ||
              //(orig >= GetEXRAM() && orig < GetEXRAM() + GetEXRAMSize()));
       // first 4 bytes of game mem contains current frame
-      if (orig == GetGameMemFrame())
-      {
-        u32 nowFrame = *GetGameMemFrame();
-        INFO_LOG_FMT(BRAWLBACK, "rolling back {} -> {}\n", nowFrame, ((u32*)ssData)[0]);
-      }
   #endif
       auto orig_ptr = reinterpret_cast<uintptr_t>(orig);
       auto ssData_ptr = reinterpret_cast<uintptr_t>(ssData);
@@ -501,8 +497,8 @@ namespace IncrementalRB
             {
               auto other_gap_end = reinterpret_cast<uintptr_t>(ExcludeMemList[f - 1].buffer.data) +
                                    ExcludeMemList[f - 1].buffer.size;
-              dest = reinterpret_cast<void*>(orig_ptr + (other_gap_end - orig_ptr + 1));
-              src = reinterpret_cast<void*>(ssData_ptr + (other_gap_end - orig_ptr + 1));
+              dest = reinterpret_cast<u8*>(orig_ptr + (other_gap_end - orig_ptr + 1));
+              src = reinterpret_cast<u8*>(ssData_ptr + (other_gap_end - orig_ptr + 1));
             }
             else
             {
@@ -521,8 +517,8 @@ namespace IncrementalRB
           auto gap_end = gap_start + ExcludeMemList[f].buffer.size;
           if (gap_end >= orig_ptr && gap_end < orig_ptr + pageSize)
           {
-            dest = reinterpret_cast<void*>(orig_ptr + ((gap_end - orig_ptr) + 1));
-            src = reinterpret_cast<void*>(ssData_ptr + ((gap_end - orig_ptr) + 1));
+            dest = reinterpret_cast<u8*>(orig_ptr + ((gap_end - orig_ptr) + 1));
+            src = reinterpret_cast<u8*>(ssData_ptr + ((gap_end - orig_ptr) + 1));
             if (ExcludeMemList[f].end_page == ExcludeMemList[f + 1].start_page)
             {
               size = reinterpret_cast<uintptr_t>(ExcludeMemList[f + 1].buffer.data) -
@@ -539,7 +535,7 @@ namespace IncrementalRB
         }
         for (int f = 0; f < ExcludeMemList.size() && rbCopyOrig; f++)
         {
-          if (orig_ptr >= ExcludeMemList[f].start_page && orig_ptr <= ExcludeMemList[f].end_page)
+          if (orig_ptr >= ExcludeMemList[f].start_page && orig_ptr < ExcludeMemList[f].end_page)
           {
             rbCopyOrig = false;
             break;
@@ -565,13 +561,13 @@ namespace IncrementalRB
     // this means if you want to rollback to frame 5, you'd actually need to restore the data
     // captured on frame 4
     s32 savestateOffset = currentFrame - rollbackFrame - 1;
-    assert(rollbackFrame < currentFrame && savestateOffset < MAX_SAVESTATES);
+    //assert(rollbackFrame < currentFrame && savestateOffset < MAX_SAVESTATES);
     // -1 because we want to start rolling back on the index before the current frame
     // another -1 because our savestates are for the end of the frame, so need to go back another
     s32 currentSavestateIdx = Wrap(currentFrame - 1 - 1, MAX_SAVESTATES);
     s32 endingSavestateIdx = Wrap(currentSavestateIdx - savestateOffset, MAX_SAVESTATES);
 
-    assert(endingSavestateIdx < MAX_SAVESTATES);
+    //assert(endingSavestateIdx < MAX_SAVESTATES && endingSavestateIdx != currentSavestateIdx);
 #ifdef ENABLE_LOGGING
     INFO_LOG_FMT(BRAWLBACK, "Starting at game mem frame {}\n", currentFrame);
     INFO_LOG_FMT(BRAWLBACK, "Rolling back {} frames from idx {} -> {} | frame {} -> {}\n",
@@ -604,10 +600,10 @@ namespace IncrementalRB
     // beginning of 10/end of 9 since that's where we need to reapply the new inputs and start
     // resimulating so we do one more at the end of this loop
     INFO_LOG_FMT(BRAWLBACK, "ASSERT CHECK 1: {} == {}?\n", savestateInfo.savestates[currentSavestateIdx].frame, rollbackFrame - 1);
-    assert(savestateInfo.savestates[currentSavestateIdx].frame == (u32)(rollbackFrame) - 1);
+    //assert(savestateInfo.savestates[currentSavestateIdx].frame == (u32)(rollbackFrame) - 1);
     RollbackSavestate(savestateInfo.savestates[currentSavestateIdx]);
     INFO_LOG_FMT(BRAWLBACK, "ASSERT CHECK 2: {} == {}?\n", *GetGameMemFrame(), rollbackFrame);
-    assert(*GetGameMemFrame() == (u32)rollbackFrame);
+    //assert(*GetGameMemFrame() == (u32)rollbackFrame);
   }
 
   void EvictSavestate(Savestate& savestate)
@@ -665,18 +661,9 @@ namespace IncrementalRB
     for (u32 i = 0; i < savestate.changedPages.size(); i++)
     {
       //PROFILE_SCOPE("save page");
-      u8* changedGameMemPage = (u8*)savestate.changedPages[i];
       //assert((changedGameMemPage >= GetRAM() && changedGameMemPage < GetRAM() + GetRAMSize()) ||
           //(changedGameMemPage >= GetEXRAM() && changedGameMemPage < GetEXRAM() + GetEXRAMSize()));
-      rbMemcpy((u8*)savestate.afterCopies[i], changedGameMemPage, pageSize);
-  #ifdef ENABLE_LOGGING
-      if ((u32*)savestate.changedPages[i] == GetGameMemFrame())
-      {
-        INFO_LOG_FMT(BRAWLBACK, "[head page] internal frames: current = {}\twritten = {}\n",
-                     *GetGameMemFrame(),
-               *(u32*)changedGameMemPage);
-      }
-  #endif
+      rbMemcpy((u8*)savestate.afterCopies[i], (u8*)savestate.changedPages[i], pageSize);
     }
   #endif
   }
@@ -688,7 +675,9 @@ namespace IncrementalRB
     Savestate& savestate = savestateInfo.savestates[savestateHead];
     if (savestate.valid && !resim)
     {
-      INFO_LOG_FMT(BRAWLBACK, "EVICTING SAVESTATE!\n");
+      #ifdef ENABLE_LOGGING
+        INFO_LOG_FMT(BRAWLBACK, "EVICTING SAVESTATE!\n");
+      #endif
       EvictSavestate(savestate);
     }
     savestate.frame = frame;

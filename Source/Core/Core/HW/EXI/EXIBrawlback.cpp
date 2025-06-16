@@ -18,6 +18,7 @@
 #include <incremental-rollback/incremental_rb.h>
 #include <chrono>
 #include "Common/CommonTypes.h"
+#include <Common/MemoryUtil.h>
 
 namespace fs = std::filesystem;
 // --- Mutexes
@@ -120,9 +121,8 @@ void CEXIBrawlback::handleCaptureSavestate(u8* data)
   bu32 frame;
   std::memcpy(&frame, data, sizeof(bu32));
   frame = swap_endian(frame);
-  INFO_LOG_FMT(BRAWLBACK, "Game Frame Page is Dirty?: {} Trackable? {}\n",
-               Memory::isFramePointerDirty(), Memory::isFramePointerTrack());
-  Core::System::GetInstance().GetMemory().SetTrackMemoryPages(false);
+  INFO_LOG_FMT(BRAWLBACK, "Game Frame Page is Dirty?: {}\n",
+               Memory::isFramePointerDirty());
   SaveState(frame);
   this->lastStatedFrame = frame;
 }
@@ -177,7 +177,7 @@ static int synclogFrameTracker = 0;
 // this is called every frame at the beginning of the frame
 void CEXIBrawlback::handleLocalPadData(u8* data)
 {
-  this->framesToAdvance = 1;  // reset at beginning of frame
+  this->framesToAdvance = 1;
   PlayerFrameData playerFramedata;
   std::memcpy(&playerFramedata, data, sizeof(PlayerFrameData));
 
@@ -198,7 +198,6 @@ void CEXIBrawlback::handleLocalPadData(u8* data)
     this->timeSync->startGame(this->numPlayers);
     this->hasGameStarted = true;
   }
-
   // this just for debugging purposes. Tracks and displays the number of timesyncs done every 60
   // frames
   if (frame % 60 == 0)
@@ -277,20 +276,14 @@ void CEXIBrawlback::handleFrameDataRequest(u8* data)
   }
   auto& system = Core::System::GetInstance();
   auto& memory = system.GetMemory();
-  if (framesToAdvance > 1 && currentFrame == stopRollbackFrame)
-  {
-    framedataToSendToGame.skipFrame = true;
-  }
   if (currentFrame == GAME_START_FRAME)
   {
     memory.InitDirtyPages();
   }
   else
   {
-    memory.ResetDirtyPages();
+    //memory.ResetDirtyPages();
   }
-  memory.SetTrackMemoryPages(true);
-
   std::lock_guard<std::mutex> lock(read_queue_mutex);
   this->read_queue.clear();
   auto frameDataPtr = reinterpret_cast<u8*>(&framedataToSendToGame);
@@ -305,23 +298,22 @@ PlayerFrameData CEXIBrawlback::getLocalInputs(const bu32& frame)
   {
     // this shouldn't happen
     ERROR_LOG_FMT(BRAWLBACK, "Couldn't find local inputs! Using empty pad.\n");
-    WARN_LOG_FMT(BRAWLBACK, "Local pad input range: [{} - {}]\n", this->localPlayerFrameData.front()->frame, this->localPlayerFrameData.back()->frame);
     return CreateBlankPlayerFrameData(frame, this->localPlayerIdx);
   }
   // INFO_LOG_FMT(BRAWLBACK, "Got local inputs frame = %u\n", localFrameData->frame);
   return *localFrameData;
 }
 
-void CEXIBrawlback::updateSync(bu32& localFrame, bu8 playerIdx, bool& skipFrame)
+void CEXIBrawlback::updateSync(bu32& locFrame, bu8 playerIdx)
 {
   // https://gist.github.com/rcmagic/f8d76bca32b5609e85ab156db38387e9#file-rollbackpseudocode-txt-L46
 
   bu32 remoteFrame = this->GetLatestRemoteFrame();
-  bs32 finalFrame = MIN(remoteFrame, localFrame);
+  bs32 finalFrame = MIN(remoteFrame, locFrame);
 
   bool isSynchronized = true;
 
-  if (isPredicting && this->shouldRollback(localFrame) && latestConfirmedFrame)
+  if (isPredicting && this->shouldRollback(locFrame) && latestConfirmedFrame)
   {
     const PlayerFrameData playerPredictedInputs = predictedInputs.playerFrameDatas[playerIdx];
     INFO_LOG_FMT(BRAWLBACK,
@@ -363,47 +355,51 @@ void CEXIBrawlback::updateSync(bu32& localFrame, bu8 playerIdx, bool& skipFrame)
   else
   {
     // not synchronized, rollback & resim
-    INFO_LOG_FMT(BRAWLBACK, "Should rollback! frame = {} latestConfirmedFrame = {}\n", localFrame,
+    INFO_LOG_FMT(BRAWLBACK, "Should rollback! frame = {} latestConfirmedFrame = {}\n", locFrame,
                  latestConfirmedFrame);
-    IncrementalRB::Rollback(localFrame, latestConfirmedFrame);
+    IncrementalRB::Rollback(locFrame, latestConfirmedFrame);
     // if on frame 10 we rollback to frame 7 we need to simulate frames 7,8,9, and 10 to get to
     // where we were before. 10 - 7 + 1 = 4
-    this->framesToAdvance = localFrame - this->latestConfirmedFrame;
+    this->framesToAdvance = locFrame - this->latestConfirmedFrame;
     INFO_LOG_FMT(BRAWLBACK, "Num frames to simulate = {}\n", framesToAdvance);
-    this->stopRollbackFrame = localFrame;
-    localFrame = this->latestConfirmedFrame;
-    skipFrame = false;
+    locFrame = this->latestConfirmedFrame;
+    this->startRollbackFrame = locFrame;
   }
 
   // INFO_LOG_FMT(BRAWLBACK, "UpdateSync latestConfirmedFrame = %i\n", latestConfirmedFrame);
 }
-bool CEXIBrawlback::shouldRollback(bu32 localFrame)
+bool CEXIBrawlback::shouldRollback(bu32 locFrame)
 {
   // https://gist.github.com/rcmagic/f8d76bca32b5609e85ab156db38387e9#file-rollbackpseudocode-txt-L30
   // local_frame > sync_frame AND remote_frame > sync_frame      # No need to rollback if we don't
   // have a frame after the previous sync frame to synchronize to.
-  return localFrame > this->latestConfirmedFrame &&
+  return locFrame > this->latestConfirmedFrame &&
          this->GetLatestRemoteFrame() > this->latestConfirmedFrame;
 }
 
-PlayerFrameData CEXIBrawlback::getRemoteInputs(bu32& localFrame, u8 playerIdx, bool& skipFrame)
+bool CEXIBrawlback::isRollbackMode(bu32 locFrame, u8 playerIdx)
 {
-  PlayerFrameData finalRemoteInputs;
-
-  bool isRollbackMode =
+  return
       ROLLBACK_IMPL &&  // delay-based/rollback toggle
-      localFrame >
+         locFrame >
           GAME_FULL_START_FRAME &&  // give the game a bit of time in delay-based mode to sync up
       !this->remotePlayerFrameData.empty() &&  // some sanity checks
       !this->remotePlayerFrameData[playerIdx].empty() &&
       this->remotePlayerFrameData[playerIdx].size() >= MAX_ROLLBACK_FRAMES;
-  
-  if (isRollbackMode)
-  {
-    this->updateSync(localFrame, playerIdx, skipFrame);
+}
 
+PlayerFrameData CEXIBrawlback::getRemoteInputs(bu32& locFrame, u8 playerIdx, bool& skipFrame)
+{
+  PlayerFrameData finalRemoteInputs;
+  
+  if (isRollbackMode(locFrame, playerIdx))
+  {
+    if (framesToAdvance > 1 && locFrame > this->startRollbackFrame)
+    {
+      this->updateSync(locFrame, playerIdx);
+    }
     const PlayerFrameData* remoteFrameData =
-        findInPlayerFrameDataQueue(this->remotePlayerFrameData[playerIdx], localFrame);
+        findInPlayerFrameDataQueue(this->remotePlayerFrameData[playerIdx], locFrame);
 
     if (remoteFrameData)
     {
@@ -422,7 +418,7 @@ PlayerFrameData CEXIBrawlback::getRemoteInputs(bu32& localFrame, u8 playerIdx, b
       {
         ERROR_LOG_FMT(BRAWLBACK, "Failed to find predicted inputs for frame {} in getRemoteInputs!\n",
                   predictedInputsFrame);
-        finalRemoteInputs = CreateBlankPlayerFrameData(localFrame, playerIdx);
+        finalRemoteInputs = CreateBlankPlayerFrameData(locFrame, playerIdx);
       }
       else
       {
@@ -436,7 +432,7 @@ PlayerFrameData CEXIBrawlback::getRemoteInputs(bu32& localFrame, u8 playerIdx, b
   else
   {
     const PlayerFrameData* remoteFrameData =
-        findInPlayerFrameDataQueue(this->remotePlayerFrameData[playerIdx], localFrame);
+        findInPlayerFrameDataQueue(this->remotePlayerFrameData[playerIdx], locFrame);
     for (int i = 0; i < this->remotePlayerFrameData[playerIdx].size(); i++)
     {
       INFO_LOG_FMT(BRAWLBACK, "REMOTE PLAYER FRAME DATA FRAME (AT PLAYER INDEX {}): {}: {}",
@@ -446,7 +442,7 @@ PlayerFrameData CEXIBrawlback::getRemoteInputs(bu32& localFrame, u8 playerIdx, b
     if (!remoteFrameData)
     {
       this->framesToAdvance = 0;
-      finalRemoteInputs = CreateBlankPlayerFrameData(localFrame, playerIdx);
+      finalRemoteInputs = CreateBlankPlayerFrameData(locFrame, playerIdx);
     }
     else
     {
@@ -1401,54 +1397,24 @@ void CEXIBrawlback::handleCancelMatchmaking()
     this->matchmaking_thread.join();
   }
 }
-void CEXIBrawlback::handleEfParticle(u8* payload, bool track)
-{
-  auto& system = Core::System::GetInstance();
-  auto& memory = system.GetMemory();
-  bu32 efParticleLoc;
-  memcpy(&efParticleLoc, payload, sizeof(bu32));
-  efParticleLoc = swap_endian(efParticleLoc);
-
-  void* efParticle = memory.GetSpanForAddress(efParticleLoc).data();
-
-  if (track)
-  {
-    ExcludeMem(efParticle, 0xCC);
-  }
-  else
-  {
-    IncludeMem(efParticle);
-  }
-}
-
-void CEXIBrawlback::handleCopyEffectsHeap(u8* payload)
-{
-
-  //auto& system = Core::System::GetInstance();
-  //auto& memory = system.GetMemory();
-  bu32 frame;
-  std::memcpy(&frame, payload, sizeof(bu32));
-  frame = swap_endian(frame);
-  if (frame == GAME_START_FRAME)
-  {
-    this->effectsHeap = new u8[0x80c23a60 - 0x80b8db60];
-  }
-  //memory.CopyFromEmu(effectsHeap, 0x80b8db60, 0x80c23a60 - 0x80b8db60);
-}
-void CEXIBrawlback::handleReplaceEffectsHeap(u8* payload)
+void CEXIBrawlback::handleUpdateSync(u8* payload)
 {
   bu32 frame;
   std::memcpy(&frame, payload, sizeof(bu32));
   frame = swap_endian(frame);
-  
-  if (frame > 0 && frame - 1 == this->stopRollbackFrame)
+  if (this->framesToAdvance != 0)
   {
-    //auto& system = Core::System::GetInstance();
-    //auto& memory = system.GetMemory();
-    //memory.CopyToEmu(0x80b8db60, effectsHeap, 0x80c23a60 - 0x80b8db60);
+    for (s32 i = 0; i < this->numPlayers; i++)
+    {
+      if (isRollbackMode(frame, i))
+      {
+        this->updateSync(frame, i);
+      }
+    }
   }
 }
-    // recieve data from game into emulator
+
+// recieve data from game into emulator
 void CEXIBrawlback::DMAWrite(u32 address, u32 size)
 {
   auto& system = Core::System::GetInstance();
@@ -1482,6 +1448,9 @@ void CEXIBrawlback::DMAWrite(u32 address, u32 size)
     break;
   case CMD_FRAMEDATA:
     handleFrameDataRequest(payload);
+    break;
+  case CMD_UPDATESYNC:
+    handleUpdateSync(payload);
     break;
   case CMD_FRAMEADVANCE:
     handleFrameAdvanceRequest(payload);
@@ -1528,18 +1497,6 @@ void CEXIBrawlback::DMAWrite(u32 address, u32 size)
     break;
   case CMD_CANCEL_MATCHMAKING:
     handleCancelMatchmaking();
-    break;
-  case CMD_TRACK_EF_PARTICLE:
-    handleEfParticle(payload, true);
-    break;
-  case CMD_UNTRACK_EF_PARTICLE:
-    handleEfParticle(payload, false);
-    break;
-  case CMD_COPY_EFFECTS_HEAP:
-    handleCopyEffectsHeap(payload);
-    break;
-  case CMD_REPLACE_EFFECTS_HEAP:
-    handleReplaceEffectsHeap(payload);
     break;
   // just using these CMD's to track frame times lol
   case CMD_TIMER_START:

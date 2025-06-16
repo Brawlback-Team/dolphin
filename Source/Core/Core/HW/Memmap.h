@@ -61,11 +61,9 @@ struct LogicalMemoryView
 struct DirtyPage
 {
   bool dirty;
-  bool track;
   u64 address;
 };
 bool isFramePointerDirty();
-bool isFramePointerTrack();
 class MemoryManager
 {
 public:
@@ -108,8 +106,8 @@ public:
   // Dirty Page Handling
   bool IsAddressDirty(uintptr_t address);
   bool IsPageDirty(uintptr_t page_address);
-  void SetPageDirtyBit(uintptr_t page_address, bool dirty, u64 dirty_address, bool track);
-  void SetAddressDirtyBit(uintptr_t address, size_t size, bool dirty, bool track);
+  void SetPageDirtyBit(uintptr_t page_address, bool dirty, u64 dirty_address);
+  void SetAddressDirtyBit(uintptr_t address, size_t size, bool dirty);
   void ResetDirtyPages();
   bool HandleChangeProtection(void* address, size_t size, u32 flag);
   bool HandleFault(uintptr_t fault_address);
@@ -120,7 +118,6 @@ public:
   bool IsAddressInEmulatedMemory(uintptr_t address);
   bool IsAddressInFakeVMEML1Cache(uintptr_t address);
   u32 FastmemAddressToEmulatedAddress(uintptr_t fault_address, LogicalMemoryView view);
-  void SetTrackMemoryPages(bool track) { m_track_memory_pages = track; }
 
   MMIO::Mapping* GetMMIOMapping() const { return m_mmio_mapping.get(); }
 

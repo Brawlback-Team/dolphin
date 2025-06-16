@@ -130,7 +130,8 @@ void PrintTrackedBuf(const TrackedBuffer& buf)
     PrintAddressArray(buf);
 }
 
-int GetWrittenPages(char* base, u64 baseSize, std::vector<uintptr_t>& changedPageAddresses, u64& pageCount)
+int GetWrittenPages(char* base, u64 baseSize, std::vector<uintptr_t>& changedPageAddresses,
+                    u64& pageCount)
 {
   size_t writtenToPagesIndex = 0;
   size_t pageSize = Common::PageSize();
@@ -142,7 +143,7 @@ int GetWrittenPages(char* base, u64 baseSize, std::vector<uintptr_t>& changedPag
   auto& system = Core::System::GetInstance();
   auto& memory = system.GetMemory();
 
-  while (base_pte <= end_pte)
+  while (base_pte < end_pte)
   {
     if (memory.IsPageDirty(base_pte))
     {
@@ -161,16 +162,14 @@ int GetWrittenPages(char* base, u64 baseSize, std::vector<uintptr_t>& changedPag
       {
         return 3;
       }
-      if (memory.GetDirtyPages()[base_pte].track && std::find(changedPageAddresses.begin(),
-                                                          changedPageAddresses.end(),
-                                                          base_pte) ==
+      if (std::find(changedPageAddresses.begin(), changedPageAddresses.end(), base_pte) ==
           changedPageAddresses.end())
       {
         changedPageAddresses.push_back(base_pte);
         writtenToPagesIndex++;
       }
 
-      memory.SetPageDirtyBit(base_pte, false, addr, false);
+      memory.SetPageDirtyBit(base_pte, false, addr);
     }
     base_pte += pageSize;
   }

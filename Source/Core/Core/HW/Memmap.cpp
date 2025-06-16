@@ -51,13 +51,6 @@ bool isFramePointerDirty()
 
   return memory.IsAddressDirty((uintptr_t)memory.GetSpanForAddress(0x901812b4).data());
 }
-bool isFramePointerTrack()
-{
-  auto& system = Core::System::GetInstance();
-  auto& memory = system.GetMemory();
-
-  return memory.GetDirtyPages()[memory.GetDirtyPageIndexFromAddress((uintptr_t)memory.GetSpanForAddress(0x901812b4).data())].track;
-}
 u32 f = 0;
 static u32* getGameMemFrame()
 {
@@ -163,24 +156,22 @@ bool MemoryManager::IsPageDirty(uintptr_t page_address)
 {
   return m_dirty_pages[page_address].dirty;
 }
-void MemoryManager::SetPageDirtyBit(uintptr_t page_address, bool dirty, u64 dirty_address, bool track)
+void MemoryManager::SetPageDirtyBit(uintptr_t page_address, bool dirty, u64 dirty_address)
 {
   if (m_dirty_pages.contains(page_address))
   {
 
     m_dirty_pages[page_address].dirty = dirty;
     m_dirty_pages[page_address].address = dirty_address;
-    m_dirty_pages[page_address].track = track;
   }
 }
 
-void MemoryManager::SetAddressDirtyBit(uintptr_t address, size_t size, bool dirty, bool track)
+void MemoryManager::SetAddressDirtyBit(uintptr_t address, size_t size, bool dirty)
 {
   for (size_t i = 0; i < size; i++)
   {
     m_dirty_pages[GetDirtyPageIndexFromAddress(address + i)].dirty = dirty;
     m_dirty_pages[GetDirtyPageIndexFromAddress(address + i)].address = address;
-    m_dirty_pages[GetDirtyPageIndexFromAddress(address + i)].track = track;
   }
 }
 
@@ -274,7 +265,7 @@ bool MemoryManager::HandleFault(uintptr_t fault_address)
       return false;
     }
     auto guard = Core::CPUThreadGuard{m_system};
-    SetPageDirtyBit(page, true, logical_address, Dolphin_Debugger::IsRangeInCallstack(guard, 0x800171b4, 0x80017508) || Dolphin_Debugger::IsRangeInCallstack(guard, 0x8002e578, 0x8002e798));
+    SetPageDirtyBit(page, true, logical_address);
     return true;
   }
   else if (IsAddressInFakeVMEML1Cache(fault_address))
@@ -285,7 +276,7 @@ bool MemoryManager::HandleFault(uintptr_t fault_address)
       return false;
     }
     auto guard = Core::CPUThreadGuard{m_system};
-    SetPageDirtyBit(page, true, page, Dolphin_Debugger::IsRangeInCallstack(guard, 0x800171b4, 0x80017508) || Dolphin_Debugger::IsRangeInCallstack(guard, 0x8002e578, 0x8002e798));
+    SetPageDirtyBit(page, true, page);
     return true;
   }
   
@@ -318,7 +309,6 @@ void MemoryManager::WriteProtectPhysicalMemoryRegions()
     {
       m_dirty_pages[page].dirty = false;
       m_dirty_pages[page].address = page;
-      m_dirty_pages[page].track = false;
     }
   }
 
@@ -354,10 +344,9 @@ void MemoryManager::ResetProtectPhysicalMemoryRegions()
            page += page_size)
       {
         auto& dirty_page = m_dirty_pages[page];
-        if (dirty_page.dirty && !dirty_page.track)
+        if (dirty_page.dirty)
         {
           dirty_page.dirty = false;
-          dirty_page.track = true;
           if (!HandleChangeProtection(reinterpret_cast<u8*>(page), 0x1, PAGE_READONLY))
           {
             PanicAlertFmt(

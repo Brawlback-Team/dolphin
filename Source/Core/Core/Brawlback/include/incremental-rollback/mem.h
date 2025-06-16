@@ -1,5 +1,6 @@
 #pragma once
 #include "util.h"
+#include <unordered_set>
 
 
 #define rbMemcpy(dst, src, size) fastMemcpy(dst, src, size)
@@ -40,6 +41,7 @@ void UntrackAlloc(void* ptr);
 void ResetAllocs();
 void PrintTrackedBuf(const TrackedBuffer& buf);
 void ResetWrittenPages();
-int GetWrittenPages(char* base, u64 baseSize, std::vector<uintptr_t>& changedPageAddresses, u64& pageCount);
+int GetWrittenPages(char* base, u64 baseSize, std::vector<uintptr_t>& changedPageAddresses,
+                    u64& pageCount);
 bool GetAndResetWrittenPages(std::vector<uintptr_t>& changedPageAddresses, u64 maxEntries);
 void fastMemcpy(void* pvDest, void* pvSrc, size_t nBytes);

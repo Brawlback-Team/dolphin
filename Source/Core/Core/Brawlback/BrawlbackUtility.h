@@ -71,6 +71,7 @@ namespace Brawlback {
       CMD_TIMESYNC = 16,
       CMD_ROLLBACK = 17,
       CMD_FRAMEADVANCE = 18,
+      CMD_UPDATESYNC = 39,
 
       // REPLAYS
       CMD_REPLAY_START_REPLAYS_STRUCT = 19,

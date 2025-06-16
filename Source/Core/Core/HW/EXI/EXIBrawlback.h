@@ -31,7 +31,6 @@ public:
 private:
   // byte vector for sending into to the game
   std::vector<u8> read_queue = {};
-  u8* effectsHeap = nullptr; 
 
   // --- DMA handlers
   void handleCaptureSavestate(u8* data);
@@ -56,10 +55,8 @@ private:
   void handleNumReplays();
   void handleGetStartReplay(u8* payload);
   void handleCancelMatchmaking();
-  void handleCopyEffectsHeap(u8* payload);
-  void handleReplaceEffectsHeap(u8* payload);
-
-  void handleEfParticle(u8* payload, bool track);
+  void handleUpdateSync(u8* payload);
+  bool isRollbackMode(bu32 localFrame, u8 playerIdx);
 
   template <typename T>
   void SendCmdToGame(EXICommand cmd, T* payload);
@@ -131,8 +128,10 @@ private:
   bu32 framesToAdvance = 1; // number of "frames" to advance the simulation on this frame
   bu32 latestConfirmedFrame = 0; // Tracks the last frame where we synchronized the game state with the remote client
   bu32 stopRollbackFrame = -1;
+  bu32 startRollbackFrame = -1;
+  bu32 localFrame = 0;
   std::vector<SavestateMemRegionInfo> deallocRegions = {};
-  void updateSync(bu32& localFrame, u8 playerIdx, bool& skipFrame);
+  void updateSync(bu32& localFrame, u8 playerIdx);
   bool shouldRollback(bu32 localFrame);
   void LoadState(bu32 rollbackFrame);
   void SaveState(bu32 frame);
