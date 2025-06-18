@@ -383,15 +383,14 @@ namespace IncrementalRB
     }
     // Threading Stuff
     ExcludeMem(GetPointer(0x805a5154), 0x805b5158 - 0x805a5154); // Main Thread Stack
-    ExcludeMem(GetPointer(0x804c1d08), 0x28);                     // RemoteSpeakerAlarm OSAlarm
-    ExcludeMem(GetPointer(0x805bf420), 0x28);                     // ??? OSAlarm
-    ExcludeMem(GetPointer(0x804f67e0), 0x28);                     // WPAD OSAlarm
-    ExcludeMem(GetPointer(0x805297a0), 0x28);                     // BTU OSAlarm
-    ExcludeMem(GetPointer(0x805bacc0), 0x28);                     // PAD OSAlarm
-    ExcludeMem(GetPointer(0x805b85e0), 0x28);                     // OSALarmSleep OSAlarm
     // Heaps
-    ExcludeMem(GetPointer(0x817ba5a0), 0x817ca5a0 - 0x817ba5a0); // Syringe Heap
-    ExcludeMem(GetPointer(0x94000000), 0xF4240);                 // EXI Transfer Heap
+    ExcludeMem(GetPointer(0x817ba5a0), 0x817ca5a0 - 0x817ba5a0); // Syringe
+    ExcludeMem(GetPointer(0x94000000), 0xF4240);                 // EXI Transfer
+    ExcludeMem(GetPointer(0x805d1e60), 0x00040100);              // RenderFifo
+    ExcludeMem(GetPointer(0x9134cc00), 0x0012c200);              // CopyFB
+    ExcludeMem(GetPointer(0x805ca260), 0x00007c00);              // Thread
+    ExcludeMem(GetPointer(0x90199800), 0x00cc7c00);              // Sound
+    /*
     // VI Stuff
     ExcludeMem(GetPointer(0x805a07d0), 0x20);
     ExcludeMem(GetPointer(0x805a0844), 0xC);
@@ -399,7 +398,9 @@ namespace IncrementalRB
     ExcludeMem(GetPointer(0x804de550), 0xF0);
     // GX Stuff
     ExcludeMem(GetPointer(0x805a08c0), 0x1);    // DrawDone
-    ExcludeMem(GetPointer(0x804de760), 0x4F8);  // gx
+    ExcludeMem(GetPointer(0x804de760), 0x4F8);  // gx*/
+
+    std::sort(ExcludeMemList.begin(), ExcludeMemList.end(), [](const ExcludeBuffer& a, const ExcludeBuffer& b){ return a.buffer.data < b.buffer.data; });
     
     #endif
     jobsystem::Initialize(
@@ -430,6 +431,8 @@ namespace IncrementalRB
   {
     //PROFILE_FUNCTION();
     u64 pageSize = Common::PageSize();
+    auto& system = Core::System::GetInstance();
+    auto& memory = system.GetMemory();
   #ifdef MULTITHREAD
     u32 pagesPerThread = savestate.numChangedPages / numWorkerThreads;
     for (u32 i = 0; i < numWorkerThreads; i++)
@@ -468,84 +471,70 @@ namespace IncrementalRB
     }
     jobsystem::Wait(jobctx);
   #else
+    typedef boost::icl::interval_set<uintptr_t> TIntervalSet;
+    TIntervalSet changedSet;
+    TIntervalSet excludeSet;
     for (u32 i = 0; i < savestate.changedPages.size(); i++)
     {
-      //PROFILE_SCOPE("rollback page");
-      // apply the "after" state of this past frame
-      // changedPages[i] will always correspond to the same index in afterCopies
-      u8* orig = reinterpret_cast<u8*>(savestate.changedPages[i]);
-      u8* ssData = reinterpret_cast<u8*>(savestate.afterCopies[i]);
-  #ifdef ENABLE_LOGGING
-      //assert((orig >= GetRAM() && orig < GetRAM() + GetRAMSize()) ||
-             //(orig >= GetEXRAM() && orig < GetEXRAM() + GetEXRAMSize()));
-      // first 4 bytes of game mem contains current frame
-  #endif
-      auto orig_ptr = reinterpret_cast<uintptr_t>(orig);
-      auto ssData_ptr = reinterpret_cast<uintptr_t>(ssData);
-      bool rbCopyOrig = true;
-      void* dest = nullptr;
-      void* src = nullptr;
+      changedSet += boost::icl::discrete_interval<uintptr_t>::closed(
+          savestate.changedPages[i], savestate.changedPages[i] + pageSize);
+    }
+
+    for (u32 i = 0; i < ExcludeMemList.size(); i++)
+    {
+      excludeSet.insert(ExcludeMemList[i].excludeGap);
+    }
+
+    auto difference = changedSet - excludeSet;
+    for (auto it = difference.begin(); it != difference.end(); ++it)
+    {
+      auto orig_ptr = (uintptr_t)it->lower();
+      u8* ssData = nullptr;
       size_t size = 0;
-      if (ExcludeMemList.size() > 0)
+      if (boost::icl::contains(*it, it->lower()))
       {
-        for (int f = 1; f < ExcludeMemList.size(); f++)
+        auto itOrig = std::find(std::begin(savestate.changedPages), savestate.changedPages.end(),
+                           it->lower());
+        if (itOrig != savestate.changedPages.end())
         {
-          auto gap_start = reinterpret_cast<uintptr_t>(ExcludeMemList[f].buffer.data);
-          if (gap_start >= orig_ptr && gap_start < orig_ptr + pageSize)
+          size_t index = std::distance(std::begin(savestate.changedPages), itOrig);
+          ssData = (u8*)savestate.afterCopies[index];
+          size = it->upper() - it->lower();
+          if (!boost::icl::contains(*it, it->upper()))
           {
-            if (ExcludeMemList[f].start_page == ExcludeMemList[f - 1].end_page)
-            {
-              auto other_gap_end = reinterpret_cast<uintptr_t>(ExcludeMemList[f - 1].buffer.data) +
-                                   ExcludeMemList[f - 1].buffer.size;
-              dest = reinterpret_cast<u8*>(orig_ptr + (other_gap_end - orig_ptr + 1));
-              src = reinterpret_cast<u8*>(ssData_ptr + (other_gap_end - orig_ptr + 1));
-            }
-            else
-            {
-              dest = orig;
-              src = ssData;
-            }
-            rbCopyOrig = false;
-            size = gap_start - reinterpret_cast<uintptr_t>(dest);
-            memcpy(dest, src, size);
-            break;
-          }
-        }
-        for (int f = 0; f < ExcludeMemList.size() - 1; f++)
-        {
-          auto gap_start = reinterpret_cast<uintptr_t>(ExcludeMemList[f].buffer.data);
-          auto gap_end = gap_start + ExcludeMemList[f].buffer.size;
-          if (gap_end >= orig_ptr && gap_end < orig_ptr + pageSize)
-          {
-            dest = reinterpret_cast<u8*>(orig_ptr + ((gap_end - orig_ptr) + 1));
-            src = reinterpret_cast<u8*>(ssData_ptr + ((gap_end - orig_ptr) + 1));
-            if (ExcludeMemList[f].end_page == ExcludeMemList[f + 1].start_page)
-            {
-              size = reinterpret_cast<uintptr_t>(ExcludeMemList[f + 1].buffer.data) -
-                     reinterpret_cast<uintptr_t>(dest);
-            }
-            else
-            {
-              size = orig_ptr + pageSize - reinterpret_cast<uintptr_t>(dest);
-            }
-            rbCopyOrig = false;
-            memcpy(dest, src, size);
-            break;
-          }
-        }
-        for (int f = 0; f < ExcludeMemList.size() && rbCopyOrig; f++)
-        {
-          if (orig_ptr >= ExcludeMemList[f].start_page && orig_ptr < ExcludeMemList[f].end_page)
-          {
-            rbCopyOrig = false;
-            break;
+            size--;
           }
         }
       }
-
-      if (rbCopyOrig)
+      else
       {
-        rbMemcpy(orig, ssData, pageSize);
+        uintptr_t lowerPage = it->lower() & ~(pageSize - 1);
+        auto itOrig =
+            std::find(std::begin(savestate.changedPages), savestate.changedPages.end(), lowerPage);
+        if (itOrig != savestate.changedPages.end() && it->upper() - it->lower() != 0)
+        {
+          orig_ptr = lowerPage + (it->lower() - lowerPage + 1);
+          size_t index = std::distance(std::begin(savestate.changedPages), itOrig);
+          ssData = (u8*)(savestate.afterCopies[index] + (it->lower() - lowerPage + 1));
+          size = it->upper() - it->lower() - 1;
+          if (!boost::icl::contains(*it, it->upper()))
+          {
+            size--;
+          }
+        }
+      }
+      if (ssData && size > 0)
+      {
+        auto orig = (u8*)orig_ptr;
+        
+        if (size >= pageSize && size % pageSize == 0)
+        {
+          rbMemcpy(orig, ssData, size);
+        }
+        else
+        {
+          memcpy(orig, ssData, size);
+        }
       }
     }
   #endif

@@ -1,7 +1,7 @@
 #pragma once
 #include "util.h"
-#include <unordered_set>
-
+#include <utility>
+#include <boost/icl/interval_set.hpp>
 
 #define rbMemcpy(dst, src, size) fastMemcpy(dst, src, size)
 
@@ -15,8 +15,7 @@ struct Buffer
 struct ExcludeBuffer
 {
   Buffer buffer;
-  uintptr_t start_page;
-  uintptr_t end_page;
+  boost::icl::discrete_interval<uintptr_t> excludeGap;
 };
 
 struct AddressArray

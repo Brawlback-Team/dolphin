@@ -264,7 +264,6 @@ bool MemoryManager::HandleFault(uintptr_t fault_address)
     {
       return false;
     }
-    auto guard = Core::CPUThreadGuard{m_system};
     SetPageDirtyBit(page, true, logical_address);
     return true;
   }

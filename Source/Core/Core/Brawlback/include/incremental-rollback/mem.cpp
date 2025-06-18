@@ -74,14 +74,8 @@ void ExcludeMem(void* ptr, size_t size)
   buf.size = size;
   exl.buffer = buf;
   auto ptr_addr = reinterpret_cast<uintptr_t>(ptr);
-  exl.start_page = ptr_addr & ~pageMask;
-  exl.end_page = (ptr_addr + size) & ~pageMask;
+  exl.excludeGap = boost::icl::construct<boost::icl::discrete_interval<uintptr_t>>(ptr_addr, ptr_addr + size, boost::icl::interval_bounds::closed());
   ExcludeMemList.push_back(exl);
-
-  std::sort(ExcludeMemList.begin(), ExcludeMemList.end(),
-            [](const ExcludeBuffer& lhs, const ExcludeBuffer& rhs) {
-              return lhs.buffer.data < rhs.buffer.data;
-            });
 }
 void UntrackAlloc(void* ptr)
   {
@@ -173,6 +167,7 @@ int GetWrittenPages(char* base, u64 baseSize, std::vector<uintptr_t>& changedPag
     }
     base_pte += pageSize;
   }
+  std::sort(changedPageAddresses.begin(), changedPageAddresses.end());
   pageCount = writtenToPagesIndex;
   return 0;
 }

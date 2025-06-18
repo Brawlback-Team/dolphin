@@ -129,7 +129,7 @@ void CEXIBrawlback::handleCaptureSavestate(u8* data)
 
 void CEXIBrawlback::SaveState(bu32 frame)
 {
-  IncrementalRB::SaveWrittenPages(frame - 1, framesToAdvance > 1);
+  IncrementalRB::SaveWrittenPages(frame - 1, framesToAdvance > 1 && frame - 1 < this->stopRollbackFrame);
 }
 
 void CEXIBrawlback::handleLoadSavestate(u8* data)
@@ -360,8 +360,9 @@ void CEXIBrawlback::updateSync(bu32& locFrame, bu8 playerIdx)
     IncrementalRB::Rollback(locFrame, latestConfirmedFrame);
     // if on frame 10 we rollback to frame 7 we need to simulate frames 7,8,9, and 10 to get to
     // where we were before. 10 - 7 + 1 = 4
-    this->framesToAdvance = locFrame - this->latestConfirmedFrame;
+    this->framesToAdvance = locFrame - this->latestConfirmedFrame + 1;
     INFO_LOG_FMT(BRAWLBACK, "Num frames to simulate = {}\n", framesToAdvance);
+    this->stopRollbackFrame = locFrame;
     locFrame = this->latestConfirmedFrame;
     this->startRollbackFrame = locFrame;
   }
