@@ -3,6 +3,7 @@
 #include <vector>
 #include <cassert>
 #include <set>
+#include <cmath>
 
 #include <Common/Logging/Log.h>
 #include <Common/MemoryUtil.h>
@@ -41,7 +42,7 @@ void TrackAlloc(void* ptr, size_t size)
     u64 pageSize = Common::PageSize();
     // make sure we have space for the maximum number of changed pages - that being total pages in the
     // allocated block
-    u64 PageCount = ((size + pageSize - 1) / pageSize);
+    u64 PageCount = static_cast<u64>(std::floor((size + pageSize - 1) / pageSize));
 
     tracked_buf.buffer.size = size;
     tracked_buf.buffer.data = (char*)ptr;
@@ -62,8 +63,6 @@ void IncludeMem(void* ptr)
 }
 void ExcludeMem(void* ptr, size_t size)
 {
-  auto pageSize = Common::PageSize();
-  auto pageMask = pageSize - 1;
   if (!ptr || !size)
   {
     return;
@@ -129,15 +128,13 @@ int GetWrittenPages(char* base, u64 baseSize, std::vector<uintptr_t>& changedPag
 {
   size_t writtenToPagesIndex = 0;
   size_t pageSize = Common::PageSize();
-  size_t pageMask = pageSize - 1;
-  uintptr_t base_ptr = reinterpret_cast<uintptr_t>(base);
-  uintptr_t base_pte = base_ptr & ~pageMask;
-  uintptr_t end_pte = (base_ptr + baseSize) & ~pageMask;
+  auto base_pte = reinterpret_cast<uintptr_t>(Common::GetPageAddress(base, Common::PageSize()));
+  auto end_pte = reinterpret_cast<uintptr_t>(Common::GetPageAddress(base + baseSize, Common::PageSize()));
 
   auto& system = Core::System::GetInstance();
   auto& memory = system.GetMemory();
 
-  while (base_pte < end_pte)
+  while (base_pte <= end_pte)
   {
     if (memory.IsPageDirty(base_pte))
     {

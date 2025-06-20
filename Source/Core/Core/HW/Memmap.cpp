@@ -181,9 +181,7 @@ void MemoryManager::ResetDirtyPages()
 }
 u64 MemoryManager::GetDirtyPageIndexFromAddress(u64 address)
 {
-  size_t page_size = Common::PageSize();
-  size_t page_mask = page_size - 1;
-  return address & ~page_mask;
+  return reinterpret_cast<uintptr_t>(Common::GetPageAddress((void*)address, Common::PageSize()));
 }
 
 bool MemoryManager::HandleChangeProtection(void* address, size_t size, u32 flag)
@@ -274,7 +272,6 @@ bool MemoryManager::HandleFault(uintptr_t fault_address)
     {
       return false;
     }
-    auto guard = Core::CPUThreadGuard{m_system};
     SetPageDirtyBit(page, true, page);
     return true;
   }
@@ -285,7 +282,6 @@ bool MemoryManager::HandleFault(uintptr_t fault_address)
 void MemoryManager::WriteProtectPhysicalMemoryRegions()
 {
   const size_t page_size = Common::PageSize();
-  const size_t page_mask = page_size - 1;
 
   for (auto& entry : m_physical_regions)
   {
@@ -301,7 +297,7 @@ void MemoryManager::WriteProtectPhysicalMemoryRegions()
                     reinterpret_cast<uintptr_t>(*entry.out_pointer));
     }
     intptr_t out_pointer = reinterpret_cast<uintptr_t>(*entry.out_pointer);
-    intptr_t out_pointer_pte = out_pointer & ~page_mask;
+    intptr_t out_pointer_pte = reinterpret_cast<uintptr_t>(Common::GetPageAddress(*entry.out_pointer, Common::PageSize()));;
     size_t size = entry.size + (out_pointer_pte - out_pointer);
     for (unsigned long long page = out_pointer_pte; page < out_pointer_pte + size;
          page += page_size)
@@ -326,7 +322,6 @@ void MemoryManager::WriteProtectPhysicalMemoryRegions()
 void MemoryManager::ResetProtectPhysicalMemoryRegions()
 {
   const size_t page_size = Common::PageSize();
-  const size_t page_mask = page_size - 1;
 
   for (auto& entry : m_physical_regions)
   {
@@ -337,7 +332,7 @@ void MemoryManager::ResetProtectPhysicalMemoryRegions()
     intptr_t out_pointer = reinterpret_cast<uintptr_t>(*entry.out_pointer);
     if (IsAddressInEmulatedMemory(out_pointer))
     {
-      intptr_t out_pointer_pte = out_pointer & ~page_mask;
+      intptr_t out_pointer_pte = reinterpret_cast<uintptr_t>(Common::GetPageAddress(*entry.out_pointer, Common::PageSize()));;
       size_t size = entry.size + (out_pointer_pte - out_pointer);
       for (unsigned long long page = out_pointer_pte; page < out_pointer_pte + size;
            page += page_size)

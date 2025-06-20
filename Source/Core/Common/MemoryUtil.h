@@ -35,5 +35,6 @@ bool WriteProtectMemory(void* ptr, size_t size, bool executable = false);
 bool UnWriteProtectMemory(void* ptr, size_t size, bool allowExecute = false);
 size_t MemPhysical();
 size_t PageSize();
+void* GetPageAddress(void* address, std::size_t alignment) noexcept;
 
 }  // namespace Common

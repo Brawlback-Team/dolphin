@@ -300,4 +300,13 @@ size_t PageSize()
 #endif
 }
 
+// https://stackoverflow.com/a/66077507
+void* GetPageAddress(void* address, std::size_t alignment) noexcept
+{
+  void* aligned = address;
+  std::size_t space = alignment;
+  std::align(alignment, 1, aligned, space);
+  return address == aligned ? aligned : static_cast<char*>(aligned) - alignment;
+}
+
 }  // namespace Common

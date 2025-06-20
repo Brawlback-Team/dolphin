@@ -382,7 +382,10 @@ namespace IncrementalRB
       TrackAlloc(*physical_entries[i].out_pointer, physical_entries[i].size);
     }
     // Threading Stuff
-    ExcludeMem(GetPointer(0x805a5154), 0x805b5158 - 0x805a5154); // Main Thread Stack
+    ExcludeMem(GetPointer(0x80009760), 0x805b5158 - 0x80009760); // Data Sections, BSS, Main Stack
+    ExcludeMem(GetPointer(0x805bf420), 0x28);                    // ??? OSAlarm
+    ExcludeMem(GetPointer(0x805bacc0), 0x28);                    // PAD OSAlarm
+    ExcludeMem(GetPointer(0x805b85e0), 0x28);                    // OSALarmSleep OSAlarm
     // Heaps
     ExcludeMem(GetPointer(0x817ba5a0), 0x817ca5a0 - 0x817ba5a0); // Syringe
     ExcludeMem(GetPointer(0x94000000), 0xF4240);                 // EXI Transfer
@@ -390,15 +393,7 @@ namespace IncrementalRB
     ExcludeMem(GetPointer(0x9134cc00), 0x0012c200);              // CopyFB
     ExcludeMem(GetPointer(0x805ca260), 0x00007c00);              // Thread
     ExcludeMem(GetPointer(0x90199800), 0x00cc7c00);              // Sound
-    /*
-    // VI Stuff
-    ExcludeMem(GetPointer(0x805a07d0), 0x20);
-    ExcludeMem(GetPointer(0x805a0844), 0xC);
-    ExcludeMem(GetPointer(0x805a07a4), 0x4);
-    ExcludeMem(GetPointer(0x804de550), 0xF0);
-    // GX Stuff
-    ExcludeMem(GetPointer(0x805a08c0), 0x1);    // DrawDone
-    ExcludeMem(GetPointer(0x804de760), 0x4F8);  // gx*/
+    ExcludeMem(GetPointer(0x80b8db60), 0x80c23a60 - 0x80b8db60); // Effect
 
     std::sort(ExcludeMemList.begin(), ExcludeMemList.end(), [](const ExcludeBuffer& a, const ExcludeBuffer& b){ return a.buffer.data < b.buffer.data; });
     
@@ -411,9 +406,8 @@ namespace IncrementalRB
 
     // allocate mem for savestates
     u64 savestateMemSize = MAX_NUM_CHANGED_PAGES * Common::PageSize();
-    for (u32 i = 0; i < ARRAY_SIZE(savestateInfo.savestates); i++)
+    for (Savestate& savestate : savestateInfo.savestates)
     {
-      Savestate& savestate = savestateInfo.savestates[i];
       void* backingMem = _mm_malloc(savestateMemSize, 32);
       assert(IS_ALIGNED(backingMem, 32));
       savestate.arena = arena_init(backingMem, savestateMemSize);
@@ -431,8 +425,6 @@ namespace IncrementalRB
   {
     //PROFILE_FUNCTION();
     u64 pageSize = Common::PageSize();
-    auto& system = Core::System::GetInstance();
-    auto& memory = system.GetMemory();
   #ifdef MULTITHREAD
     u32 pagesPerThread = savestate.numChangedPages / numWorkerThreads;
     for (u32 i = 0; i < numWorkerThreads; i++)
@@ -508,10 +500,10 @@ namespace IncrementalRB
       }
       else
       {
-        uintptr_t lowerPage = it->lower() & ~(pageSize - 1);
+        uintptr_t lowerPage = reinterpret_cast<uintptr_t>(Common::GetPageAddress((void*)it->lower(), pageSize));
         auto itOrig =
             std::find(std::begin(savestate.changedPages), savestate.changedPages.end(), lowerPage);
-        if (itOrig != savestate.changedPages.end() && it->upper() - it->lower() != 0)
+        if (itOrig != savestate.changedPages.end() && it->upper() - it->lower() > 0)
         {
           orig_ptr = lowerPage + (it->lower() - lowerPage + 1);
           size_t index = std::distance(std::begin(savestate.changedPages), itOrig);

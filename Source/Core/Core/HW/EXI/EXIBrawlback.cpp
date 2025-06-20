@@ -129,7 +129,7 @@ void CEXIBrawlback::handleCaptureSavestate(u8* data)
 
 void CEXIBrawlback::SaveState(bu32 frame)
 {
-  IncrementalRB::SaveWrittenPages(frame - 1, framesToAdvance > 1 && frame - 1 < this->stopRollbackFrame);
+  IncrementalRB::SaveWrittenPages(frame - 1, this->framesToAdvance > 1 && frame - 1 < this->stopRollbackFrame);
 }
 
 void CEXIBrawlback::handleLoadSavestate(u8* data)
@@ -282,7 +282,7 @@ void CEXIBrawlback::handleFrameDataRequest(u8* data)
   }
   else
   {
-    //memory.ResetDirtyPages();
+    memory.ResetDirtyPages();
   }
   std::lock_guard<std::mutex> lock(read_queue_mutex);
   this->read_queue.clear();
