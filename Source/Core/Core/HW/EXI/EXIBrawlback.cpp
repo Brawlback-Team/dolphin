@@ -280,10 +280,6 @@ void CEXIBrawlback::handleFrameDataRequest(u8* data)
   {
     memory.InitDirtyPages();
   }
-  else
-  {
-    memory.ResetDirtyPages();
-  }
   std::lock_guard<std::mutex> lock(read_queue_mutex);
   this->read_queue.clear();
   auto frameDataPtr = reinterpret_cast<u8*>(&framedataToSendToGame);
@@ -395,10 +391,6 @@ PlayerFrameData CEXIBrawlback::getRemoteInputs(bu32& locFrame, u8 playerIdx, boo
   
   if (isRollbackMode(locFrame, playerIdx))
   {
-    if (framesToAdvance > 1 && locFrame > this->startRollbackFrame)
-    {
-      this->updateSync(locFrame, playerIdx);
-    }
     const PlayerFrameData* remoteFrameData =
         findInPlayerFrameDataQueue(this->remotePlayerFrameData[playerIdx], locFrame);
 
