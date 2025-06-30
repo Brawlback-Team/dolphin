@@ -4,11 +4,41 @@
 #include <cstring>
 #include <chrono>
 #include <ctime>
-#include "Common/CommonTypes.h" 
+#include "Common/CommonTypes.h"
+#include "boost/icl/interval_set.hpp"
+#include "brawlback-common/BrawlbackConstants.h"
 
 #ifndef ARRAY_SIZE
 #define ARRAY_SIZE(arr) ( sizeof((arr))/sizeof((arr)[0]) )
 #endif
+
+struct Arena
+{
+  unsigned char* backing_mem = 0;
+  size_t backing_mem_size = 0;
+  size_t offset = 0;
+  size_t prev_offset = 0;
+  const char* name = "UNNAMED_ARENA";
+};
+
+namespace IncrementalRB
+{
+  struct Savestate
+  {
+    // sorted (ascending) list of changed pages
+    std::vector<uintptr_t> changedPages = {};
+    // page-sized blocks of memory that contains data after this frame wrote to the pages
+    std::vector<uintptr_t> afterCopies = {};
+    Arena arena = {};
+    u32 frame = 0;
+    bool valid = false;
+  };
+
+  struct SavestateInfo
+  {
+    Savestate savestates[MAX_SAVESTATES] = {};
+  };
+}
 
 template <typename T> 
 inline T Clamp(T& value, const T& low, const T& high) 

@@ -92,7 +92,7 @@ void UntrackAlloc(void* ptr)
 }
 
 
-void ResetAllocs()
+void ResetAllocs(IncrementalRB::SavestateInfo& savestateInfo)
 {
   for (int i = 0; i < TrackedMemList.size(); i++)
   {
@@ -101,6 +101,15 @@ void ResetAllocs()
   TrackedMemList.clear();
   ExcludeMemList.clear();
 
+  for (auto& savestate : savestateInfo.savestates)
+  {
+    savestate.changedPages.clear();
+    savestate.afterCopies.clear();
+    if (savestate.arena.backing_mem)
+    {
+      _mm_free(savestate.arena.backing_mem);
+    }
+  }
 }
 
 void PrintAddressArray(const TrackedBuffer& buf)

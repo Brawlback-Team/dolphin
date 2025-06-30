@@ -44,21 +44,8 @@ constexpr u64 MAX_NUM_CHANGED_PAGES = 60000;
 
 namespace IncrementalRB
 {
-  struct Savestate
-  {
-    // sorted (ascending) list of changed pages
-    std::vector<uintptr_t> changedPages = {};
-    // page-sized blocks of memory that contains data after this frame wrote to the pages
-    std::vector<uintptr_t> afterCopies = {};
-    Arena arena = {};
-    u32 frame = 0;
-    bool valid = false;
-  };
 
-  struct SavestateInfo
-  {
-    Savestate savestates[MAX_SAVESTATES] = {};
-  };
+  typedef boost::icl::interval_set<uintptr_t> TIntervalSet;
 
   struct Region
   {
@@ -70,6 +57,10 @@ namespace IncrementalRB
   static jobsystem::context jobctx;
 
   static IncrementalRBCallbacks cbs = {};
+
+  static
+
+    TIntervalSet excludeSet;
  
   inline u8* GetRAM()
   {
@@ -150,16 +141,7 @@ namespace IncrementalRB
     //PROFILE_FUNCTION();
     
     cbs = cb;
-    ResetAllocs();
-    for (auto& savestate : savestateInfo.savestates)
-    {
-      savestate.changedPages.clear();
-      savestate.afterCopies.clear();
-      if (savestate.arena.backing_mem)
-      {
-        _mm_free(savestate.arena.backing_mem);
-      }
-    }
+    ResetAllocs(savestateInfo);
     #ifdef SPECIFIC_TRACKING
     std::vector<Region> staticRegions = {
         {0x806414a0, 0x806414a0 + 0x60},
@@ -396,6 +378,11 @@ namespace IncrementalRB
     ExcludeMem(GetPointer(0x80b8db60), 0x80c23a60 - 0x80b8db60); // Effect
 
     std::sort(ExcludeMemList.begin(), ExcludeMemList.end(), [](const ExcludeBuffer& a, const ExcludeBuffer& b){ return a.buffer.data < b.buffer.data; });
+
+    for (u32 i = 0; i < ExcludeMemList.size(); i++)
+    {
+      excludeSet.insert(ExcludeMemList[i].excludeGap);
+    }
     
     #endif
     jobsystem::Initialize(
@@ -463,18 +450,11 @@ namespace IncrementalRB
     }
     jobsystem::Wait(jobctx);
   #else
-    typedef boost::icl::interval_set<uintptr_t> TIntervalSet;
     TIntervalSet changedSet;
-    TIntervalSet excludeSet;
     for (u32 i = 0; i < savestate.changedPages.size(); i++)
     {
       changedSet += boost::icl::discrete_interval<uintptr_t>::closed(
           savestate.changedPages[i], savestate.changedPages[i] + pageSize);
-    }
-
-    for (u32 i = 0; i < ExcludeMemList.size(); i++)
-    {
-      excludeSet.insert(ExcludeMemList[i].excludeGap);
     }
 
     auto difference = changedSet - excludeSet;

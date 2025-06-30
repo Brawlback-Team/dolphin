@@ -4,15 +4,6 @@
 
 // ARENAS
 
-struct Arena 
-{
-    unsigned char* backing_mem = 0;
-    size_t backing_mem_size = 0;
-    size_t offset = 0;
-    size_t prev_offset = 0;
-    const char* name = "UNNAMED_ARENA";
-};
-
 #define arena_alloc_type(arena, type, num) ((type*)arena_alloc(arena, sizeof(type) * num))
 
 template <typename T>

@@ -37,7 +37,7 @@ void TrackAlloc(void* ptr, size_t size);
 void ExcludeMem(void* ptr, size_t size);
 void IncludeMem(void* ptr);
 void UntrackAlloc(void* ptr);
-void ResetAllocs();
+void ResetAllocs(IncrementalRB::SavestateInfo& savestateInfo);
 void PrintTrackedBuf(const TrackedBuffer& buf);
 void ResetWrittenPages();
 int GetWrittenPages(char* base, u64 baseSize, std::vector<uintptr_t>& changedPageAddresses,
