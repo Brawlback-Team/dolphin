@@ -1201,7 +1201,7 @@ void CEXIBrawlback::handleEndMatch(u8* payload)
 
   if (res != 0)
   {
-    ERROR_LOG_FMT(BRAWLBACK, "[GameReport] Got error executing request. Err code: {#d}", (int)res);
+    ERROR_LOG_FMT(BRAWLBACK, "[GameReport] Got error executing request. Err code: {:d}", (int)res);
   }
   else
   {
