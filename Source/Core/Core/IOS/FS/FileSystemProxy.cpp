@@ -19,6 +19,12 @@
 #include "Core/IOS/Uids.h"
 #include "Core/System.h"
 
+// Windows memory protection constants for cross-platform compatibility
+#ifndef _WIN32
+#define PAGE_READONLY  0x02
+#define PAGE_READWRITE 0x04
+#endif
+
 namespace IOS::HLE
 {
 using namespace IOS::HLE::FS;

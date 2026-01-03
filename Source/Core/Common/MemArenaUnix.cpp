@@ -110,6 +110,29 @@ void MemArena::UnmapFromMemoryRegion(void* view, size_t size)
     NOTICE_LOG_FMT(MEMMAP, "mmap failed");
 }
 
+// Windows PAGE_* constants mapped to POSIX PROT_* equivalents
+// PAGE_READONLY = 0x02, PAGE_READWRITE = 0x04
+bool MemArena::VirtualProtectMemoryRegion(void* data, size_t size, u32 flag)
+{
+  int prot;
+  if (flag == 0x02)  // PAGE_READONLY
+    prot = PROT_READ;
+  else if (flag == 0x04)  // PAGE_READWRITE
+    prot = PROT_READ | PROT_WRITE;
+  else
+  {
+    ERROR_LOG_FMT(MEMMAP, "VirtualProtectMemoryRegion: unknown protection flag 0x{:x}", flag);
+    return false;
+  }
+
+  if (mprotect(data, size, prot) != 0)
+  {
+    ERROR_LOG_FMT(MEMMAP, "mprotect failed: {}", strerror(errno));
+    return false;
+  }
+  return true;
+}
+
 LazyMemoryRegion::LazyMemoryRegion() = default;
 
 LazyMemoryRegion::~LazyMemoryRegion()

@@ -24,6 +24,12 @@
 #include "Core/IOS/VersionInfo.h"
 #include "Core/System.h"
 
+// Windows memory protection constants for cross-platform compatibility
+#ifndef _WIN32
+#define PAGE_READONLY  0x02
+#define PAGE_READWRITE 0x04
+#endif
+
 namespace IOS::HLE
 {
 SDIOSlot0Device::SDIOSlot0Device(EmulationKernel& ios, const std::string& device_name)
