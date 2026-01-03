@@ -40,6 +40,16 @@ namespace IncrementalRB
     // must have been allocated with VirtualAlloc with the MEM_WRITE_WATCH flag
     // this sets our callbacks and tracks the memory block returned by GetGameStateCb and GetGamestateMemSizeCb
     void InitState(IncrementalRBCallbacks cb);
+
+    // Register callbacks without initializing - InitState will be called lazily when needed
+    void RegisterCallbacks(IncrementalRBCallbacks cb);
+
+    // Check if InitState has been called
+    bool IsInitialized();
+
+    // Ensure initialization (call InitState if not already done)
+    void EnsureInitialized();
+
     // should be called at the END of every game simulation frame. Right now, this just saves the game state
     void SaveWrittenPages(u32 frame, bool resim);
     void OnFrameEnd(s32 frame, bool isResim);

@@ -8,6 +8,12 @@
 #include "brawlback-common/BrawlbackConstants.h"
 #include <set>
 #include <cassert>
+#include <cstdlib>
+#ifdef _WIN32
+#include <malloc.h>
+#else
+#include <mm_malloc.h>
+#endif
 #include <Common/Logging/Log.h>
 #include <Core/HW/MemoryInterface.h>
 #include <Core/HW/VideoInterface.h>
@@ -57,10 +63,10 @@ namespace IncrementalRB
   static jobsystem::context jobctx;
 
   static IncrementalRBCallbacks cbs = {};
+  static bool s_initialized = false;
+  static bool s_callbacks_registered = false;
 
-  static
-
-    TIntervalSet excludeSet;
+  static TIntervalSet excludeSet;
  
   inline u8* GetRAM()
   {
@@ -139,9 +145,12 @@ namespace IncrementalRB
   void InitState(IncrementalRBCallbacks cb)
   {
     //PROFILE_FUNCTION();
-    
+    INFO_LOG_FMT(BRAWLBACK, "IncrementalRB::InitState() - START");
+
     cbs = cb;
+    INFO_LOG_FMT(BRAWLBACK, "IncrementalRB::InitState() - Callbacks set, calling ResetAllocs");
     ResetAllocs(savestateInfo);
+    INFO_LOG_FMT(BRAWLBACK, "IncrementalRB::InitState() - ResetAllocs completed");
     #ifdef SPECIFIC_TRACKING
     std::vector<Region> staticRegions = {
         {0x806414a0, 0x806414a0 + 0x60},
@@ -353,18 +362,25 @@ namespace IncrementalRB
     TrackAlloc(GetPointer(0x92dcdf41), 0x92e90127 - 0x92dcdf41);
     TrackAlloc(GetPointer(0x92e90141), 0x935ce200 - 0x92e90141);
     #else
+    INFO_LOG_FMT(BRAWLBACK, "IncrementalRB::InitState() - Getting physical regions");
     std::array<Memory::PhysicalMemoryRegion, 4> physical_entries = GetPhysicalRegions();
+    INFO_LOG_FMT(BRAWLBACK, "IncrementalRB::InitState() - Got {} physical regions", physical_entries.size());
     for (int i = 0; i < physical_entries.size(); i++)
     {
       if (!physical_entries[i].active)
       {
+        INFO_LOG_FMT(BRAWLBACK, "IncrementalRB::InitState() - Region {} not active, skipping", i);
         continue;
       }
-
+      INFO_LOG_FMT(BRAWLBACK, "IncrementalRB::InitState() - TrackAlloc region {} ptr={} size={}",
+                   i, fmt::ptr(*physical_entries[i].out_pointer), physical_entries[i].size);
       TrackAlloc(*physical_entries[i].out_pointer, physical_entries[i].size);
+      INFO_LOG_FMT(BRAWLBACK, "IncrementalRB::InitState() - TrackAlloc region {} done", i);
     }
     // Threading Stuff
+    INFO_LOG_FMT(BRAWLBACK, "IncrementalRB::InitState() - Starting ExcludeMem calls");
     ExcludeMem(GetPointer(0x80009760), 0x805b5158 - 0x80009760); // Data Sections, BSS, Main Stack
+    INFO_LOG_FMT(BRAWLBACK, "IncrementalRB::InitState() - ExcludeMem 1/9 done");
     ExcludeMem(GetPointer(0x805bf420), 0x28);                    // ??? OSAlarm
     ExcludeMem(GetPointer(0x805bacc0), 0x28);                    // PAD OSAlarm
     ExcludeMem(GetPointer(0x805b85e0), 0x28);                    // OSALarmSleep OSAlarm
@@ -376,29 +392,71 @@ namespace IncrementalRB
     ExcludeMem(GetPointer(0x805ca260), 0x00007c00);              // Thread
     ExcludeMem(GetPointer(0x90199800), 0x00cc7c00);              // Sound
     ExcludeMem(GetPointer(0x80b8db60), 0x80c23a60 - 0x80b8db60); // Effect
+    INFO_LOG_FMT(BRAWLBACK, "IncrementalRB::InitState() - All ExcludeMem calls done");
 
     std::sort(ExcludeMemList.begin(), ExcludeMemList.end(), [](const ExcludeBuffer& a, const ExcludeBuffer& b){ return a.buffer.data < b.buffer.data; });
+    INFO_LOG_FMT(BRAWLBACK, "IncrementalRB::InitState() - ExcludeMemList sorted, size={}", ExcludeMemList.size());
 
     for (u32 i = 0; i < ExcludeMemList.size(); i++)
     {
       excludeSet.insert(ExcludeMemList[i].excludeGap);
     }
-    
+    INFO_LOG_FMT(BRAWLBACK, "IncrementalRB::InitState() - excludeSet populated, size={}", excludeSet.size());
+
     #endif
+    INFO_LOG_FMT(BRAWLBACK, "IncrementalRB::InitState() - Calling jobsystem::Initialize with {} workers", numWorkerThreads - 1);
     jobsystem::Initialize(
         numWorkerThreads -
         1);  // -1 because when we do our async and join stuff, main thread also becomes a worker
+    INFO_LOG_FMT(BRAWLBACK, "IncrementalRB::InitState() - jobsystem initialized");
+
+    INFO_LOG_FMT(BRAWLBACK, "IncrementalRB::InitState() - Checking RAM alignment: {}", fmt::ptr(GetRAM()));
     assert(IS_ALIGNED(GetRAM(), 32));  // for simd memcpy, need to be 32 byte aligned
+    INFO_LOG_FMT(BRAWLBACK, "IncrementalRB::InitState() - Checking EXRAM alignment: {}", fmt::ptr(GetEXRAM()));
     assert(IS_ALIGNED(GetEXRAM(), 32));  // for simd memcpy, need to be 32 byte aligned
 
     // allocate mem for savestates
     u64 savestateMemSize = MAX_NUM_CHANGED_PAGES * Common::PageSize();
-    for (Savestate& savestate : savestateInfo.savestates)
+    INFO_LOG_FMT(BRAWLBACK, "IncrementalRB::InitState() - Allocating savestate memory, size per state={}, count={}", savestateMemSize, MAX_SAVESTATES);
+    for (int ssIdx = 0; ssIdx < MAX_SAVESTATES; ssIdx++)
     {
+      Savestate& savestate = savestateInfo.savestates[ssIdx];
+      INFO_LOG_FMT(BRAWLBACK, "IncrementalRB::InitState() - Allocating savestate {}", ssIdx);
       void* backingMem = _mm_malloc(savestateMemSize, 32);
+      INFO_LOG_FMT(BRAWLBACK, "IncrementalRB::InitState() - Got backingMem={}", fmt::ptr(backingMem));
       assert(IS_ALIGNED(backingMem, 32));
       savestate.arena = arena_init(backingMem, savestateMemSize);
+      INFO_LOG_FMT(BRAWLBACK, "IncrementalRB::InitState() - Savestate {} arena initialized", ssIdx);
     }
+    s_initialized = true;
+    INFO_LOG_FMT(BRAWLBACK, "IncrementalRB::InitState() - COMPLETE");
+  }
+
+  void RegisterCallbacks(IncrementalRBCallbacks cb)
+  {
+    INFO_LOG_FMT(BRAWLBACK, "IncrementalRB::RegisterCallbacks() - Storing callbacks for lazy initialization");
+    cbs = cb;
+    s_callbacks_registered = true;
+  }
+
+  bool IsInitialized()
+  {
+    return s_initialized;
+  }
+
+  void EnsureInitialized()
+  {
+    if (s_initialized)
+      return;
+
+    if (!s_callbacks_registered)
+    {
+      ERROR_LOG_FMT(BRAWLBACK, "IncrementalRB::EnsureInitialized() - Cannot initialize: callbacks not registered");
+      return;
+    }
+
+    INFO_LOG_FMT(BRAWLBACK, "IncrementalRB::EnsureInitialized() - Performing lazy initialization");
+    InitState(cbs);
   }
 
   s32 Wrap(s32 x, s32 wrap)

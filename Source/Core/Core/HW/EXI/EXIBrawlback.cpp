@@ -129,6 +129,8 @@ void CEXIBrawlback::handleCaptureSavestate(u8* data)
 
 void CEXIBrawlback::SaveState(bu32 frame)
 {
+  // Lazy initialization: only init IncrementalRB when netplay actually needs it
+  IncrementalRB::EnsureInitialized();
   IncrementalRB::SaveWrittenPages(frame - 1, this->framesToAdvance > 1 && frame - 1 < this->stopRollbackFrame);
 }
 
@@ -890,11 +892,12 @@ void CEXIBrawlback::NetplayThreadFunc()
 
       qos_success = true;
     }
+  }
 #else
 #ifdef __linux__
   // highest priority
   int priority = 7;
-  setsockopt(this->peer->socket, SOL_SOCKET, SO_PRIORITY, &priority, sizeof(priority));
+  setsockopt(this->server->socket, SOL_SOCKET, SO_PRIORITY, &priority, sizeof(priority));
 #endif
 
   // https://www.tucny.com/Home/dscp-tos
@@ -903,7 +906,6 @@ void CEXIBrawlback::NetplayThreadFunc()
   qos_success =
       setsockopt(this->server->socket, IPPROTO_IP, IP_TOS, &tos_val, sizeof(tos_val)) == 0;
 #endif
-  }
   timeout = this->isHost ? 5000 : 1000;
   while (!this->isConnected)
   {

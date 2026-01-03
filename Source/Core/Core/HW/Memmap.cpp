@@ -41,6 +41,12 @@
 #include <incremental-rollback/incremental_rb.h>
 #include <Core/Debugger/Debugger_SymbolMap.h>
 
+// Windows memory protection constants for cross-platform compatibility
+#ifndef _WIN32
+#define PAGE_READONLY  0x02
+#define PAGE_READWRITE 0x04
+#endif
+
 namespace Memory
 {
 
@@ -466,6 +472,9 @@ void MemoryManager::Init()
   Clear();
 
   INFO_LOG_FMT(MEMMAP, "Memory system initialized. RAM at {}", fmt::ptr(m_ram));
+
+  // Register IncrementalRB callbacks for lazy initialization
+  // Actual InitState() will be called when netplay starts (EnsureInitialized)
   IncrementalRB::IncrementalRBCallbacks cbs;
   cbs.getEXRAM = getEXRAM;
   cbs.getEXRAMMask = getExRamMask;
@@ -475,7 +484,8 @@ void MemoryManager::Init()
   cbs.getRAM = getRAM;
   cbs.getRAMSize = getRamSize;
   cbs.getPhysicalRegions = getPhysicalRegions;
-  IncrementalRB::InitState(cbs);
+  IncrementalRB::RegisterCallbacks(cbs);
+
   m_is_initialized = true;
 }
 
