@@ -80,7 +80,11 @@ HIDWiimote* GetHIDWiimoteSource(unsigned int index)
   switch (GetSource(index))
   {
   case WiimoteSource::Emulated:
-    hid_source = static_cast<WiimoteEmu::Wiimote*>(::Wiimote::GetConfig()->GetController(index));
+    // Safety check: ensure controllers have been created before accessing
+    if (::Wiimote::GetConfig()->GetControllerCount() > static_cast<int>(index))
+    {
+      hid_source = static_cast<WiimoteEmu::Wiimote*>(::Wiimote::GetConfig()->GetController(index));
+    }
     break;
 
   case WiimoteSource::Real:
