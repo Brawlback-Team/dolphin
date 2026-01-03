@@ -2,8 +2,17 @@
 //#include "profiler.h"
 #include <vector>
 #include <cassert>
+#include <cerrno>
+#include <cinttypes>
+#include <cstdlib>
+#include <cstring>
 #include <set>
 #include <cmath>
+#ifdef _WIN32
+#include <malloc.h>
+#else
+#include <mm_malloc.h>
+#endif
 
 #include <Common/Logging/Log.h>
 #include <Common/MemoryUtil.h>
@@ -26,6 +35,9 @@
 #else
 #include <sys/sysinfo.h>
 #endif
+// Windows memory protection constants for cross-platform compatibility
+#define PAGE_READONLY  0x02
+#define PAGE_READWRITE 0x04
 #endif
 
 // the [i].AddressArray.Count here represents the total number of pages in this allocation
@@ -121,7 +133,7 @@ void PrintAddressArray(const TrackedBuffer& buf)
     {
         // offset from base buffer pointer that got changed
         u64 changedOffset = ((u8*)ChangedPages.Addresses[PageIndex] - BaseAddress) / pageSize;
-        printf("%llu : %llu\n", PageIndex, changedOffset);
+        printf("%" PRIu64 " : %" PRIu64 "\n", PageIndex, changedOffset);
     }
 }
 
@@ -199,8 +211,12 @@ bool GetAndResetWrittenPages(std::vector<uintptr_t>& changedPageAddresses, u64 m
             ERROR_LOG_FMT(BRAWLBACK, "WRITTEN PAGE WRITE FAILED! RESULT CODE: {}\n", result);
             if (result == 2 || result == 3)
             {
+#ifdef _WIN32
               DWORD dw = GetLastError();
               ERROR_LOG_FMT(BRAWLBACK, "WRITTEN PAGE WRITE FAILED DUE TO A FAILURE ({}) TO WRITE PROTECT. THE REASON IS: {}\n", result, dw);
+#else
+              ERROR_LOG_FMT(BRAWLBACK, "WRITTEN PAGE WRITE FAILED DUE TO A FAILURE ({}) TO WRITE PROTECT. THE REASON IS: {}\n", result, strerror(errno));
+#endif
             }
             return false;
         }
@@ -216,7 +232,12 @@ bool GetAndResetWrittenPages(std::vector<uintptr_t>& changedPageAddresses, u64 m
 // dest and src buffers must be 32 byte aligned
 // since our code generally always works with actual system pages of memory,
 // nearly (if not all) of our memcpys are on power-of-two aligned blocks of 4096kb
-void fastMemcpy(void *pvDest, void *pvSrc, size_t nBytes) 
+#ifdef _MSC_VER
+void fastMemcpy(void *pvDest, void *pvSrc, size_t nBytes)
+#else
+__attribute__((target("avx,avx2")))
+void fastMemcpy(void *pvDest, void *pvSrc, size_t nBytes)
+#endif 
 {
     assert(IS_ALIGNED(pvDest, 32));
     assert(IS_ALIGNED(pvSrc, 32));
