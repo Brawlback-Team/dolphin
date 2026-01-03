@@ -18,6 +18,15 @@ add_library(core
   BootManager.cpp
   BootManager.h
   Brawlback/include/json.hpp
+  Brawlback/include/incremental-rollback/incremental_rb.cpp
+  Brawlback/include/incremental-rollback/incremental_rb.h
+  Brawlback/include/incremental-rollback/job_system.cpp
+  Brawlback/include/incremental-rollback/job_system.h
+  Brawlback/include/incremental-rollback/mem.cpp
+  Brawlback/include/incremental-rollback/mem.h
+  Brawlback/include/incremental-rollback/tiny_arena.cpp
+  Brawlback/include/incremental-rollback/tiny_arena.h
+  Brawlback/include/incremental-rollback/util.h
   Brawlback/Netplay/Matchmaking.cpp
   Brawlback/Netplay/Matchmaking.h
   Brawlback/Netplay/Netplay.cpp
