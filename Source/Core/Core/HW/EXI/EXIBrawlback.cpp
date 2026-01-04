@@ -139,6 +139,7 @@ void CEXIBrawlback::handleLoadSavestate(u8* data)
   // frame we should rollback to
   std::memcpy(&stopRollbackFrame, data, sizeof(bu32));
   stopRollbackFrame = swap_endian(stopRollbackFrame);
+  IncrementalRB::EnsureInitialized();
   IncrementalRB::Rollback(this->lastStatedFrame, stopRollbackFrame);
 }
 
@@ -355,6 +356,7 @@ void CEXIBrawlback::updateSync(bu32& locFrame, bu8 playerIdx)
     // not synchronized, rollback & resim
     INFO_LOG_FMT(BRAWLBACK, "Should rollback! frame = {} latestConfirmedFrame = {}\n", locFrame,
                  latestConfirmedFrame);
+    IncrementalRB::EnsureInitialized();
     IncrementalRB::Rollback(locFrame, latestConfirmedFrame);
     // if on frame 10 we rollback to frame 7 we need to simulate frames 7,8,9, and 10 to get to
     // where we were before. 10 - 7 + 1 = 4
